@@ -24,7 +24,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-STORE_VERSION = 2
+STORE_VERSION = 3
 
 DDL = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -98,6 +98,37 @@ CREATE TABLE IF NOT EXISTS character_aliases (
     PRIMARY KEY (collection_id, form_key)
 );
 
+CREATE TABLE IF NOT EXISTS analysis_runs (
+    id                  TEXT PRIMARY KEY,
+    model               TEXT NOT NULL,
+    provider            TEXT,
+    prompt_version      TEXT NOT NULL,
+    pipeline_version    TEXT,
+    application_version TEXT,
+    parameters          TEXT NOT NULL DEFAULT '{}',
+    started_at          TEXT,
+    completed_at        TEXT
+);
+
+-- A snapshot is stored as the rendered document, not as normalised rows. What is kept is
+-- exactly what would be exported and cited, so the archived artifact and the published one
+-- cannot drift apart. The columns beside it exist for lookup, never as a second source of
+-- truth. Snapshots are insert-only: see insert_snapshot.
+CREATE TABLE IF NOT EXISTS snapshots (
+    id               TEXT PRIMARY KEY,
+    work_id          TEXT NOT NULL REFERENCES works(id),
+    text_revision_id TEXT NOT NULL REFERENCES text_revisions(id),
+    analysis_run_id  TEXT NOT NULL REFERENCES analysis_runs(id),
+    label            TEXT,
+    schema_version   TEXT NOT NULL,
+    sha256           TEXT NOT NULL,
+    created_at       TEXT NOT NULL,
+    document         TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS ix_snapshots_work ON snapshots(work_id);
+CREATE INDEX IF NOT EXISTS ix_snapshots_revision ON snapshots(text_revision_id);
+CREATE INDEX IF NOT EXISTS ix_snapshots_run ON snapshots(analysis_run_id);
 CREATE INDEX IF NOT EXISTS ix_works_collection ON works(collection_id);
 CREATE INDEX IF NOT EXISTS ix_documents_work ON documents(work_id);
 CREATE INDEX IF NOT EXISTS ix_revisions_work ON text_revisions(work_id);
@@ -146,8 +177,27 @@ class RegisteredCharacter:
         return (self.name, *self.aliases)
 
 
+@dataclass(frozen=True)
+class StoredSnapshot:
+    """A snapshot as kept on disk: the document itself, plus what it is bound to."""
+
+    id: str
+    work_id: str
+    text_revision_id: str
+    analysis_run_id: str
+    schema_version: str
+    sha256: str
+    created_at: str
+    document: dict[str, Any]
+    label: str | None = None
+
+
 class AmbiguousAliasError(Exception):
     """A surface form was claimed by two characters in one collection."""
+
+
+class ImmutableSnapshotError(Exception):
+    """An attempt was made to change a snapshot that already exists."""
 
 
 def utc_now() -> str:
@@ -340,6 +390,12 @@ class Store:
             **dict(row), document_ids=tuple(member["document_id"] for member in members)
         )
 
+    def get_collection(self, identifier: str) -> dict[str, Any] | None:
+        row = self.connection.execute(
+            "SELECT * FROM collections WHERE id = ?", (identifier,)
+        ).fetchone()
+        return None if row is None else dict(row)
+
     def get_work(self, identifier: str) -> dict[str, Any] | None:
         row = self.connection.execute("SELECT * FROM works WHERE id = ?", (identifier,)).fetchone()
         if row is None:
@@ -439,6 +495,93 @@ class Store:
         ).fetchall()
         found = [self.get_character(row["id"]) for row in rows]
         return [character for character in found if character is not None]
+
+    # -- analyses and snapshots ---------------------------------------------------------
+
+    def upsert_analysis_run(self, run: dict[str, Any]) -> str:
+        with self.transaction() as connection:
+            connection.execute(
+                "INSERT INTO analysis_runs (id, model, provider, prompt_version, "
+                "pipeline_version, application_version, parameters, started_at, completed_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET "
+                "completed_at = COALESCE(excluded.completed_at, analysis_runs.completed_at)",
+                (
+                    run["id"],
+                    run["model"],
+                    run.get("provider"),
+                    run["prompt_version"],
+                    run.get("pipeline_version"),
+                    run.get("application_version"),
+                    json.dumps(run.get("parameters") or {}, sort_keys=True),
+                    run.get("started_at"),
+                    run.get("completed_at"),
+                ),
+            )
+        return run["id"]
+
+    def get_analysis_run(self, identifier: str) -> dict[str, Any] | None:
+        row = self.connection.execute(
+            "SELECT * FROM analysis_runs WHERE id = ?", (identifier,)
+        ).fetchone()
+        if row is None:
+            return None
+        run = dict(row)
+        run["parameters"] = json.loads(run["parameters"])
+        return run
+
+    def insert_snapshot(self, snapshot: StoredSnapshot) -> str:
+        """Write a snapshot. Snapshots are immutable (Invariant 4).
+
+        Writing the same identifier with identical content is a no-op, so a repeated run is
+        harmless. Writing it with *different* content raises: a snapshot whose meaning
+        changed under a citation that already names it is the failure this prevents.
+        """
+        existing = self.connection.execute(
+            "SELECT sha256 FROM snapshots WHERE id = ?", (snapshot.id,)
+        ).fetchone()
+        if existing is not None:
+            if existing["sha256"] == snapshot.sha256:
+                return snapshot.id
+            raise ImmutableSnapshotError(
+                f"snapshot {snapshot.id!r} already exists with different content. "
+                "Snapshots are immutable — a new analysis is a new snapshot."
+            )
+
+        with self.transaction() as connection:
+            connection.execute(
+                "INSERT INTO snapshots (id, work_id, text_revision_id, analysis_run_id, "
+                "label, schema_version, sha256, created_at, document) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    snapshot.id,
+                    snapshot.work_id,
+                    snapshot.text_revision_id,
+                    snapshot.analysis_run_id,
+                    snapshot.label,
+                    snapshot.schema_version,
+                    snapshot.sha256,
+                    snapshot.created_at,
+                    json.dumps(snapshot.document, sort_keys=True, ensure_ascii=False),
+                ),
+            )
+        return snapshot.id
+
+    def get_snapshot(self, identifier: str) -> StoredSnapshot | None:
+        row = self.connection.execute(
+            "SELECT * FROM snapshots WHERE id = ?", (identifier,)
+        ).fetchone()
+        if row is None:
+            return None
+        record = dict(row)
+        record["document"] = json.loads(record["document"])
+        return StoredSnapshot(**record)
+
+    def list_snapshots(self, work_id: str) -> list[StoredSnapshot]:
+        rows = self.connection.execute(
+            "SELECT id FROM snapshots WHERE work_id = ? ORDER BY created_at, id", (work_id,)
+        ).fetchall()
+        found = [self.get_snapshot(row["id"]) for row in rows]
+        return [snapshot for snapshot in found if snapshot is not None]
 
     def revision_text(self, revision_id: str) -> str:
         """Return the full text of a revision, documents concatenated in order."""

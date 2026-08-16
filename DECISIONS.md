@@ -185,3 +185,47 @@ matter, say — is rejected with its own reason, since no honest locator exists 
 
 *Not reversible* in spirit: rejecting real evidence for a locator fault is the failure this
 entry exists to prevent.
+
+---
+
+## D11 — A snapshot is stored as its rendered document
+
+**Phase 1.8.** Snapshots are kept as the schema-shaped JSON document, in one column, rather
+than normalised across tables. The surrounding columns (work, revision, run, hash, created
+date) exist for lookup and are never a second source of truth.
+
+The artifact on disk is then exactly the artifact exported and cited, so the archived and
+published forms cannot drift apart, and reading one back needs no model, no network, and no
+re-rendering step that could differ from the one that produced it (Invariant 6). Normalised
+tables would duplicate the schema in a second dialect and give two places for a definition
+to live.
+
+The cost is that querying inside a snapshot means loading it. At the size of a character
+graph — hundreds of nodes at most — that is not a real cost, and Phase 3's diffing loads
+both documents anyway.
+
+*Reversible* by adding derived tables alongside, if querying ever needs them. The document
+stays authoritative.
+
+---
+
+## D12 — Two executions of one configuration are two runs
+
+**Phase 1.8.** An analysis run's identifier is derived from everything that determines the
+analysis *including when it started*, so running the same configuration twice produces two
+runs and two snapshots.
+
+The alternative — deriving it from configuration alone — was tempting because it would make
+"identical analysis on identical text yields an identical snapshot" true by construction.
+It is wrong: models are not deterministic, so two executions of one configuration routinely
+produce different graphs, and collapsing them would leave a single identifier naming two
+different results. Under Invariant 4 that is precisely the failure the second axis exists to
+prevent.
+
+Writing the test for this surfaced a related property worth stating: **a re-analysis over a
+populated registry is not the same analysis.** Resolution consults the model only for names
+it does not already know, so the second run does less work and records different parameters.
+The graph is the same; the run is not. Both facts belong in the record, and the test now
+asserts both rather than pretending the runs are interchangeable.
+
+*Reversible* — but only alongside a decision about what a snapshot identifier promises.

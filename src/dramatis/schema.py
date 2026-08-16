@@ -10,6 +10,14 @@ from typing import Any
 SCHEMA_DIR = Path(__file__).resolve().parents[2] / "schema"
 SCHEMA_PATH = SCHEMA_DIR / "dramatis.schema.json"
 
+DOCUMENT_VERSION = "0.1.0"
+"""The value written into a document's ``schema_version`` field.
+
+The schema's ``$id`` pins major and minor; this adds the patch level a document records.
+A test keeps the two in step, since a document claiming a version the schema does not
+recognise is worse than one claiming none.
+"""
+
 
 @lru_cache(maxsize=1)
 def load_schema() -> dict[str, Any]:

@@ -1,8 +1,11 @@
 """The ``dramatis`` command line interface.
 
-``validate`` checks documents against the published schema. ``ingest`` reads a text into a
-project store. Neither requires a model or a network connection (Invariant 6), so both work
-offline and always will.
+``validate`` checks documents against the published schema and ``ingest`` reads a text into
+a project store. Neither requires a model or a network connection (Invariant 6), so both
+work offline and always will.
+
+``analyse`` is the exception, and the only command that calls a provider. Its imports are
+deferred so the two offline commands keep working when no provider SDK is installed.
 """
 
 from __future__ import annotations
@@ -15,6 +18,7 @@ from pathlib import Path
 
 from dramatis import __version__
 from dramatis.ingest import IngestError, ingest_file
+from dramatis.providers import ProviderError
 from dramatis.schema import schema_version
 from dramatis.store import Store
 from dramatis.validation import Issue, validate_file
@@ -114,6 +118,68 @@ def _run_ingest(args: argparse.Namespace) -> int:
     return 0
 
 
+# -- analyse --------------------------------------------------------------------------
+
+
+def _run_analyse(args: argparse.Namespace) -> int:
+    from dramatis.extraction import ExtractionError
+    from dramatis.pipeline import PipelineError, analyse
+    from dramatis.providers.anthropic_provider import AnthropicProvider
+    from dramatis.resolution import ResolutionError
+    from dramatis.snapshot import SnapshotError
+    from dramatis.verification import VerificationError
+
+    provider = AnthropicProvider(model=args.model)
+
+    try:
+        with Store(args.store) as store:
+            result = analyse(
+                store,
+                args.revision,
+                provider,
+                effort=args.effort,
+                label=args.label,
+            )
+    except (
+        PipelineError,
+        ExtractionError,
+        ResolutionError,
+        VerificationError,
+        SnapshotError,
+        ProviderError,
+    ) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
+    snapshot = result.snapshot
+    document = snapshot.document
+
+    if args.as_json:
+        json.dump(document, sys.stdout, indent=2, ensure_ascii=False)
+        sys.stdout.write("\n")
+        return 0
+
+    print(f"snapshot    {snapshot.id}")
+    print(f"  revision  {snapshot.text_revision_id}")
+    print(f"  run       {snapshot.analysis_run_id}")
+    print(f"  model     {document['analysis_runs'][0]['model']}")
+    print(f"  characters {len(document['characters'])}")
+    print(f"  relations  {len(document['relations'])}")
+
+    verification = result.verification
+    if verification.rejected:
+        print(
+            f"  rejected   {verification.rejected} of {verification.checked} quotations "
+            "as not verbatim"
+        )
+    if verification.relocated:
+        print(f"  relocated  {verification.relocated} quotation(s) to the right passage")
+    for warning in result.warnings[:10]:
+        print(f"  note      {warning}", file=sys.stderr)
+
+    return 0
+
+
 # -- parser ---------------------------------------------------------------------------
 
 
@@ -177,6 +243,39 @@ def _build_parser() -> argparse.ArgumentParser:
         help="emit machine-readable results on stdout",
     )
     ingest.set_defaults(handler=_run_ingest)
+
+    analyse = subcommands.add_parser(
+        "analyse",
+        aliases=["analyze"],
+        help="analyse a text revision and record a snapshot",
+        description=(
+            "Read a stored text revision with a model, verify every quotation against the "
+            "source, and record the resulting graph as an immutable snapshot. Needs a "
+            "credential: this is the only command that calls a provider."
+        ),
+    )
+    analyse.add_argument("revision", metavar="REVISION_ID")
+    analyse.add_argument(
+        "--store",
+        type=Path,
+        default=DEFAULT_STORE,
+        help=f"project file to read and write (default: {DEFAULT_STORE})",
+    )
+    analyse.add_argument("--model", default=None, help="model identifier to use")
+    analyse.add_argument(
+        "--effort",
+        choices=["low", "medium", "high", "xhigh", "max"],
+        default="medium",
+        help="how much work the model should spend per window (default: medium)",
+    )
+    analyse.add_argument("--label", help="human-facing name for this snapshot")
+    analyse.add_argument(
+        "--json",
+        action="store_true",
+        dest="as_json",
+        help="write the snapshot document to stdout",
+    )
+    analyse.set_defaults(handler=_run_analyse)
 
     return parser
 

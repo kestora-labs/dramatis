@@ -158,3 +158,56 @@ def test_ingest_rejects_an_unknown_role(tmp_path: Path) -> None:
         main(["ingest", str(_text_file(tmp_path)), "--role", "appendix"])
 
     assert exit_info.value.code != 0
+
+
+# -- analyse --------------------------------------------------------------------------
+
+
+def test_analyse_reports_an_unknown_revision_without_calling_a_provider(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """It fails on the revision before reaching the network, so this needs no credential."""
+    store = tmp_path / "project.sqlite"
+    main(["ingest", str(_text_file(tmp_path)), "--store", str(store)])
+    capsys.readouterr()
+
+    assert main(["analyse", "rev:nope", "--store", str(store)]) == 1
+    assert "unknown text revision" in capsys.readouterr().err
+
+
+def test_analyse_accepts_its_options(tmp_path: Path) -> None:
+    from dramatis.cli import _build_parser
+
+    parsed = _build_parser().parse_args(
+        [
+            "analyse",
+            "rev:abc",
+            "--store",
+            str(tmp_path / "p.sqlite"),
+            "--effort",
+            "high",
+            "--label",
+            "First pass",
+            "--json",
+        ]
+    )
+
+    assert (parsed.revision, parsed.effort, parsed.label, parsed.as_json) == (
+        "rev:abc",
+        "high",
+        "First pass",
+        True,
+    )
+
+
+def test_analyze_is_accepted_as_a_spelling(tmp_path: Path) -> None:
+    from dramatis.cli import _build_parser
+
+    assert _build_parser().parse_args(["analyze", "rev:abc"]).revision == "rev:abc"
+
+
+def test_analyse_rejects_an_unknown_effort() -> None:
+    from dramatis.cli import _build_parser
+
+    with pytest.raises(SystemExit):
+        _build_parser().parse_args(["analyse", "rev:abc", "--effort", "enormous"])

@@ -312,7 +312,12 @@ stale location.
 - [ ] **6.3** — Import of externally produced Dramatis JSON — the schema proves
       interoperable.
 - [ ] **6.4** — Multiple editions of one work in a single collection (shape **D**).
-- [ ] **6.5** — `CITATION.cff`, Zenodo DOI on release, versioned schema documentation.
+- [ ] **6.5** — `CITATION.cff`, Zenodo DOI on release, versioned schema documentation, and
+      **the schema served as a static document at its own `$id`** —
+      `https://kestoralabs.co.uk/dramatis/schema/<version>/dramatis.schema.json` — so the
+      identifier resolves to an authoritative copy and the format can be implemented
+      without cloning the repository. Every published version stays served, permanently;
+      a new version takes a new path and never replaces an existing one.
 - [ ] **6.6** — Documentation site: install, first analysis, schema reference, prompt
       customisation.
 - [ ] **6.7** — Tauri desktop wrapper with signed installers for macOS and Windows.

@@ -54,8 +54,8 @@ runs exactly the commands that pass locally on both toolchains — asserted by t
 `tests/test_ci_workflow.py`. The bullet is complete in substance; the green badge follows
 the first push.
 
-**Outstanding:** confirm a green run on `kestora-labs/dramatis` once the organisation
-exists.
+**Outstanding:** confirm a green run on `kestora-labs/dramatis`. The organisation exists as
+of 2026-08-16, so only the first push remains.
 
 ---
 
@@ -78,3 +78,26 @@ trusted pipeline and then frozen — not as hand-written ground truth invented b
 pipeline exists.
 
 *Reversible* at any time by tightening the floor as more of the graph gets verified.
+
+---
+
+## D6 — The schema `$id` must resolve, and is served from the owned domain
+
+**Phase 0.4, scheduled into 6.5.** The `$id` originally named `kestora.dev`, a domain the
+project does not own. Corrected to `kestoralabs.co.uk`, and Phase 6.5 extended to actually
+serve the document there.
+
+An `$id` is a public identifier that outlives the file. Other tools use it to declare which
+version of the format they emit or consume, and every snapshot document records the version
+it was written against. Under a domain the project does not control, that identifier could
+be claimed by someone else, and no one could resolve it to an authoritative copy.
+
+Serving it is what turns the identifier into a reference, and it is what makes the CC BY 4.0
+licensing of the schema mean anything to someone implementing the format without cloning the
+repository — the case Invariant 8 exists for.
+
+**Consequence, permanent:** once a version is published at its path it is served forever and
+its content never changes. A revision takes a new path. Documents in the wild record a
+version, and a version that quietly changed meaning would make them unreadable.
+
+*Not reversible* once a version has been published and third parties have recorded it.

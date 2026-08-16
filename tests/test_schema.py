@@ -59,6 +59,23 @@ def test_schema_id_uses_a_domain_the_project_owns(schema: dict) -> None:
     )
 
 
+def test_documentation_quotes_the_actual_id(schema: dict) -> None:
+    """The docs print the identifier verbatim; a version bump must update both together.
+
+    Phase 6.5 serves the schema at this exact URL, so a documented URL that has drifted
+    from the file would be published as the canonical reference and be wrong.
+    """
+    documented = (ROOT / "docs" / "schema.md").read_text(encoding="utf-8")
+    assert schema["$id"] in documented, (
+        f"docs/schema.md does not quote the schema's own $id ({schema['$id']})"
+    )
+
+
+def test_roadmap_schedules_publication_at_the_owned_host() -> None:
+    roadmap = (ROOT / "AI" / "ROADMAP.md").read_text(encoding="utf-8")
+    assert CANONICAL_HOST in roadmap, "6.5 must name where the schema gets served"
+
+
 @pytest.mark.parametrize("term", MEDIUM_SPECIFIC_TERMS)
 def test_schema_names_no_medium_specific_unit(term: str) -> None:
     """Invariant 1, enforced across every file in schema/."""

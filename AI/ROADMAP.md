@@ -223,13 +223,35 @@ text. No medium-specific vocabulary appears anywhere in the schema (grep for `ch
 > of them. The code already allows it; nothing in the CLI suggests it, and a default
 > filename sitting in the current directory actively implies one project per folder.
 
+- [ ] **1.11** — Write down what a project is: one corpus studied over time, holding
+      settings as well as data. Glossary entry, and a `settings` accessor over the existing
+      `meta` table. See **D17**.
+- [ ] **1.12** — Move the extraction prompt to `src/dramatis/prompts/extract.md`, and record
+      a hash of the prompt text actually sent in every run. `require_comparable()` refuses
+      two snapshots whose prompt hashes differ, whatever their versions claim. See **D18**.
+- [ ] **1.13** — A project-level setting for whether a collective counts as an actor, asked
+      on the ingest that creates a project, carried into each run's parameters and into
+      comparability. Correct the prompt's treatment of indefinite referents at the same
+      time, which is not governed by the setting. See **D19**.
+
+> **Why 1.11–1.13 exist.** Phase 1 was complete and its acceptance met. Then the first run
+> against a live model — the first time any of this met prose it had not been written
+> against — showed three things at once: that the prompt is the part most in need of
+> revision and the worst placed for it, that an editable prompt quietly voids the
+> comparability `PROMPT_VERSION` promises, and that whether a collective is a character is
+> a property of the corpus rather than a fact about narrative. None was visible from the
+> scripted tests, because a scripted response cannot disagree with the prompt that produced
+> it. The phase reopens rather than deferring to Phase 2: every snapshot made before 1.12
+> is one whose prompt cannot be recovered.
+
 **Acceptance:** Ingesting fixture **A** end to end produces a snapshot that validates
 against the schema. Elizabeth Bennet and Fitzwilliam Darcy are present as single nodes
 with their aliases merged, joined by an edge among the graph's heaviest. Every stored
 quotation is found verbatim in the source. The whole run is reproducible from the
 recorded run metadata. A command run against a store that does not exist says so, and
 `dramatis status` answers "which project am I in, and what is in it" without opening the
-file by hand.
+file by hand. Editing the shipped prompt and re-running produces a snapshot that refuses to
+be compared with the one before it, naming the prompt as the reason.
 
 ---
 
@@ -403,6 +425,9 @@ welcome, no promise of response time. Revisit if a real contributor base appears
 
 ## Glossary
 
+- **Project** — the study of one narrative corpus over time: a single collection, its text
+  revisions, its analysis runs, and the snapshots binding them. Holds the settings the study
+  is conducted under, not only its data. One project is one file.
 - **Collection** — a set of related works sharing a character registry. A standalone novel
   is a collection of one.
 - **Work** — a single narrative body: a novel, a series, a season.

@@ -21,6 +21,10 @@ web/dist/
 *.sqlite
 *.sqlite3
 data/
+
+# Scratch text at the root: excerpts to try a run against, drafts pasted in to look at.
+# Corpus text belongs under fixtures/ with its provenance, or outside the repo entirely.
+/*.txt
 .env
 .env.*
 !.env.example

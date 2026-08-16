@@ -200,6 +200,21 @@ def test_analyse_accepts_its_options(tmp_path: Path) -> None:
     )
 
 
+def test_omitting_model_reaches_the_provider_as_its_default() -> None:
+    """The seam, not either side of it.
+
+    The parser defaults --model to None and the provider has a default of its own; each
+    was right alone, and together they sent a null model and earned a 400 from the API.
+    Nothing that tested only one side could see it.
+    """
+    from dramatis.cli import _build_parser
+    from dramatis.providers.anthropic_provider import DEFAULT_MODEL, AnthropicProvider
+
+    parsed = _build_parser().parse_args(["analyse", "rev:abc"])
+
+    assert AnthropicProvider(model=parsed.model).model == DEFAULT_MODEL
+
+
 def test_analyze_is_accepted_as_a_spelling(tmp_path: Path) -> None:
     from dramatis.cli import _build_parser
 

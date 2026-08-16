@@ -12,11 +12,13 @@ from typing import Any
 
 import pytest
 
-from dramatis.providers import ModelRequest, ProviderError
+from dramatis.providers import ModelRequest, ProviderAuthError, ProviderError
 from dramatis.providers.anthropic_provider import (
+    CREDENTIAL_ATTRIBUTES,
     DEFAULT_MODEL,
     STREAMING_THRESHOLD,
     AnthropicProvider,
+    _credential_resolved,
 )
 
 SCHEMA = {
@@ -79,6 +81,20 @@ class FakeMessages:
 class FakeClient:
     def __init__(self, message: FakeMessage | None = None) -> None:
         self.messages = FakeMessages(message or FakeMessage())
+
+
+class UnauthenticatedClient(FakeClient):
+    """A client shaped like the SDK's, having resolved no credential at all.
+
+    The real one raises only once a request is built, deep inside header validation. This
+    stands in for that state so the check can be tested without reaching the network.
+    """
+
+    def __init__(self, message: FakeMessage | None = None) -> None:
+        super().__init__(message)
+        self.api_key = None
+        self.auth_token = None
+        self.credentials = None
 
 
 def provider(client: FakeClient | None = None, **kwargs: Any) -> AnthropicProvider:
@@ -209,6 +225,59 @@ class TestCredentials:
         monkeypatch.delenv("ANTHROPIC_API_KEY")
         monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
         assert AnthropicProvider.credential_available() is False
+
+
+class TestMissingCredentialIsExplained:
+    """A missing credential is the commonest first-run failure, and the SDK reports it as
+    a bare TypeError raised while building request headers. That is not one of its own
+    error types, so it cannot be translated after the fact — it has to be caught before
+    the request is built, or the user gets a traceback instead of a sentence."""
+
+    def test_a_client_that_resolved_nothing_is_refused_before_any_request(self) -> None:
+        client = UnauthenticatedClient()
+
+        with pytest.raises(ProviderAuthError) as caught:
+            provider(client).complete(ModelRequest(prompt="Who appears here?"))
+
+        assert client.messages.create_calls == []
+        assert "no credential is set" in str(caught.value)
+
+    def test_the_refusal_names_the_ways_to_set_one(self) -> None:
+        with pytest.raises(ProviderAuthError) as caught:
+            provider(UnauthenticatedClient()).complete(ModelRequest(prompt="Who?"))
+
+        message = str(caught.value)
+        assert "ANTHROPIC_API_KEY" in message
+        assert "ant auth login" in message
+
+    @pytest.mark.parametrize("attribute", CREDENTIAL_ATTRIBUTES)
+    def test_any_one_resolved_credential_is_enough(self, attribute: str) -> None:
+        """A profile populates `credentials` and leaves the environment empty. Checking
+        only ANTHROPIC_API_KEY here would refuse a call that would have succeeded."""
+        client = UnauthenticatedClient()
+        setattr(client, attribute, "resolved")
+
+        provider(client).complete(ModelRequest(prompt="Who appears here?"))
+
+        assert len(client.messages.create_calls) == 1
+
+    def test_a_client_naming_none_of_them_is_not_judged(self) -> None:
+        """Fails open. Refusing a client we cannot read would turn an SDK rename into a
+        refusal to work at all, which is worse than the traceback this replaces."""
+        assert _credential_resolved(FakeClient()) is True
+
+    def test_the_real_client_still_exposes_the_attributes_we_read(self) -> None:
+        """Binds the check to the SDK. If it renames these, this fails and says so, rather
+        than silently falling open and letting the traceback return."""
+        anthropic = pytest.importorskip("anthropic")
+
+        # An explicit key, so the result does not depend on the environment of whoever
+        # runs the tests — a developer with a logged-in profile must see what CI sees.
+        client = anthropic.Anthropic(api_key="sk-ant-not-a-real-key")
+
+        named = [name for name in CREDENTIAL_ATTRIBUTES if hasattr(client, name)]
+        assert named, f"the SDK no longer exposes any of {CREDENTIAL_ATTRIBUTES}"
+        assert _credential_resolved(client) is True
 
 
 class TestOptionalDependency:

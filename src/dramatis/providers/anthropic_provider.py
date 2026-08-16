@@ -29,6 +29,11 @@ DEFAULT_MODEL = "claude-opus-5"
 # timeout. Streaming past it is not an optimisation — it is the only way the call returns.
 STREAMING_THRESHOLD = 16_000
 
+# The attributes the SDK populates from whichever credential it resolved: an explicit key,
+# an auth token, or a logged-in profile. Which one is set is not our business; that none is
+# set is, because the SDK only reports it as a bare TypeError once a request is built.
+CREDENTIAL_ATTRIBUTES = ("api_key", "auth_token", "credentials")
+
 
 def _sdk_or_none() -> Any | None:
     """Return the vendor SDK if it is importable, else None."""
@@ -49,6 +54,22 @@ def _load_sdk() -> Any:
             "Reading and exporting existing analyses never needs it."
         )
     return anthropic
+
+
+def _credential_resolved(client: Any) -> bool:
+    """Whether the SDK resolved a credential, asked of the client rather than guessed.
+
+    Reimplementing the SDK's resolution chain here would go stale; a user with a logged-in
+    profile and no environment variable would be refused a call that would have worked. So
+    this reads the answer the SDK already reached.
+
+    A client naming none of the attributes is one we cannot judge, and is allowed through:
+    the alternative is refusing a working setup because the SDK renamed a field.
+    """
+    named = [name for name in CREDENTIAL_ATTRIBUTES if hasattr(client, name)]
+    if not named:
+        return True
+    return any(getattr(client, name) for name in named)
 
 
 def _translate(error: Exception, model: str) -> ProviderError | None:
@@ -109,19 +130,30 @@ class AnthropicProvider:
         self._client = client
 
     def _ensure_client(self) -> Any:
-        if self._client is not None:
-            return self._client
+        if self._client is None:
+            anthropic = _load_sdk()
+            options: dict[str, Any] = {}
+            if self._timeout is not None:
+                options["timeout"] = self._timeout
+            try:
+                # No api_key argument: the SDK resolves ANTHROPIC_API_KEY, an auth token,
+                # or a logged-in profile. Passing one here would invite callers to
+                # hardcode it.
+                self._client = anthropic.Anthropic(**options)
+            except Exception as error:  # pragma: no cover - constructor rarely fails
+                raise ProviderAuthError(
+                    f"could not construct an Anthropic client: {error}"
+                ) from error
 
-        anthropic = _load_sdk()
-        options: dict[str, Any] = {}
-        if self._timeout is not None:
-            options["timeout"] = self._timeout
-        try:
-            # No api_key argument: the SDK resolves ANTHROPIC_API_KEY, an auth token, or a
-            # logged-in profile. Passing one here would invite callers to hardcode it.
-            self._client = anthropic.Anthropic(**options)
-        except Exception as error:  # pragma: no cover - constructor rarely fails
-            raise ProviderAuthError(f"could not construct an Anthropic client: {error}") from error
+        # Checked here rather than left to the request, because the SDK reports a missing
+        # credential as a bare TypeError raised while building headers — not as one of its
+        # own error types, so _translate cannot map it and it surfaces as a traceback.
+        if not _credential_resolved(self._client):
+            raise ProviderAuthError(
+                "no credential is set, so there is nothing to authenticate with. Set "
+                "ANTHROPIC_API_KEY in this terminal, or run `ant auth login`. Dramatis "
+                "ships no key and reads yours only through the provider SDK."
+            )
         return self._client
 
     @staticmethod

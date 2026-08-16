@@ -51,6 +51,20 @@ def document_id(name: str) -> str:
     return _identifier("doc", name, "untitled")
 
 
+def character_id(name: str, *, disambiguator: str | None = None) -> str:
+    """Derive a character identifier from a canonical name.
+
+    Two different characters can share a name, so a disambiguator may be appended. Once a
+    character is in the registry its identifier never changes even if a later run would
+    prefer a different canonical name — the registry, not this function, is what makes
+    identity stable across snapshots.
+    """
+    slug = slugify(name) or "unnamed"
+    if disambiguator:
+        slug = f"{slug}-{slugify(disambiguator)}"
+    return f"char:{slug}"
+
+
 def revision_id(content_hash: str) -> str:
     """Derive a revision identifier from the hash of its content.
 

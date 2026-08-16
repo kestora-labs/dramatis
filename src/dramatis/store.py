@@ -24,7 +24,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-STORE_VERSION = 1
+STORE_VERSION = 2
 
 DDL = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -74,9 +74,35 @@ CREATE TABLE IF NOT EXISTS revision_documents (
     PRIMARY KEY (revision_id, document_id)
 );
 
+CREATE TABLE IF NOT EXISTS characters (
+    id            TEXT PRIMARY KEY,
+    collection_id TEXT NOT NULL REFERENCES collections(id),
+    name          TEXT NOT NULL,
+    kind          TEXT NOT NULL DEFAULT 'unknown',
+    provenance    TEXT NOT NULL DEFAULT 'observed'
+                  CHECK (provenance IN ('observed', 'asserted', 'human')),
+    review_status TEXT NOT NULL DEFAULT 'proposed'
+                  CHECK (review_status IN ('proposed', 'accepted', 'corrected', 'rejected')),
+    notes         TEXT
+);
+
+-- One surface form maps to at most one character within a collection. The primary key is
+-- the guarantee, not a convention: a form that two characters both claim cannot be stored,
+-- so an ambiguous alias is a write failure rather than a silently wrong graph.
+CREATE TABLE IF NOT EXISTS character_aliases (
+    collection_id TEXT NOT NULL REFERENCES collections(id),
+    form_key      TEXT NOT NULL,
+    form          TEXT NOT NULL,
+    character_id  TEXT NOT NULL REFERENCES characters(id),
+    is_canonical  INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (collection_id, form_key)
+);
+
 CREATE INDEX IF NOT EXISTS ix_works_collection ON works(collection_id);
 CREATE INDEX IF NOT EXISTS ix_documents_work ON documents(work_id);
 CREATE INDEX IF NOT EXISTS ix_revisions_work ON text_revisions(work_id);
+CREATE INDEX IF NOT EXISTS ix_characters_collection ON characters(collection_id);
+CREATE INDEX IF NOT EXISTS ix_aliases_character ON character_aliases(character_id);
 """
 
 
@@ -102,8 +128,41 @@ class TextRevision:
     document_ids: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class RegisteredCharacter:
+    """A character in a collection's registry, with every surface form that denotes it."""
+
+    id: str
+    collection_id: str
+    name: str
+    kind: str = "unknown"
+    provenance: str = "observed"
+    review_status: str = "proposed"
+    notes: str | None = None
+    aliases: tuple[str, ...] = ()
+
+    @property
+    def surface_forms(self) -> tuple[str, ...]:
+        return (self.name, *self.aliases)
+
+
+class AmbiguousAliasError(Exception):
+    """A surface form was claimed by two characters in one collection."""
+
+
 def utc_now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+def form_key(form: str) -> str:
+    """Normalise a surface form for lookup.
+
+    Case and surrounding whitespace are not meaningful distinctions between two writings
+    of the same name. Nothing else is folded — punctuation and internal spacing stay, so
+    "St. John" and "St John" remain different forms for a human to reconcile rather than
+    being merged by a rule that would be wrong in some other language.
+    """
+    return " ".join(form.split()).casefold()
 
 
 class Store:
@@ -296,6 +355,90 @@ class Store:
         ).fetchall()
         revisions = [self.get_text_revision(row["id"]) for row in rows]
         return [revision for revision in revisions if revision is not None]
+
+    # -- character registry -------------------------------------------------------------
+
+    def upsert_character(self, character: RegisteredCharacter) -> str:
+        """Write a character and claim its surface forms.
+
+        Raises AmbiguousAliasError if any form is already claimed by a different
+        character. Resolution is expected to have settled that; reaching here with a
+        conflict means a bug, not a judgement call.
+        """
+        forms = [
+            (form_key(form), form, index == 0) for index, form in enumerate(character.surface_forms)
+        ]
+
+        with self.transaction() as connection:
+            for key, form, _ in forms:
+                row = connection.execute(
+                    "SELECT character_id FROM character_aliases "
+                    "WHERE collection_id = ? AND form_key = ?",
+                    (character.collection_id, key),
+                ).fetchone()
+                if row is not None and row["character_id"] != character.id:
+                    raise AmbiguousAliasError(
+                        f"the surface form {form!r} is already claimed by "
+                        f"{row['character_id']!r}; it cannot also denote {character.id!r}"
+                    )
+
+            connection.execute(
+                "INSERT INTO characters (id, collection_id, name, kind, provenance, "
+                "review_status, notes) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET name = excluded.name, kind = excluded.kind, "
+                "provenance = excluded.provenance, review_status = excluded.review_status, "
+                "notes = COALESCE(excluded.notes, characters.notes)",
+                (
+                    character.id,
+                    character.collection_id,
+                    character.name,
+                    character.kind,
+                    character.provenance,
+                    character.review_status,
+                    character.notes,
+                ),
+            )
+            connection.execute(
+                "DELETE FROM character_aliases WHERE character_id = ?", (character.id,)
+            )
+            connection.executemany(
+                "INSERT INTO character_aliases (collection_id, form_key, form, character_id, "
+                "is_canonical) VALUES (?, ?, ?, ?, ?)",
+                [
+                    (character.collection_id, key, form, character.id, int(canonical))
+                    for key, form, canonical in forms
+                ],
+            )
+        return character.id
+
+    def get_character(self, identifier: str) -> RegisteredCharacter | None:
+        row = self.connection.execute(
+            "SELECT * FROM characters WHERE id = ?", (identifier,)
+        ).fetchone()
+        if row is None:
+            return None
+        aliases = self.connection.execute(
+            "SELECT form FROM character_aliases WHERE character_id = ? AND is_canonical = 0 "
+            "ORDER BY form",
+            (identifier,),
+        ).fetchall()
+        return RegisteredCharacter(**dict(row), aliases=tuple(a["form"] for a in aliases))
+
+    def find_character_by_form(self, collection_id: str, form: str) -> RegisteredCharacter | None:
+        """Resolve a surface form to the character that claims it, if any."""
+        row = self.connection.execute(
+            "SELECT character_id FROM character_aliases WHERE collection_id = ? AND form_key = ?",
+            (collection_id, form_key(form)),
+        ).fetchone()
+        return None if row is None else self.get_character(row["character_id"])
+
+    def list_characters(self, collection_id: str) -> list[RegisteredCharacter]:
+        rows = self.connection.execute(
+            "SELECT id FROM characters WHERE collection_id = ? ORDER BY name, id",
+            (collection_id,),
+        ).fetchall()
+        found = [self.get_character(row["id"]) for row in rows]
+        return [character for character in found if character is not None]
 
     def revision_text(self, revision_id: str) -> str:
         """Return the full text of a revision, documents concatenated in order."""

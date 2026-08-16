@@ -20,7 +20,7 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.6"]
+dev = ["pytest>=8.0", "ruff>=0.6", "pyyaml>=6.0"]
 
 [project.urls]
 Homepage = "https://github.com/kestora-labs/dramatis"

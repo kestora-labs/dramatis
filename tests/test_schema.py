@@ -9,6 +9,7 @@ schema must name no unit belonging to any particular medium.
 import json
 import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 from jsonschema import Draft202012Validator
@@ -35,10 +36,27 @@ def test_schema_is_a_valid_2020_12_schema(schema: dict) -> None:
     Draft202012Validator.check_schema(schema)
 
 
+CANONICAL_HOST = "kestoralabs.co.uk"
+
+
 def test_schema_declares_a_stable_id_and_dialect(schema: dict) -> None:
     assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
     assert schema["$id"].startswith("https://")
     assert "/0.1/" in schema["$id"], "the $id must pin the schema's own version"
+
+
+def test_schema_id_uses_a_domain_the_project_owns(schema: dict) -> None:
+    """The $id is a public identifier that outlives the file.
+
+    Other tools identify the format by this string, and documents record it. Pointing it at
+    a domain the project does not control means the identifier could one day be claimed by
+    someone else, and cannot be resolved to a published copy by anyone.
+    """
+    host = urlparse(schema["$id"]).netloc
+    assert host == CANONICAL_HOST, (
+        f"$id host is {host!r}; the schema must be identified under {CANONICAL_HOST!r}, "
+        "which the project actually owns"
+    )
 
 
 @pytest.mark.parametrize("term", MEDIUM_SPECIFIC_TERMS)

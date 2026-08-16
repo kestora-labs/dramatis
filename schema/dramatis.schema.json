@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://kestora.dev/dramatis/schema/0.1/dramatis.schema.json",
+  "$id": "https://kestoralabs.co.uk/dramatis/schema/0.1/dramatis.schema.json",
   "title": "Dramatis snapshot document",
   "description": "A character relationship graph derived from a narrative work, bound to the exact text and the exact analysis that produced it. Deliberately medium-neutral: nothing in this schema names a unit of any particular form. Structural position is an ordered path of typed segments whose types are supplied per work.",
   "type": "object",

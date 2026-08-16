@@ -107,3 +107,14 @@ interesting relation into an `"other"` bucket.
 The schema follows semantic versioning, independently of the application. Every document
 records the `schema_version` it was written against, and Dramatis reads every version it has
 ever published.
+
+Each version is identified by a `$id` under the project's own domain, with the version in
+the path:
+
+```
+https://kestoralabs.co.uk/dramatis/schema/0.1/dramatis.schema.json
+```
+
+That string is a stable identifier, not necessarily a live document. Other tools use it to
+say which version of the format they emit or consume, so it must not change once published —
+a new version gets a new path, and the old one keeps meaning what it always meant.

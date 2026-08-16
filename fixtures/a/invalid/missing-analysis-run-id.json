@@ -1,0 +1,20 @@
+{
+  "schema_version": "0.1.0",
+  "collection": { "id": "col:austen", "name": "Jane Austen" },
+  "works": [{ "id": "work:pp", "title": "Pride and Prejudice" }],
+  "text_revisions": [
+    {
+      "id": "rev:1",
+      "work_id": "work:pp",
+      "sha256": "e3bb81d19b34dd917187e2836340b02dceb3dc751e18308092a0074bbb2118ab"
+    }
+  ],
+  "analysis_runs": [{ "id": "run:1", "model": "none/hand-authored", "prompt_version": "none" }],
+  "snapshot": {
+    "id": "snap:1",
+    "work_id": "work:pp",
+    "text_revision_id": "rev:1"
+  },
+  "characters": [],
+  "relations": []
+}

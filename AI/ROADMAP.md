@@ -160,7 +160,7 @@ Chosen in Phase 0, revisable only with a `DECISIONS.md` entry.
       provenance, review status.
 - [x] **0.5** — A validator: `dramatis validate <file.json>` passes or fails a document
       against the schema, with useful error messages.
-- [ ] **0.6** — Fixture **A** committed, comprising: the source text with its provenance
+- [x] **0.6** — Fixture **A** committed, comprising: the source text with its provenance
       recorded; a small hand-authored snapshot document whose every evidence quotation is
       verbatim from that text; and an **expectation floor** — principal characters that
       must be present as single nodes with aliases merged, relations that must exist, and

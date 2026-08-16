@@ -1,0 +1,468 @@
+{
+  "schema_version": "0.1.0",
+  "collection": {
+    "id": "col:austen",
+    "name": "Jane Austen",
+    "description": "Reference corpus A — a single-file work with no revisions and no reference material. Observed relations only."
+  },
+  "works": [
+    {
+      "id": "work:pride-and-prejudice",
+      "title": "Pride and Prejudice",
+      "creator": "Jane Austen",
+      "language": "en",
+      "segment_types": ["chapter", "paragraph"],
+      "edition": "R. Brimley Johnson text, George Allen edition of 1894"
+    }
+  ],
+  "documents": [
+    {
+      "id": "doc:pride-and-prejudice",
+      "work_id": "work:pride-and-prejudice",
+      "title": "Pride and Prejudice",
+      "path": "source/pride-and-prejudice.txt",
+      "role": "narrative",
+      "media_type": "text/plain",
+      "sha256": "e3bb81d19b34dd917187e2836340b02dceb3dc751e18308092a0074bbb2118ab"
+    }
+  ],
+  "text_revisions": [
+    {
+      "id": "rev:1",
+      "work_id": "work:pride-and-prejudice",
+      "label": "As published",
+      "sha256": "e3bb81d19b34dd917187e2836340b02dceb3dc751e18308092a0074bbb2118ab",
+      "document_ids": ["doc:pride-and-prejudice"]
+    }
+  ],
+  "analysis_runs": [
+    {
+      "id": "run:hand",
+      "model": "none/hand-authored",
+      "provider": "none",
+      "prompt_version": "none",
+      "pipeline_version": "fixture",
+      "application_version": "0.1.0.dev0",
+      "parameters": {}
+    }
+  ],
+  "snapshot": {
+    "id": "snap:fixture-a",
+    "work_id": "work:pride-and-prejudice",
+    "text_revision_id": "rev:1",
+    "analysis_run_id": "run:hand",
+    "label": "Hand-authored fixture"
+  },
+  "characters": [
+    {
+      "id": "char:elizabeth-bennet",
+      "name": "Elizabeth Bennet",
+      "aliases": ["Elizabeth", "Lizzy", "Eliza", "Miss Elizabeth Bennet", "Miss Eliza Bennet"],
+      "kind": "person",
+      "salience": 1.0,
+      "confidence": 1.0,
+      "provenance": "human",
+      "review_status": "accepted",
+      "notes": "The novel's centre of consciousness. Second of the five Bennet daughters."
+    },
+    {
+      "id": "char:fitzwilliam-darcy",
+      "name": "Fitzwilliam Darcy",
+      "aliases": ["Darcy", "Mr. Darcy"],
+      "kind": "person",
+      "salience": 0.95,
+      "confidence": 1.0,
+      "provenance": "human",
+      "review_status": "accepted"
+    },
+    {
+      "id": "char:jane-bennet",
+      "name": "Jane Bennet",
+      "aliases": ["Jane", "Miss Bennet", "the eldest Miss Bennet"],
+      "kind": "person",
+      "salience": 0.8,
+      "confidence": 1.0,
+      "provenance": "human",
+      "review_status": "accepted",
+      "notes": "Eldest Bennet daughter. 'Miss Bennet' unqualified denotes Jane, not Elizabeth — the alias trap this fixture exists to catch."
+    },
+    {
+      "id": "char:charles-bingley",
+      "name": "Charles Bingley",
+      "aliases": ["Bingley", "Mr. Bingley"],
+      "kind": "person",
+      "salience": 0.7,
+      "confidence": 1.0,
+      "provenance": "human",
+      "review_status": "accepted"
+    },
+    {
+      "id": "char:mr-bennet",
+      "name": "Mr. Bennet",
+      "aliases": ["Bennet"],
+      "kind": "person",
+      "salience": 0.6,
+      "confidence": 1.0,
+      "provenance": "human",
+      "review_status": "accepted"
+    },
+    {
+      "id": "char:mrs-bennet",
+      "name": "Mrs. Bennet",
+      "aliases": ["his lady"],
+      "kind": "person",
+      "salience": 0.6,
+      "confidence": 1.0,
+      "provenance": "human",
+      "review_status": "accepted"
+    },
+    {
+      "id": "char:william-collins",
+      "name": "William Collins",
+      "aliases": ["Mr. Collins", "Collins"],
+      "kind": "person",
+      "salience": 0.5,
+      "confidence": 1.0,
+      "provenance": "human",
+      "review_status": "accepted"
+    },
+    {
+      "id": "char:charlotte-lucas",
+      "name": "Charlotte Lucas",
+      "aliases": ["Charlotte", "Miss Lucas"],
+      "kind": "person",
+      "salience": 0.45,
+      "confidence": 1.0,
+      "provenance": "human",
+      "review_status": "accepted"
+    },
+    {
+      "id": "char:lydia-bennet",
+      "name": "Lydia Bennet",
+      "aliases": ["Lydia"],
+      "kind": "person",
+      "salience": 0.45,
+      "confidence": 1.0,
+      "provenance": "human",
+      "review_status": "accepted"
+    },
+    {
+      "id": "char:george-wickham",
+      "name": "George Wickham",
+      "aliases": ["Wickham", "Mr. Wickham"],
+      "kind": "person",
+      "salience": 0.45,
+      "confidence": 1.0,
+      "provenance": "human",
+      "review_status": "accepted"
+    },
+    {
+      "id": "char:lady-catherine",
+      "name": "Lady Catherine de Bourgh",
+      "aliases": ["Lady Catherine"],
+      "kind": "person",
+      "salience": 0.4,
+      "confidence": 1.0,
+      "provenance": "human",
+      "review_status": "accepted"
+    }
+  ],
+  "relations": [
+    {
+      "id": "rel:elizabeth-darcy",
+      "source": "char:elizabeth-bennet",
+      "target": "char:fitzwilliam-darcy",
+      "directed": false,
+      "weight": 100,
+      "weight_basis": "hand_assigned_prominence",
+      "types": ["romantic", "antagonism"],
+      "valence": 0.4,
+      "confidence": 1.0,
+      "provenance": "human",
+      "review_status": "accepted",
+      "notes": "Opens in mutual slight and closes in marriage. The novel's principal axis.",
+      "evidence": [
+        {
+          "locator": {
+            "document_id": "doc:pride-and-prejudice",
+            "path": [{ "type": "chapter", "index": 3 }]
+          },
+          "selector": {
+            "exact": "handsome enough to tempt _me_; and I am in no humour at present to give consequence to young ladies who are slighted by other men.",
+            "prefix": "and coldly said, “She is tolerable: but not ",
+            "suffix": " You had better return to your partner"
+          },
+          "note": "Darcy's refusal to dance. Elizabeth overhears it; the antagonism starts here.",
+          "kind": "dialogue"
+        },
+        {
+          "locator": {
+            "document_id": "doc:pride-and-prejudice",
+            "path": [{ "type": "chapter", "index": 34 }]
+          },
+          "selector": {
+            "exact": "In vain have I struggled.",
+            "prefix": "in an agitated manner, and thus began:-- “",
+            "suffix": " It will not do. My feelings will not be"
+          },
+          "note": "The first proposal, at Hunsford. Refused.",
+          "kind": "dialogue"
+        }
+      ]
+    },
+    {
+      "id": "rel:mr-bennet-mrs-bennet",
+      "source": "char:mr-bennet",
+      "target": "char:mrs-bennet",
+      "directed": false,
+      "weight": 60,
+      "weight_basis": "hand_assigned_prominence",
+      "types": ["kinship", "marriage"],
+      "valence": -0.1,
+      "confidence": 1.0,
+      "provenance": "human",
+      "review_status": "accepted",
+      "notes": "The novel's opening exchange, and its standing ironic counterexample to a good marriage.",
+      "evidence": [
+        {
+          "locator": {
+            "document_id": "doc:pride-and-prejudice",
+            "path": [{ "type": "chapter", "index": 1 }]
+          },
+          "selector": {
+            "exact": "My dear Mr. Bennet,” said his lady to him one day, “have you heard that Netherfield Park is let at last?",
+            "prefix": "of some one or other of their daughters. “",
+            "suffix": "” Mr. Bennet replied that he had not."
+          },
+          "note": "First words spoken in the novel.",
+          "kind": "dialogue"
+        }
+      ]
+    },
+    {
+      "id": "rel:jane-bingley",
+      "source": "char:jane-bennet",
+      "target": "char:charles-bingley",
+      "directed": false,
+      "weight": 70,
+      "weight_basis": "hand_assigned_prominence",
+      "types": ["romantic"],
+      "valence": 0.9,
+      "confidence": 1.0,
+      "provenance": "human",
+      "review_status": "accepted",
+      "evidence": [
+        {
+          "locator": {
+            "document_id": "doc:pride-and-prejudice",
+            "path": [{ "type": "chapter", "index": 3 }]
+          },
+          "selector": {
+            "exact": "the eldest Miss Bennet. “Oh, she is the most beautiful creature I ever beheld!",
+            "prefix": "in the room,” said Mr. Darcy, looking at ",
+            "suffix": " But there is one of her sisters"
+          },
+          "note": "Bingley's first admiration of Jane, spoken to Darcy.",
+          "kind": "dialogue"
+        },
+        {
+          "locator": {
+            "document_id": "doc:pride-and-prejudice",
+            "path": [{ "type": "chapter", "index": 59 }]
+          },
+          "selector": {
+            "exact": "the happiest couple in the world.",
+            "prefix": "between us already that we are to be ",
+            "suffix": " But are you pleased, Jane?"
+          },
+          "note": "The engagement settled.",
+          "kind": "dialogue"
+        }
+      ]
+    },
+    {
+      "id": "rel:darcy-bingley",
+      "source": "char:fitzwilliam-darcy",
+      "target": "char:charles-bingley",
+      "directed": false,
+      "weight": 55,
+      "weight_basis": "hand_assigned_prominence",
+      "types": ["friendship"],
+      "valence": 0.7,
+      "confidence": 1.0,
+      "provenance": "human",
+      "review_status": "accepted",
+      "evidence": [
+        {
+          "locator": {
+            "document_id": "doc:pride-and-prejudice",
+            "path": [{ "type": "chapter", "index": 3 }]
+          },
+          "selector": {
+            "exact": "the eldest Miss Bennet. “Oh, she is the most beautiful creature I ever beheld!",
+            "prefix": "in the room,” said Mr. Darcy, looking at ",
+            "suffix": " But there is one of her sisters"
+          },
+          "note": "The two speak as intimates at the Meryton assembly.",
+          "kind": "dialogue"
+        }
+      ]
+    },
+    {
+      "id": "rel:elizabeth-collins",
+      "source": "char:elizabeth-bennet",
+      "target": "char:william-collins",
+      "directed": false,
+      "weight": 40,
+      "weight_basis": "hand_assigned_prominence",
+      "types": ["courtship", "kinship"],
+      "valence": -0.4,
+      "confidence": 1.0,
+      "provenance": "human",
+      "review_status": "accepted",
+      "notes": "A proposal made and refused. Collins is also the cousin who will inherit Longbourn.",
+      "evidence": [
+        {
+          "locator": {
+            "document_id": "doc:pride-and-prejudice",
+            "path": [{ "type": "chapter", "index": 19 }]
+          },
+          "selector": {
+            "exact": "My reasons for marrying are",
+            "prefix": "to stop him farther, and he continued,-- “",
+            "suffix": ", first, that I think it a right thing"
+          },
+          "note": "Collins begins his proposal.",
+          "kind": "dialogue"
+        },
+        {
+          "locator": {
+            "document_id": "doc:pride-and-prejudice",
+            "path": [{ "type": "chapter", "index": 19 }]
+          },
+          "selector": {
+            "exact": "the last woman in the world who would make _you_ so.",
+            "prefix": "_me_ happy, and I am convinced that I am ",
+            "suffix": " Nay, were your friend Lady Catherine"
+          },
+          "note": "Elizabeth's refusal.",
+          "kind": "dialogue"
+        }
+      ]
+    },
+    {
+      "id": "rel:elizabeth-jane",
+      "source": "char:elizabeth-bennet",
+      "target": "char:jane-bennet",
+      "directed": false,
+      "weight": 75,
+      "weight_basis": "hand_assigned_prominence",
+      "types": ["kinship", "confidence"],
+      "valence": 0.95,
+      "confidence": 1.0,
+      "provenance": "human",
+      "review_status": "accepted",
+      "notes": "Sisters and each other's confidante. The novel's most sustained affectionate bond.",
+      "evidence": [
+        {
+          "locator": {
+            "document_id": "doc:pride-and-prejudice",
+            "path": [{ "type": "chapter", "index": 4 }]
+          },
+          "selector": {
+            "exact": "asking me to dance a second time.",
+            "prefix": "“I was very much flattered by his ",
+            "suffix": " I did not expect such a compliment.”"
+          },
+          "note": "Jane confiding in Elizabeth about Bingley after the assembly.",
+          "kind": "dialogue"
+        }
+      ]
+    },
+    {
+      "id": "rel:elizabeth-charlotte",
+      "source": "char:elizabeth-bennet",
+      "target": "char:charlotte-lucas",
+      "directed": false,
+      "weight": 45,
+      "weight_basis": "hand_assigned_prominence",
+      "types": ["friendship"],
+      "valence": 0.6,
+      "confidence": 1.0,
+      "provenance": "human",
+      "review_status": "accepted",
+      "evidence": [
+        {
+          "locator": {
+            "document_id": "doc:pride-and-prejudice",
+            "path": [{ "type": "chapter", "index": 6 }]
+          },
+          "selector": {
+            "exact": "said Charlotte, “I wish Jane success with all my heart; and if she were married to him to-morrow, I should think she had as good a chance of happiness as if she were to be studying his character for a twelvemonth.",
+            "prefix": "that much has been unfolded.” “Well,” ",
+            "suffix": " Happiness in marriage is entirely a matter"
+          },
+          "note": "Charlotte's view of marriage, argued to Elizabeth. Their standing disagreement.",
+          "kind": "dialogue"
+        }
+      ]
+    },
+    {
+      "id": "rel:lydia-wickham",
+      "source": "char:lydia-bennet",
+      "target": "char:george-wickham",
+      "directed": false,
+      "weight": 50,
+      "weight_basis": "hand_assigned_prominence",
+      "types": ["romantic", "elopement"],
+      "valence": 0.3,
+      "confidence": 1.0,
+      "provenance": "human",
+      "review_status": "accepted",
+      "evidence": [
+        {
+          "locator": {
+            "document_id": "doc:pride-and-prejudice",
+            "path": [{ "type": "chapter", "index": 47 }]
+          },
+          "selector": {
+            "exact": "Gretna Green, and if you cannot guess with who, I shall think you a simpleton, for there is but one man in the world I love, and he is an angel.",
+            "prefix": "as soon as I am missed. I am going to ",
+            "suffix": " I should never be happy without him"
+          },
+          "note": "Lydia's letter announcing the elopement. She never names Wickham in it.",
+          "kind": "letter"
+        }
+      ]
+    },
+    {
+      "id": "rel:darcy-lady-catherine",
+      "source": "char:fitzwilliam-darcy",
+      "target": "char:lady-catherine",
+      "directed": false,
+      "weight": 35,
+      "weight_basis": "hand_assigned_prominence",
+      "types": ["kinship"],
+      "valence": 0.1,
+      "confidence": 1.0,
+      "provenance": "human",
+      "review_status": "accepted",
+      "notes": "Aunt and nephew.",
+      "evidence": [
+        {
+          "locator": {
+            "document_id": "doc:pride-and-prejudice",
+            "path": [{ "type": "chapter", "index": 56 }]
+          },
+          "selector": {
+            "exact": "my nephew--my own nephew, Mr. Darcy.",
+            "prefix": "likelihood, be soon afterwards united to ",
+            "suffix": " Though I _know_ it must be a scandalous"
+          },
+          "note": "Lady Catherine to Elizabeth at Longbourn, asserting the connection.",
+          "kind": "dialogue"
+        }
+      ]
+    }
+  ]
+}

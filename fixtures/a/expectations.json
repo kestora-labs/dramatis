@@ -1,0 +1,83 @@
+{
+  "fixture": "a",
+  "work": "Pride and Prejudice",
+  "source_sha256": "e3bb81d19b34dd917187e2836340b02dceb3dc751e18308092a0074bbb2118ab",
+  "description": "A floor, not a ground truth. Every statement here was checked by hand against the source text. Nothing claims the graph contains only these characters or only these relations — the work has roughly sixty named characters and several hundred defensible relationships, and asserting all of them would be asserting a guess. A pipeline satisfying this floor has not been proven correct; it has been proven not to be obviously wrong.",
+
+  "characters_that_must_be_present": [
+    "Elizabeth Bennet",
+    "Fitzwilliam Darcy",
+    "Jane Bennet",
+    "Charles Bingley",
+    "Mr. Bennet",
+    "Mrs. Bennet",
+    "William Collins",
+    "Charlotte Lucas",
+    "Lydia Bennet",
+    "George Wickham",
+    "Lady Catherine de Bourgh"
+  ],
+
+  "aliases_that_must_resolve": [
+    {
+      "aliases": ["Elizabeth", "Lizzy", "Eliza", "Miss Elizabeth Bennet"],
+      "to": "Elizabeth Bennet",
+      "why": "Four surface forms for the protagonist. A pipeline that splits them produces a graph with four half-connected centres."
+    },
+    {
+      "aliases": ["Darcy", "Mr. Darcy"],
+      "to": "Fitzwilliam Darcy"
+    },
+    {
+      "aliases": ["Jane", "Miss Bennet", "the eldest Miss Bennet"],
+      "to": "Jane Bennet",
+      "why": "The hard case. Unqualified 'Miss Bennet' denotes the eldest unmarried daughter — Jane, not Elizabeth. A pipeline that folds 'Miss Bennet' into Elizabeth will look plausible and be wrong throughout."
+    },
+    {
+      "aliases": ["Bingley", "Mr. Bingley"],
+      "to": "Charles Bingley"
+    },
+    {
+      "aliases": ["Wickham", "Mr. Wickham"],
+      "to": "George Wickham"
+    },
+    {
+      "aliases": ["Charlotte", "Miss Lucas"],
+      "to": "Charlotte Lucas"
+    }
+  ],
+
+  "relations_that_must_exist": [
+    { "between": ["Elizabeth Bennet", "Fitzwilliam Darcy"], "why": "The principal axis of the work." },
+    { "between": ["Jane Bennet", "Charles Bingley"] },
+    { "between": ["Elizabeth Bennet", "Jane Bennet"] },
+    { "between": ["Mr. Bennet", "Mrs. Bennet"] },
+    { "between": ["Fitzwilliam Darcy", "Charles Bingley"] },
+    { "between": ["Elizabeth Bennet", "William Collins"] },
+    { "between": ["Elizabeth Bennet", "Charlotte Lucas"] },
+    { "between": ["Lydia Bennet", "George Wickham"] },
+    { "between": ["Fitzwilliam Darcy", "Lady Catherine de Bourgh"] }
+  ],
+
+  "heaviest_relation_must_be_among": [
+    ["Elizabeth Bennet", "Fitzwilliam Darcy"],
+    ["Elizabeth Bennet", "Jane Bennet"],
+    ["Jane Bennet", "Charles Bingley"]
+  ],
+
+  "relations_that_must_not_exist": [
+    {
+      "between": ["William Collins", "George Wickham"],
+      "why": "They share no scene in the work. An edge here indicates co-occurrence within a window being mistaken for interaction."
+    },
+    {
+      "between": ["Lady Catherine de Bourgh", "George Wickham"],
+      "why": "They never meet and are never associated. Same failure mode, larger distance."
+    }
+  ],
+
+  "notes": [
+    "Chapter numbering follows the source text's own headings. Two chapters (13 and 14) carry their heading inside an illustration block rather than as a running head; any structural segmentation must handle both forms or it will misattribute their content to chapter 12.",
+    "Quotation matching is defined against whitespace-normalised text on both sides, because the source is hard-wrapped and quoted sentences span line breaks. See src/dramatis/text.py."
+  ]
+}

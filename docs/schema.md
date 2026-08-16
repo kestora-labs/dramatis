@@ -1,6 +1,7 @@
 # Schema reference
 
-**Version 0.1.0** · [`schema/dramatis.schema.json`](../schema/dramatis.schema.json) ·
+**Version 0.1.0** ·
+[`src/dramatis/schema/dramatis.schema.json`](../src/dramatis/schema/dramatis.schema.json) ·
 JSON Schema draft 2020-12 · CC BY 4.0
 
 A Dramatis snapshot document is a character relationship graph bound to the exact text and
@@ -41,7 +42,7 @@ The schema names no unit belonging to any particular form. There is no `chapter`
 
 A novel might declare `["part", "section", "paragraph"]`; a stage work something else
 entirely. The types are data supplied per work, never enum members in the schema. A test in
-`tests/test_schema.py` enforces this by scanning every file in `schema/`.
+`tests/test_schema.py` enforces this by scanning every schema document the package ships.
 
 ```json
 {

@@ -194,7 +194,7 @@ text. No medium-specific vocabulary appears anywhere in the schema (grep for `ch
       caller and defaulting to a flat `section` when unknown.
 - [x] **1.3** — Provider-agnostic model adapter, BYO key, with a recorded, replayable
       request log so tests never depend on a live API.
-- [ ] **1.4** — Map-reduce extraction over segments: characters, aliases, pairwise
+- [x] **1.4** — Map-reduce extraction over segments: characters, aliases, pairwise
       interactions, each with a verbatim supporting quotation.
 - [ ] **1.5** — Alias resolution into a per-collection character registry with stable IDs.
 - [ ] **1.6** — Aggregate to relations with a `weight` and a declared `weight_basis`.

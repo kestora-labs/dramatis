@@ -26,18 +26,23 @@ from typing import Any
 
 from dramatis.providers import ModelRequest, ModelResponse, Provider, ProviderError
 from dramatis.segmentation import Segmentation
+from dramatis.store import DEFAULT_COLLECTIVES_ARE_ACTORS
 from dramatis.text import normalise_whitespace
 
-PROMPT_VERSION = "extract-v1"
+PROMPT_VERSION = "extract-v2"
 """A label a human maintains, bumped when the prompt or schema changes meaningfully.
 
 It answers "what changed, in words a person can use". It cannot answer "was this the same
 prompt", because a file anyone may edit can differ while the label stays put — that is what
 ``prompt_sha256`` is for (D18). Both are recorded because they answer different questions.
+
+v2 excludes indefinite referents and, by default, collectives — see D19 and the first live
+run, which made "the Netherfield party" a character beside the people in it.
 """
 
 PROMPT_PACKAGE = "dramatis.prompts"
 PROMPT_FILE = "extract.md"
+COLLECTIVES_FILE = "extract-collectives.md"
 
 DEFAULT_WINDOW_CHARACTERS = 12_000
 """Target window size. Windows never split a segment, so a single long segment may exceed
@@ -45,31 +50,48 @@ this; the budget is a target, not a ceiling."""
 
 
 @cache
-def system_prompt() -> str:
-    """The extraction prompt, read from the package.
+def _prompt_file(name: str) -> str:
+    """Read one prompt file from the package.
 
-    The file's bytes are the prompt's bytes: nothing is stripped, templated, or reflowed, so
-    "the prompt that was sent" and "the file on disk" are the same string and the hash of one
-    is the hash of the other. It ships inside the package rather than beside the repository
-    because the wheel contains only ``src/dramatis`` — a prompt anywhere else would be present
-    in a checkout and missing from an install.
+    Nothing is stripped, templated, or reflowed on the way out: a file's bytes are its text.
+    Prompts ship inside the package rather than beside the repository because the wheel
+    contains only ``src/dramatis`` — anywhere else they would be present in a checkout and
+    missing from an install.
     """
     try:
-        return files(PROMPT_PACKAGE).joinpath(PROMPT_FILE).read_text(encoding="utf-8")
+        return files(PROMPT_PACKAGE).joinpath(name).read_text(encoding="utf-8")
     except (FileNotFoundError, ModuleNotFoundError) as error:
         raise ExtractionError(
-            f"the extraction prompt {PROMPT_PACKAGE}.{PROMPT_FILE} is missing from the "
+            f"the extraction prompt {PROMPT_PACKAGE}.{name} is missing from the "
             "installation. Reinstall dramatis; analysis cannot proceed without it."
         ) from error
 
 
-def prompt_sha256() -> str:
+def system_prompt(*, collectives_are_actors: bool = DEFAULT_COLLECTIVES_ARE_ACTORS) -> str:
+    """The extraction prompt for a project studied under these terms.
+
+    Composed rather than read whole, because one setting varies (D19). The base file is a
+    complete prompt on its own and describes the default; enabling collectives appends a
+    section that says which instruction it replaces. Two files rather than two copies: the
+    alternative duplicates the ninety per cent they share and lets the copies drift.
+
+    The hash recorded by a run covers what this returns, not either file, so the composition
+    is inside the guarantee rather than beside it.
+    """
+    prompt = _prompt_file(PROMPT_FILE)
+    if collectives_are_actors:
+        prompt = f"{prompt.rstrip()}\n\n{_prompt_file(COLLECTIVES_FILE)}"
+    return prompt
+
+
+def prompt_sha256(*, collectives_are_actors: bool = DEFAULT_COLLECTIVES_ARE_ACTORS) -> str:
     """Hash of the prompt text actually sent.
 
     Recorded in every run so that two analyses claiming one ``PROMPT_VERSION`` but produced
     under different instructions are known to be incomparable rather than assumed alike.
     """
-    return hashlib.sha256(system_prompt().encode("utf-8")).hexdigest()
+    text = system_prompt(collectives_are_actors=collectives_are_actors)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 RESPONSE_SCHEMA: dict[str, Any] = {
@@ -323,6 +345,7 @@ def extract(
     target_characters: int = DEFAULT_WINDOW_CHARACTERS,
     max_tokens: int = 8192,
     effort: str | None = "medium",
+    collectives_are_actors: bool = DEFAULT_COLLECTIVES_ARE_ACTORS,
 ) -> Extraction:
     """Read every window and return what each one reported.
 
@@ -330,6 +353,10 @@ def extract(
     rejected here.
     """
     windows = build_windows(segmentation, target_characters=target_characters)
+
+    # Composed once: every window is read under the same instructions, and the hash recorded
+    # by the run is the hash of this string.
+    prompt = system_prompt(collectives_are_actors=collectives_are_actors)
 
     findings: list[WindowFinding] = []
     warnings: list[str] = []
@@ -343,7 +370,7 @@ def extract(
 
         request = ModelRequest(
             prompt=text,
-            system=system_prompt(),
+            system=prompt,
             max_tokens=max_tokens,
             effort=effort,
             output_schema=RESPONSE_SCHEMA,
@@ -389,7 +416,7 @@ def extract(
     return Extraction(
         findings=tuple(findings),
         prompt_version=PROMPT_VERSION,
-        prompt_sha256=prompt_sha256(),
+        prompt_sha256=hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
         model=model,
         provider=provider_name or getattr(provider, "name", "unknown"),
         input_tokens=input_tokens,

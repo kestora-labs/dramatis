@@ -14,7 +14,7 @@ import pytest
 
 from dramatis import ids
 from dramatis.ingest import IngestError, ingest_file, read_text
-from dramatis.store import Store
+from dramatis.store import COLLECTIVES_ARE_ACTORS, Store
 from dramatis.text import content_hash
 
 SAMPLE = "It is a truth universally acknowledged,\nthat a single man in possession\n"
@@ -405,6 +405,42 @@ class TestProjectSettings:
         """Otherwise it writes setting:setting:x and reads back as absent."""
         with pytest.raises(ValueError, match="not the stored key"):
             store.set_setting("setting:collectives_are_actors", True)
+
+
+class TestRecordingTheTermsOfTheStudy:
+    """D19. The setting belongs to the project, so ingest is where it is first written —
+    D16 leaves no separate initialisation step to hang it on."""
+
+    def test_a_project_records_the_answer_it_was_given(self, store: Store, tmp_path: Path) -> None:
+        ingest_file(store, write(tmp_path, "work.txt"), collectives_are_actors=True)
+
+        assert store.get_setting(COLLECTIVES_ARE_ACTORS) is True
+
+    def test_not_answering_leaves_the_project_silent(self, store: Store, tmp_path: Path) -> None:
+        """Absent is not False. A project that never chose is distinguishable from one that
+        chose the default, which is what lets `status` and the CLI know whether to ask."""
+        ingest_file(store, write(tmp_path, "work.txt"))
+
+        assert store.get_setting(COLLECTIVES_ARE_ACTORS) is None
+        assert store.settings() == {}
+
+    def test_the_answer_can_be_changed_afterwards(self, store: Store, tmp_path: Path) -> None:
+        """Changeable, not fixed: somebody who learns their corpus has factions halfway
+        through should be able to act on it. What must not happen is it changing quietly —
+        which is the CLI's job to announce and comparability's to enforce."""
+        ingest_file(store, write(tmp_path, "work.txt"), collectives_are_actors=False)
+        ingest_file(store, write(tmp_path, "work.txt"), collectives_are_actors=True)
+
+        assert store.get_setting(COLLECTIVES_ARE_ACTORS) is True
+
+    def test_a_later_ingest_without_an_answer_leaves_the_setting_alone(
+        self, store: Store, tmp_path: Path
+    ) -> None:
+        """Adding a second work must not silently reset the terms of the study."""
+        ingest_file(store, write(tmp_path, "work.txt"), collectives_are_actors=True)
+        ingest_file(store, write(tmp_path, "second.txt", "Another text.\n"))
+
+        assert store.get_setting(COLLECTIVES_ARE_ACTORS) is True
 
 
 class TestIdentifiers:

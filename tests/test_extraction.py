@@ -33,6 +33,15 @@ FIXTURE_A = Path(__file__).resolve().parents[1] / "fixtures" / "a" / "source"
 PASSAGE = 'Ada met Bram at the gate.\n\n"You came," she said.\n\nBram did not answer her.\n'
 
 
+def _prose(text: str) -> str:
+    """Collapse runs of whitespace.
+
+    Prompt paragraphs are single long lines, but assertions about their wording should not
+    break the day somebody re-wraps one.
+    """
+    return re.sub(r"\s+", " ", text)
+
+
 def a_reply(**overrides: Any) -> dict[str, Any]:
     base: dict[str, Any] = {"characters": [], "interactions": []}
     base.update(overrides)
@@ -161,14 +170,7 @@ class TestThePromptIsAFile:
     """D18. The prompt ships as a file so it can be read and revised; the consequence is
     that a run must record which prompt it actually used, not which one it claims."""
 
-    # Pinned at the move from a string literal in extraction.py. It changes only when the
-    # prompt text does — which is allowed, and is exactly what must not happen silently.
-    PROMPT_AT_THE_MOVE = "1e4357acd81c2d088d31ce5687b6a5b75cb249962aaf8c15857c07584e293498"
-
-    def test_moving_the_prompt_out_of_the_module_changed_no_byte_of_it(self) -> None:
-        assert prompt_sha256() == self.PROMPT_AT_THE_MOVE
-
-    def test_the_file_is_the_prompt_with_nothing_stripped_or_added(self) -> None:
+    def test_the_default_prompt_is_the_base_file_with_nothing_stripped_or_added(self) -> None:
         """Anything trimmed, templated, or reflowed on the way out would make "the prompt
         that was sent" and "the file on disk" two different strings with one hash."""
         from importlib.resources import files
@@ -176,6 +178,25 @@ class TestThePromptIsAFile:
         on_disk = files("dramatis.prompts").joinpath("extract.md").read_text(encoding="utf-8")
 
         assert system_prompt() == on_disk
+
+    def test_enabling_collectives_appends_the_fragment_and_nothing_else(self) -> None:
+        """Two files rather than two prompts, so the difference between the questions is
+        the only thing that differs."""
+        from importlib.resources import files
+
+        fragment = (
+            files("dramatis.prompts").joinpath("extract-collectives.md").read_text(encoding="utf-8")
+        )
+        composed = system_prompt(collectives_are_actors=True)
+
+        assert composed.startswith(system_prompt().rstrip())
+        assert composed.endswith(fragment)
+
+    def test_the_two_settings_are_different_prompts(self) -> None:
+        """The whole of D19's comparability guarantee rests on this being true."""
+        assert prompt_sha256(collectives_are_actors=True) != prompt_sha256(
+            collectives_are_actors=False
+        )
 
     def test_the_prompt_sent_is_the_prompt_hashed(self) -> None:
         """The hash is worthless if it covers a different string from the one that went."""
@@ -201,14 +222,67 @@ class TestThePromptIsAFile:
         reader from looking where the fault is not."""
         import dramatis.extraction as extraction_module
 
-        extraction_module.system_prompt.cache_clear()
+        extraction_module._prompt_file.cache_clear()
         monkeypatch.setattr(extraction_module, "PROMPT_FILE", "not-a-prompt.md")
         try:
             with pytest.raises(ExtractionError, match="missing from the installation"):
                 extraction_module.system_prompt()
         finally:
-            extraction_module.system_prompt.cache_clear()
+            extraction_module._prompt_file.cache_clear()
 
+
+class TestWhatCountsAsACharacter:
+    """D19 and the first live run, which made "the Netherfield party" a character standing
+    beside Miss Bingley and Mrs Hurst, who were already characters in their own right."""
+
+    def test_the_default_prompt_excludes_groups(self) -> None:
+        prompt = _prose(system_prompt())
+
+        assert "Do not report a group as a character" in prompt
+        assert "Report instead the people in it that the passage names" in prompt
+
+    def test_the_default_prompt_excludes_indefinite_referents(self) -> None:
+        """Not a collective and not governed by the setting: "another young man" is a
+        phrase standing in for someone the passage never identifies."""
+        prompt = _prose(system_prompt())
+
+        assert "Do not report an indefinite reference as a character" in prompt
+        assert "an unidentified someone cannot hold a relationship" in prompt
+
+    def test_indefinite_referents_are_excluded_under_both_settings(self) -> None:
+        assert "indefinite reference" in _prose(system_prompt(collectives_are_actors=True))
+
+    def test_enabling_collectives_says_which_instruction_it_replaces(self) -> None:
+        """A prompt carrying "do not report a group" followed by "report a group" is a
+        contradiction unless the second one says it supersedes the first."""
+        composed = _prose(system_prompt(collectives_are_actors=True))
+
+        assert "the instruction above not to report a group is replaced" in composed
+
+    def test_enabling_collectives_still_demands_the_named_members(self) -> None:
+        """A group standing in place of its members loses the people, which is worse than
+        the double-counting the default avoids."""
+        composed = _prose(system_prompt(collectives_are_actors=True))
+
+        assert "a group never stands in place of the people in it" in composed
+
+    def test_the_setting_reaches_the_provider(self) -> None:
+        for enabled in (True, False):
+            provider = ScriptedProvider([a_reply()])
+            extract(segment_text(PASSAGE), provider, collectives_are_actors=enabled)
+
+            sent = _prose(provider.calls[0].system)
+            assert ("Report a group as a character when" in sent) is enabled
+
+    def test_the_extraction_records_the_prompt_the_setting_produced(self) -> None:
+        provider = ScriptedProvider([a_reply()])
+        extraction = extract(segment_text(PASSAGE), provider, collectives_are_actors=True)
+
+        assert extraction.prompt_sha256 == prompt_sha256(collectives_are_actors=True)
+        assert extraction.prompt_sha256 != prompt_sha256(collectives_are_actors=False)
+
+
+class TestWindowIsolation:
     def test_windows_are_read_independently(self) -> None:
         """No window sees another's text, so one window's error cannot propagate."""
         segmentation = segment_text("\n\n".join(f"Block {n}." for n in range(6)))

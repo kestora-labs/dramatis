@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from dramatis import ids
-from dramatis.store import Document, Store, TextRevision, utc_now
+from dramatis.store import COLLECTIVES_ARE_ACTORS, Document, Store, TextRevision, utc_now
 from dramatis.text import content_hash, normalise_line_endings, revision_hash
 
 DEFAULT_ROLE = "narrative"
@@ -89,10 +89,20 @@ def ingest_file(
     label: str | None = None,
     role: str = DEFAULT_ROLE,
     now: str | None = None,
+    collectives_are_actors: bool | None = None,
 ) -> IngestResult:
-    """Ingest one plain-text file as a work with a single-document text revision."""
+    """Ingest one plain-text file as a work with a single-document text revision.
+
+    ``collectives_are_actors`` records the terms of the study on a project that has not
+    recorded them yet (D19). Passing it to a project that already has an answer overwrites
+    that answer; callers that mean to change it should say so to the person first, because
+    it makes existing snapshots incomparable with everything after.
+    """
     if role not in {"narrative", "reference"}:
         raise IngestError(f"unknown document role {role!r}; expected 'narrative' or 'reference'")
+
+    if collectives_are_actors is not None:
+        store.set_setting(COLLECTIVES_ARE_ACTORS, bool(collectives_are_actors))
 
     path = Path(path)
     text = read_text(path)

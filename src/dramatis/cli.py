@@ -25,7 +25,7 @@ from dramatis.ingest import IngestError, ingest_file
 from dramatis.locate import STORE_FILENAME, StoreNotFound, resolve_store
 from dramatis.providers import ProviderError
 from dramatis.schema import schema_version
-from dramatis.store import Store
+from dramatis.store import COLLECTIVES_ARE_ACTORS, Store
 from dramatis.validation import Issue, validate_file
 
 STORE_HELP = (
@@ -82,10 +82,79 @@ def _run_validate(args: argparse.Namespace) -> int:
 # -- ingest ---------------------------------------------------------------------------
 
 
+def _warn_if_changing_collectives(store: Store, wanted: bool) -> None:
+    """Say out loud that changing this breaks comparison with what is already there.
+
+    Permitted, not prevented: someone who learns halfway through that their corpus has
+    factions should be able to act on it. But snapshots either side of the change answer
+    different questions, and the tool that will later refuse to diff them should not be the
+    first place anyone hears about it.
+    """
+    current = store.get_setting(COLLECTIVES_ARE_ACTORS)
+    if current is None or bool(current) == wanted:
+        return
+
+    existing = sum(len(store.list_snapshots(work["id"])) for work in store.list_works())
+    was, now = ("counted", "not counted") if current else ("not counted", "counted")
+    # stderr, not stdout: these are remarks about the run, and --json puts a parseable
+    # document on stdout that a note would corrupt.
+    print(f"note: collectives were {was} as actors in this project; now {now}.", file=sys.stderr)
+    if existing:
+        noun = "snapshot" if existing == 1 else "snapshots"
+        print(
+            f"      the {existing} existing {noun} answered the other question and will not "
+            "compare with anything analysed from here.",
+            file=sys.stderr,
+        )
+
+
+def _ask_collectives_are_actors() -> bool:
+    """Ask once, when a project is being created (D19).
+
+    Only asked at a terminal. A non-interactive run takes the default and says so rather
+    than blocking on a prompt nobody is there to answer — a pipeline that hangs waiting for
+    input it will never receive is worse than one that states its assumption.
+
+    On stderr, like the notes, so that piping a `--json` ingest somewhere never mixes a
+    question into the document.
+    """
+    for line in (
+        "\nThis project has not recorded whether collectives count as actors.",
+        "  A family, a crew, a faction: a character in its own right, or only the people",
+        "  named in it? Groups are usually noise in a novel and the point in a serial with",
+        "  factions. It applies to the whole project, and is changeable later.",
+    ):
+        print(line, file=sys.stderr)
+
+    print("Count collectives as actors? [y/N] ", end="", file=sys.stderr, flush=True)
+    return input().strip().lower() in {"y", "yes"}
+
+
+def _collectives_setting(args: argparse.Namespace, location) -> bool | None:
+    """What to record, or None to leave the project's answer alone."""
+    if args.collectives_are_actors is not None:
+        return bool(args.collectives_are_actors)
+
+    creating = not location.exists
+    if not creating:
+        return None
+    if not sys.stdin.isatty():
+        print(
+            "note: collectives are not counted as actors "
+            "(the default; set it with --collectives-as-actors)",
+            file=sys.stderr,
+        )
+        return None
+    return _ask_collectives_are_actors()
+
+
 def _run_ingest(args: argparse.Namespace) -> int:
     location = resolve_store(args.store)
+    collectives = _collectives_setting(args, location)
     try:
         with Store(location.path) as store:
+            if collectives is not None and location.exists:
+                _warn_if_changing_collectives(store, collectives)
             result = ingest_file(
                 store,
                 args.path,
@@ -95,6 +164,7 @@ def _run_ingest(args: argparse.Namespace) -> int:
                 language=args.language,
                 label=args.label,
                 role=args.role,
+                collectives_are_actors=collectives,
             )
     except IngestError as error:
         print(f"error: {error}", file=sys.stderr)
@@ -366,6 +436,23 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["narrative", "reference"],
         default="narrative",
         help="whether the text enacts the story or describes it (default: narrative)",
+    )
+    collectives = ingest.add_mutually_exclusive_group()
+    collectives.add_argument(
+        "--collectives-as-actors",
+        dest="collectives_are_actors",
+        action="store_true",
+        default=None,
+        help=(
+            "count a group — a family, a crew, a faction — as a character in its own right. "
+            "Applies to the whole project. Without this or its negation, a new project asks."
+        ),
+    )
+    collectives.add_argument(
+        "--no-collectives-as-actors",
+        dest="collectives_are_actors",
+        action="store_false",
+        help="report only the people named in a group (the default)",
     )
     ingest.add_argument(
         "--json",

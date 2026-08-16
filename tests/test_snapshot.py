@@ -14,6 +14,7 @@ import pytest
 
 from dramatis.aggregation import Aggregation, aggregate
 from dramatis.extraction import (
+    PROMPT_VERSION,
     Extraction,
     MentionedCharacter,
     ObservedInteraction,
@@ -337,7 +338,7 @@ class TestTheWholePipeline:
         result = analyse(store, ingested.revision_id, provider)
         run = result.snapshot.document["analysis_runs"][0]
 
-        assert run["prompt_version"] == "extract-v1"
+        assert run["prompt_version"] == PROMPT_VERSION
         assert run["pipeline_version"] == PIPELINE_VERSION
         assert run["application_version"]
         assert run["parameters"]["weight_basis"] == "interaction_passages"
@@ -355,6 +356,59 @@ class TestTheWholePipeline:
 
         assert document["analysis_runs"][0]["prompt_sha256"] == prompt_sha256()
         require_comparable_snapshots(document, document)
+
+    def test_the_run_records_the_terms_the_project_is_studied_under(self, project) -> None:
+        """D19. A reader of a snapshot must be able to see which question was asked, not
+        only which text was read."""
+        from dramatis.store import COLLECTIVES_ARE_ACTORS
+
+        store, ingested = project
+        store.set_setting(COLLECTIVES_ARE_ACTORS, True)
+
+        document = analyse(
+            store, ingested.revision_id, ScriptedProvider([one_window_reply(), a_grouping()])
+        ).snapshot.document
+
+        assert document["analysis_runs"][0]["parameters"][COLLECTIVES_ARE_ACTORS] is True
+
+    def test_the_setting_changes_the_prompt_the_run_records(self, project) -> None:
+        """The setting is inside the provenance guarantee rather than beside it: it is not
+        a note about the run, it is part of what the run asked."""
+        from dramatis.store import COLLECTIVES_ARE_ACTORS
+
+        store, ingested = project
+        without = analyse(
+            store, ingested.revision_id, ScriptedProvider([one_window_reply(), a_grouping()])
+        ).snapshot.document
+
+        store.set_setting(COLLECTIVES_ARE_ACTORS, True)
+        with_groups = analyse(
+            store, ingested.revision_id, ScriptedProvider([one_window_reply(), a_grouping()])
+        ).snapshot.document
+
+        assert (
+            without["analysis_runs"][0]["prompt_sha256"]
+            != with_groups["analysis_runs"][0]["prompt_sha256"]
+        )
+
+    def test_changing_the_setting_makes_snapshots_incomparable(self, project) -> None:
+        """Changeable afterwards, but not silently: a graph of people and a graph of people
+        and groups are not two readings of one corpus."""
+        from dramatis.aggregation import ComparabilityError, require_comparable_snapshots
+        from dramatis.store import COLLECTIVES_ARE_ACTORS
+
+        store, ingested = project
+        before = analyse(
+            store, ingested.revision_id, ScriptedProvider([one_window_reply(), a_grouping()])
+        ).snapshot.document
+
+        store.set_setting(COLLECTIVES_ARE_ACTORS, True)
+        after = analyse(
+            store, ingested.revision_id, ScriptedProvider([one_window_reply(), a_grouping()])
+        ).snapshot.document
+
+        with pytest.raises(ComparabilityError, match="collectives"):
+            require_comparable_snapshots(before, after)
 
     def test_two_runs_under_one_prompt_stay_comparable(self, project) -> None:
         from dramatis.aggregation import require_comparable_snapshots
@@ -384,7 +438,7 @@ class TestTheWholePipeline:
         ).snapshot.document
 
         edited = system_prompt() + "\nAlso: prefer the shortest quotation available.\n"
-        monkeypatch.setattr("dramatis.extraction.system_prompt", lambda: edited)
+        monkeypatch.setattr("dramatis.extraction.system_prompt", lambda **_: edited)
 
         after = analyse(
             store, ingested.revision_id, ScriptedProvider([one_window_reply(), a_grouping()])

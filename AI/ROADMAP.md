@@ -230,7 +230,7 @@ text. No medium-specific vocabulary appears anywhere in the schema (grep for `ch
 - [x] **1.12** — Move the extraction prompt to `src/dramatis/prompts/extract.md`, and record
       a hash of the prompt text actually sent in every run. `require_comparable()` refuses
       two snapshots whose prompt hashes differ, whatever their versions claim. See **D18**.
-- [ ] **1.13** — A project-level setting for whether a collective counts as an actor, asked
+- [x] **1.13** — A project-level setting for whether a collective counts as an actor, asked
       on the ingest that creates a project, carried into each run's parameters and into
       comparability. Correct the prompt's treatment of indefinite referents at the same
       time, which is not governed by the setting. See **D19**.

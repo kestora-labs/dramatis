@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from dramatis.cli import main
+from dramatis.store import COLLECTIVES_ARE_ACTORS, Store
 from tests.documents import minimal_document
 
 
@@ -198,6 +199,108 @@ def test_analyse_accepts_its_options(tmp_path: Path) -> None:
         "First pass",
         True,
     )
+
+
+class TestAskingWhetherCollectivesAreActors:
+    """D19. Asked on the ingest that creates a project, because D16 leaves no separate
+    initialisation step to hang the question on."""
+
+    @staticmethod
+    def _project(tmp_path: Path) -> Path:
+        return tmp_path / "project.sqlite"
+
+    def test_the_flag_records_the_answer(self, tmp_path: Path) -> None:
+        store = self._project(tmp_path)
+        assert (
+            main(
+                [
+                    "ingest",
+                    str(_text_file(tmp_path)),
+                    "--store",
+                    str(store),
+                    "--collectives-as-actors",
+                ]
+            )
+            == 0
+        )
+
+        with Store(store) as opened:
+            assert opened.get_setting(COLLECTIVES_ARE_ACTORS) is True
+
+    def test_the_negation_records_the_answer_too(self, tmp_path: Path) -> None:
+        """Choosing the default deliberately is not the same as never being asked, and a
+        project that recorded its answer is not asked again."""
+        store = self._project(tmp_path)
+        main(
+            [
+                "ingest",
+                str(_text_file(tmp_path)),
+                "--store",
+                str(store),
+                "--no-collectives-as-actors",
+            ]
+        )
+
+        with Store(store) as opened:
+            assert opened.get_setting(COLLECTIVES_ARE_ACTORS) is False
+
+    def test_the_two_flags_cannot_both_be_given(self, tmp_path: Path) -> None:
+        from dramatis.cli import _build_parser
+
+        with pytest.raises(SystemExit):
+            _build_parser().parse_args(
+                ["ingest", "x.txt", "--collectives-as-actors", "--no-collectives-as-actors"]
+            )
+
+    def test_a_non_interactive_run_takes_the_default_and_says_so(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """A pipeline that blocks waiting for input nobody will type is worse than one that
+        states its assumption. pytest gives a non-tty stdin, which is the case under test."""
+        store = self._project(tmp_path)
+
+        assert main(["ingest", str(_text_file(tmp_path)), "--store", str(store)]) == 0
+
+        assert "collectives are not counted as actors" in capsys.readouterr().err
+        with Store(store) as opened:
+            assert opened.get_setting(COLLECTIVES_ARE_ACTORS) is None
+
+    def test_notes_go_to_stderr_so_json_stays_parseable(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store = self._project(tmp_path)
+
+        main(["ingest", str(_text_file(tmp_path)), "--store", str(store), "--json"])
+
+        captured = capsys.readouterr()
+        json.loads(captured.out)
+        assert "collectives" in captured.err
+
+    def test_changing_the_answer_warns_that_it_breaks_comparison(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Changeable afterwards, but the tool that will later refuse to diff the snapshots
+        should not be the first place anyone hears of it."""
+        store = self._project(tmp_path)
+        text = _text_file(tmp_path)
+        main(["ingest", str(text), "--store", str(store), "--no-collectives-as-actors"])
+        capsys.readouterr()
+
+        assert main(["ingest", str(text), "--store", str(store), "--collectives-as-actors"]) == 0
+
+        assert "collectives were not counted as actors" in capsys.readouterr().err
+
+    def test_re_stating_the_same_answer_says_nothing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store = self._project(tmp_path)
+        text = _text_file(tmp_path)
+        main(["ingest", str(text), "--store", str(store), "--collectives-as-actors"])
+        capsys.readouterr()
+
+        main(["ingest", str(text), "--store", str(store), "--collectives-as-actors"])
+
+        assert "collectives were" not in capsys.readouterr().err
 
 
 def test_omitting_model_reaches_the_provider_as_its_default() -> None:

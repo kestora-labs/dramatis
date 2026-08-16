@@ -155,9 +155,10 @@ Chosen in Phase 0, revisable only with a `DECISIONS.md` entry.
 - [x] **0.2** — CI running tests and linting on push, proven green.
 - [x] **0.3** — `LICENSE` (Apache-2.0 for code), `docs/` under CC BY 4.0,
       `CODE_OF_CONDUCT.md`, `CONTRIBUTING.md` stating these working rules, `DECISIONS.md`.
-- [x] **0.4** — `schema/dramatis.schema.json` v0.1: collection, work, document, text
-      revision, analysis run, snapshot, character, relation, evidence, locator, selector,
-      provenance, review status.
+- [x] **0.4** — `src/dramatis/schema/dramatis.schema.json` v0.1: collection, work, document,
+      text revision, analysis run, snapshot, character, relation, evidence, locator, selector,
+      provenance, review status. *(Written at `schema/` in the repository root; moved into the
+      package by 1.14, which is where 6.5 publishes it from. See **D20**.)*
 - [x] **0.5** — A validator: `dramatis validate <file.json>` passes or fails a document
       against the schema, with useful error messages.
 - [x] **0.6** — Fixture **A** committed, comprising: the source text with its provenance

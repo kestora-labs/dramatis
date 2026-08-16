@@ -426,22 +426,57 @@ class TestTheWholePipeline:
 
         Two separate stores, because "identical inputs" includes the registry: a store
         that already knows the characters is not the same starting state.
+
+        Ingest is given a fixed clock too. Without it this test is flaky rather than
+        wrong: a revision records when it was ingested, timestamps have second resolution,
+        and two ingests either side of a second boundary produce different documents for
+        the same text. That is correct behaviour — the graph is identical, the ingest
+        metadata honestly differs — so the test pins the clock instead of the code
+        pretending the two ingests happened at once.
         """
+        at = "2026-08-16T09:00:00+00:00"
         hashes = []
         for name in ("first", "second"):
             with Store(tmp_path / f"{name}.sqlite") as store:
                 ingested = ingest_file(
-                    store, a_text(tmp_path), work_title="A Work", collection_name="A Collection"
+                    store,
+                    a_text(tmp_path),
+                    work_title="A Work",
+                    collection_name="A Collection",
+                    now=at,
                 )
                 result = analyse(
                     store,
                     ingested.revision_id,
                     ScriptedProvider([one_window_reply(), a_grouping()]),
-                    now="2026-08-16T09:00:00+00:00",
+                    now=at,
                 )
                 hashes.append((result.snapshot.id, result.snapshot.sha256))
 
         assert hashes[0] == hashes[1]
+
+    def test_ingest_time_is_part_of_what_a_snapshot_records(self, tmp_path: Path) -> None:
+        """The flake above, stated as the property it actually is.
+
+        Two ingests of identical text at different moments produce the same revision — the
+        identifier comes from the content hash — but documents that differ in when the
+        revision was recorded. Nothing here should paper over that.
+        """
+        revisions = []
+        for name, at in (("a", "2026-08-16T09:00:00+00:00"), ("b", "2026-08-16T10:00:00+00:00")):
+            with Store(tmp_path / f"{name}.sqlite") as store:
+                ingested = ingest_file(
+                    store,
+                    a_text(tmp_path),
+                    work_title="A Work",
+                    collection_name="A Collection",
+                    now=at,
+                )
+                revision = store.get_text_revision(ingested.revision_id)
+                revisions.append((ingested.revision_id, revision.created_at))
+
+        assert revisions[0][0] == revisions[1][0], "same text, same revision identifier"
+        assert revisions[0][1] != revisions[1][1], "different moment, honestly recorded"
 
     def test_a_populated_registry_makes_the_second_run_a_different_analysis(self, project) -> None:
         """Not a flaw — the second run genuinely does less work, and says so.

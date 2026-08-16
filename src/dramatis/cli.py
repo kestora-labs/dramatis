@@ -275,11 +275,14 @@ def _run_analyse(args: argparse.Namespace) -> int:
 
 
 def _run_serve(args: argparse.Namespace) -> int:
-    from dramatis.server import DEFAULT_HOST, ServerError, serve
+    from dramatis.server import DEFAULT_HOST, ServerError, ensure_available, serve
 
     try:
         path = resolve_store(args.store).require()
-    except StoreNotFound as error:
+        # Checked before the banner: announcing an address and then failing leaves the
+        # last line on screen saying the server is up when it never started.
+        ensure_available()
+    except (StoreNotFound, ServerError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
 

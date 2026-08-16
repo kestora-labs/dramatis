@@ -202,6 +202,30 @@ class TestOptionalDependency:
         with pytest.raises(ServerError, match=r"dramatis\[serve\]"):
             create_app(tmp_path / "project.sqlite")
 
+    def test_the_banner_is_not_printed_when_the_server_cannot_start(
+        self, monkeypatch: pytest.MonkeyPatch, analysed, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Announcing an address and then failing leaves a lie as the last line on screen."""
+        import builtins
+
+        from dramatis.cli import main
+
+        store_path, _, _ = analysed
+        real_import = builtins.__import__
+
+        def refuse(name: str, *args, **kwargs):
+            if name == "uvicorn":
+                raise ModuleNotFoundError("No module named 'uvicorn'")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", refuse)
+
+        assert main(["serve", "--store", str(store_path)]) == 1
+
+        captured = capsys.readouterr()
+        assert "Dramatis on http://" not in captured.out
+        assert "uvicorn" in captured.err
+
     def test_building_the_app_does_not_need_the_asgi_server(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:

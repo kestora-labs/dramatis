@@ -66,6 +66,17 @@ def _load_server():
     return uvicorn
 
 
+def ensure_available() -> None:
+    """Raise if the server cannot run, before a caller announces that it has.
+
+    Callers print a banner naming the address they are about to listen on. Discovering the
+    missing dependency inside ``serve`` meant printing that banner and then failing, so the
+    last thing on screen said the server was up when it never started.
+    """
+    _load_framework()
+    _load_server()
+
+
 def _snapshot_summary(snapshot: Any) -> dict[str, Any]:
     document = snapshot.document
     return {

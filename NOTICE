@@ -4,6 +4,10 @@ Copyright 2026 Kestora Labs
 This product includes software developed at Kestora Labs
 (https://github.com/kestora-labs).
 
-Documentation in docs/ and the schema specification in schema/ are licensed
-under the Creative Commons Attribution 4.0 International licence (CC BY 4.0),
-not the Apache License. See docs/LICENSE.
+Documentation in docs/ and the schema specification at
+src/dramatis/schema/dramatis.schema.json are licensed under the Creative
+Commons Attribution 4.0 International licence (CC BY 4.0), not the Apache
+License. See docs/LICENSE.
+
+The schema document sits inside the Python package because that is what an
+installed copy can read; its licence is unaffected by its address.

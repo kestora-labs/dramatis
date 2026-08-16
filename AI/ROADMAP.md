@@ -234,6 +234,17 @@ text. No medium-specific vocabulary appears anywhere in the schema (grep for `ch
       comparability. Correct the prompt's treatment of indefinite referents at the same
       time, which is not governed by the setting. See **D19**.
 
+- [x] **1.14** — Ship the schema inside the package: `src/dramatis/schema/dramatis.schema.json`,
+      read through `importlib.resources`, and asked for by the tests the way an installed
+      copy asks for it. Publication in 6.5 reads it from there. See **D20**.
+
+> **Why 1.14 exists.** `dramatis validate` is bullet 0.5, and it worked for nobody who had
+> not cloned the repository: the schema sat outside the package, so the wheel did not
+> contain it. Everything about that was invisible from here, because every test read the
+> file by a path only a checkout has. The bullet is as much about how the schema is tested
+> as about where it lives — a resource that is only ever reached the way a developer
+> reaches it is a resource nobody has checked is installed.
+
 > **Why 1.11–1.13 exist.** Phase 1 was complete and its acceptance met. Then the first run
 > against a live model — the first time any of this met prose it had not been written
 > against — showed three things at once: that the prompt is the part most in need of
@@ -251,7 +262,9 @@ quotation is found verbatim in the source. The whole run is reproducible from th
 recorded run metadata. A command run against a store that does not exist says so, and
 `dramatis status` answers "which project am I in, and what is in it" without opening the
 file by hand. Editing the shipped prompt and re-running produces a snapshot that refuses to
-be compared with the one before it, naming the prompt as the reason.
+be compared with the one before it, naming the prompt as the reason. Every file the
+application reads at runtime is reached as a package resource, so a copy installed from a
+wheel validates and analyses without a checkout anywhere on the machine.
 
 ---
 
@@ -359,8 +372,11 @@ stale location.
       **the schema served as a static document at its own `$id`** —
       `https://kestoralabs.co.uk/dramatis/schema/<version>/dramatis.schema.json` — so the
       identifier resolves to an authoritative copy and the format can be implemented
-      without cloning the repository. Every published version stays served, permanently;
-      a new version takes a new path and never replaces an existing one.
+      without cloning the repository. The document published is
+      `src/dramatis/schema/dramatis.schema.json`, the same one the application reads
+      (**D20**); there is no second copy to keep in step. Every published version stays
+      served, permanently; a new version takes a new path and never replaces an existing
+      one.
 - [ ] **6.6** — Documentation site: install, first analysis, schema reference, prompt
       customisation.
 - [ ] **6.7** — Tauri desktop wrapper with signed installers for macOS and Windows.

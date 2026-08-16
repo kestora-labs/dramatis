@@ -424,3 +424,47 @@ a prompt correction, not a configuration question.
 
 *Reversible* in code. Not in data: snapshots already made under one setting stay as they
 are, which is the point of recording it.
+
+---
+
+## D20 — The schema ships inside the package, and is published from there
+
+**Phase 1.14.** `schema/dramatis.schema.json` moves to
+`src/dramatis/schema/dramatis.schema.json`, and `schema.py` becomes that directory's
+`__init__.py`. [`load_schema()`](src/dramatis/schema/__init__.py) reads it through
+`importlib.resources` instead of walking up from `__file__`.
+
+The old path resolved to `<repo>/schema/` in a checkout and to `<site-packages>/../schema`
+in an install, where there is nothing. `[tool.hatch.build.targets.wheel] packages =
+["src/dramatis"]` ships the package directory and nothing else, so the schema was simply
+absent from the wheel, and `dramatis validate` — bullet 0.5's command, and the first one the
+README shows — raised `FileNotFoundError` for everyone who installed rather than cloned.
+This is D18's fault a second time, and D18's reasoning applies unchanged: a resource outside
+the package is not installed.
+
+The wrinkle is that the schema is not only a runtime resource. D6 commits 6.5 to serving
+this document at its `$id`, so the repository-root copy had a second job, and the obvious
+fix keeps both: leave the canonical file at `schema/` and have hatchling `force-include`
+copy it into the wheel. That was rejected on evidence. **`force-include` puts the file in
+the wheel but not in an editable install** — verified against a throwaway package before
+choosing. CONTRIBUTING and CI both install with `pip install -e`, so the regression test
+this entry exists to add could never have run in a checkout, and the loader would have
+needed a fallback to the repository-root path — which restores precisely the arrangement
+that hid the fault, where the only route anyone exercises locally is the one that is not
+shipped. A fix whose test cannot fail is not a fix.
+
+Publication therefore reads from the package. That is the smaller cost: 6.5 copies a file
+from a different directory once, where the alternative leaves the same trap set for every
+resource added afterwards. It also settles which copy is canonical by leaving only one, in
+the spirit of D11 and D13 — a second copy of a document is a second place for it to be
+wrong. The address does not affect the licence; the schema remains CC BY 4.0 and `NOTICE`
+names where it now lives.
+
+The tests changed with it, and that is half the entry. They read the schema as a resource of
+`dramatis.schema`, and one of them asserts the loader reaches nothing outside the package
+directory. The previous tests read it by a path built from the repository root, which is why
+a suite of two dozen assertions about this file stayed green through four phases of it not
+being installed at all.
+
+*Reversible* cheaply in code, though not to `force-include`: that arrangement cannot be
+tested from a checkout, which is the whole of the argument against it.

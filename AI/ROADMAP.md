@@ -223,7 +223,7 @@ text. No medium-specific vocabulary appears anywhere in the schema (grep for `ch
 > of them. The code already allows it; nothing in the CLI suggests it, and a default
 > filename sitting in the current directory actively implies one project per folder.
 
-- [ ] **1.11** — Write down what a project is: one corpus studied over time, holding
+- [x] **1.11** — Write down what a project is: one corpus studied over time, holding
       settings as well as data. Glossary entry, and a `settings` accessor over the existing
       `meta` table. See **D17**.
 - [ ] **1.12** — Move the extraction prompt to `src/dramatis/prompts/extract.md`, and record

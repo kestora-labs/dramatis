@@ -335,6 +335,78 @@ class TestStore:
             assert store.store_version >= 1
 
 
+class TestProjectSettings:
+    """A project holds the terms it is studied under, not only its data (D17)."""
+
+    def test_an_unset_setting_returns_the_default(self, store: Store) -> None:
+        assert store.get_setting("collectives_are_actors") is None
+        assert store.get_setting("collectives_are_actors", default=False) is False
+
+    def test_a_setting_deliberately_set_to_nothing_is_still_a_recorded_choice(
+        self, store: Store
+    ) -> None:
+        """`get_setting` cannot tell this from never having been set, since both answer
+        None. `settings()` can, and is what a caller asks when the difference matters."""
+        store.set_setting("collectives_are_actors", None)
+
+        assert store.get_setting("collectives_are_actors") is None
+        assert store.settings() == {"collectives_are_actors": None}
+
+    @pytest.mark.parametrize("value", [True, False, "asserted", 3, ["a", "b"]])
+    def test_a_setting_reads_back_as_the_type_it_was_written_as(
+        self, store: Store, value: object
+    ) -> None:
+        """A switch stored as the string "false" is true, and would analyse a corpus the
+        wrong way round without anything looking wrong."""
+        store.set_setting("some_setting", value)
+
+        assert store.get_setting("some_setting") == value
+        assert type(store.get_setting("some_setting")) is type(value)
+
+    def test_a_setting_survives_reopening(self, tmp_path: Path) -> None:
+        path = tmp_path / "settings.sqlite"
+        with Store(path) as store:
+            store.set_setting("collectives_are_actors", True)
+        with Store(path) as reopened:
+            assert reopened.get_setting("collectives_are_actors") is True
+
+    def test_setting_a_second_time_replaces_the_value(self, store: Store) -> None:
+        """Whether a *particular* setting may change is policy that belongs with the
+        setting. Storage does not decide it."""
+        store.set_setting("collectives_are_actors", True)
+        store.set_setting("collectives_are_actors", False)
+
+        assert store.get_setting("collectives_are_actors") is False
+        assert list(store.settings()) == ["collectives_are_actors"]
+
+    def test_settings_are_listed_without_the_store_s_own_keys(self, store: Store) -> None:
+        """store_version is a fact about the file that nobody decided. Listing it beside
+        the decisions would present it as one."""
+        store.set_setting("collectives_are_actors", True)
+
+        assert store.settings() == {"collectives_are_actors": True}
+        assert store.store_version >= 1
+
+    def test_a_setting_cannot_collide_with_a_store_key(self, store: Store) -> None:
+        store.set_setting("store_version", "not the real one")
+
+        assert store.store_version >= 1
+        assert store.get_setting("store_version") == "not the real one"
+
+    def test_settings_are_empty_on_a_fresh_project(self, store: Store) -> None:
+        assert store.settings() == {}
+
+    @pytest.mark.parametrize("name", ["", " ", " padded", "trailing "])
+    def test_an_unusable_setting_name_is_refused(self, store: Store, name: str) -> None:
+        with pytest.raises(ValueError, match="non-empty and unpadded"):
+            store.set_setting(name, True)
+
+    def test_passing_the_stored_key_instead_of_the_name_is_refused(self, store: Store) -> None:
+        """Otherwise it writes setting:setting:x and reads back as absent."""
+        with pytest.raises(ValueError, match="not the stored key"):
+            store.set_setting("setting:collectives_are_actors", True)
+
+
 class TestIdentifiers:
     @pytest.mark.parametrize(
         ("value", "expected"),

@@ -160,13 +160,27 @@ Chosen in Phase 0, revisable only with a `DECISIONS.md` entry.
       provenance, review status.
 - [x] **0.5** — A validator: `dramatis validate <file.json>` passes or fails a document
       against the schema, with useful error messages.
-- [ ] **0.6** — Fixture **A** committed with a hand-authored, hand-verified expected graph.
+- [ ] **0.6** — Fixture **A** committed, comprising: the source text with its provenance
+      recorded; a small hand-authored snapshot document whose every evidence quotation is
+      verbatim from that text; and an **expectation floor** — principal characters that
+      must be present as single nodes with aliases merged, relations that must exist, and
+      pairs that must *not* be joined. Plus deliberately malformed documents for the
+      negative case.
 - [ ] **0.7** — Hand-authored skeleton fixtures for **B**, **C**, **D** — structure only,
       no analysis.
 
-**Acceptance:** `dramatis validate fixtures/a/expected.json` exits 0. A deliberately
-malformed fixture exits non-zero with a useful message. No medium-specific vocabulary
-appears anywhere in the schema (grep for `chapter`, `panel`, `beat`, `episode`).
+> **On the expectation floor.** An earlier draft of 0.6 asked for a hand-verified expected
+> graph of the whole work. That is not achievable honestly: the canonical example has some
+> sixty named characters and several hundred defensible relationships, and a fixture nobody
+> genuinely verified is worse than none, because it launders a guess into a reference. A
+> floor states only what was actually checked. Exact-match baselines are generated and
+> frozen later, once the pipeline is trusted enough to be worth freezing against.
+
+**Acceptance:** `dramatis validate fixtures/a/snapshot.json` exits 0. Every deliberately
+malformed document under `fixtures/a/invalid/` exits non-zero with a message naming the
+problem. Every evidence quotation in the fixture is found verbatim in the fixture's source
+text. No medium-specific vocabulary appears anywhere in the schema (grep for `chapter`,
+`panel`, `beat`, `episode`).
 
 ---
 

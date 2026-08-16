@@ -56,3 +56,25 @@ the first push.
 
 **Outstanding:** confirm a green run on `kestora-labs/dramatis` once the organisation
 exists.
+
+---
+
+## D5 — Fixture A asserts an expectation floor, not an exact graph
+
+**Phase 0.6.** The bullet originally asked for "a hand-authored, hand-verified expected
+graph" of the fixture work. Amended, before implementation, to a verified floor: characters
+that must be present as single nodes with aliases merged, relations that must exist, and
+pairs that must not be joined.
+
+*Pride and Prejudice* has roughly sixty named characters and several hundred defensible
+relationships. Nobody was going to verify all of them by hand, and a fixture presented as
+verified but actually guessed is worse than no fixture, because downstream phases would
+treat it as ground truth. A floor states only what was actually checked, and Phase 1's
+acceptance was already written in those terms ("among the graph's heaviest"), so this makes
+the two consistent.
+
+Exact-match baselines remain worth having, but as regression fixtures generated from a
+trusted pipeline and then frozen — not as hand-written ground truth invented before the
+pipeline exists.
+
+*Reversible* at any time by tightening the floor as more of the graph gets verified.

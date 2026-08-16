@@ -203,7 +203,7 @@ text. No medium-specific vocabulary appears anywhere in the schema (grep for `ch
       model ID, prompt version, and parameters.
 - [x] **1.9** — `dramatis serve` renders the graph: edge width on a sqrt scale, node size
       by degree.
-- [ ] **1.10** — Make the project file findable and knowable. Four parts: a `status`
+- [x] **1.10** — Make the project file findable and knowable. Four parts: a `status`
       command reporting the resolved store path, its works, revisions, snapshots and
       registry size; **no silent creation on read paths** — `analyse` and `serve` pointed
       at a non-existent store say so rather than conjuring an empty one; project discovery

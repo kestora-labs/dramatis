@@ -396,6 +396,37 @@ class Store:
         ).fetchone()
         return None if row is None else dict(row)
 
+    def list_collections(self) -> list[dict[str, Any]]:
+        rows = self.connection.execute("SELECT * FROM collections ORDER BY name, id").fetchall()
+        return [dict(row) for row in rows]
+
+    def list_works(self, collection_id: str | None = None) -> list[dict[str, Any]]:
+        if collection_id is None:
+            rows = self.connection.execute("SELECT id FROM works ORDER BY title, id").fetchall()
+        else:
+            rows = self.connection.execute(
+                "SELECT id FROM works WHERE collection_id = ? ORDER BY title, id",
+                (collection_id,),
+            ).fetchall()
+        found = [self.get_work(row["id"]) for row in rows]
+        return [work for work in found if work is not None]
+
+    def count(self, table: str) -> int:
+        """Row count for one of the store's own tables."""
+        allowed = {
+            "collections",
+            "works",
+            "documents",
+            "text_revisions",
+            "characters",
+            "character_aliases",
+            "analysis_runs",
+            "snapshots",
+        }
+        if table not in allowed:
+            raise ValueError(f"unknown table {table!r}")
+        return int(self.connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0])
+
     def get_work(self, identifier: str) -> dict[str, Any] | None:
         row = self.connection.execute("SELECT * FROM works WHERE id = ?", (identifier,)).fetchone()
         if row is None:

@@ -200,20 +200,81 @@ class TestIdempotence:
         count = store.connection.execute("SELECT count(*) FROM collections").fetchone()[0]
         assert count == 1
 
-    def test_a_work_can_still_be_moved_by_naming_a_collection(
-        self, store: Store, tmp_path: Path
-    ) -> None:
-        """Implicit defaults must not move a work; an explicit instruction still may."""
+    def test_naming_a_different_collection_is_refused(self, store: Store, tmp_path: Path) -> None:
+        """A project holds one collection, so there is nowhere else in it to move a work.
+
+        Phase 1.1 allowed an explicit collection to move a work between collections in one
+        store. Phase 1.10 removed the destination: the registry is collection-scoped, and a
+        store with two collections holds two casts that cannot see each other. Use two
+        project files instead.
+        """
         path = write(tmp_path, "pride.txt")
         ingest_file(store, path, work_title="Pride and Prejudice", collection_name="Jane Austen")
-        moved = ingest_file(
-            store, path, work_title="Pride and Prejudice", collection_name="Regency Novels"
+
+        with pytest.raises(IngestError, match="holds one collection"):
+            ingest_file(
+                store, path, work_title="Pride and Prejudice", collection_name="Regency Novels"
+            )
+
+        work = store.get_work(ids.work_id("Pride and Prejudice"))
+        assert work is not None
+        assert work["collection_id"] == ids.collection_id("Jane Austen"), "unmoved"
+
+    def test_naming_the_existing_collection_is_accepted(self, store: Store, tmp_path: Path) -> None:
+        first = ingest_file(
+            store, write(tmp_path, "a.txt", "One.\n"), work_title="A", collection_name="A Universe"
+        )
+        second = ingest_file(
+            store, write(tmp_path, "b.txt", "Two.\n"), work_title="B", collection_name="A Universe"
         )
 
-        assert moved.collection_id == ids.collection_id("Regency Novels")
-        work = store.get_work(moved.work_id)
-        assert work is not None
-        assert work["collection_id"] == ids.collection_id("Regency Novels")
+        assert second.collection_id == first.collection_id
+
+
+class TestOneCollectionPerProject:
+    """What makes a shared universe work: several works, one registry."""
+
+    def test_a_second_work_joins_the_project_collection(self, store: Store, tmp_path: Path) -> None:
+        first = ingest_file(
+            store,
+            write(tmp_path, "meteor.txt", "Rhoda appears.\n"),
+            work_title="Meteor Girl",
+            collection_name="A Shared Universe",
+        )
+        second = ingest_file(
+            store, write(tmp_path, "spark.txt", "Rhoda again.\n"), work_title="The Spark"
+        )
+
+        assert second.collection_id == first.collection_id, "one registry across both works"
+        assert len(store.list_collections()) == 1
+        assert {w["title"] for w in store.list_works()} == {"Meteor Girl", "The Spark"}
+
+    def test_the_refusal_names_both_collections_and_says_what_to_do(
+        self, store: Store, tmp_path: Path
+    ) -> None:
+        ingest_file(
+            store, write(tmp_path, "a.txt", "One.\n"), work_title="A", collection_name="Universe A"
+        )
+
+        with pytest.raises(IngestError) as failure:
+            ingest_file(
+                store,
+                write(tmp_path, "b.txt", "Two.\n"),
+                work_title="B",
+                collection_name="Universe B",
+            )
+
+        message = str(failure.value)
+        assert "Universe A" in message and "Universe B" in message
+        assert "separate project file" in message
+
+    def test_an_empty_project_takes_whatever_it_is_given(
+        self, store: Store, tmp_path: Path
+    ) -> None:
+        result = ingest_file(
+            store, write(tmp_path, "a.txt"), work_title="A", collection_name="Anything At All"
+        )
+        assert result.collection_id == ids.collection_id("Anything At All")
 
     def test_the_same_text_under_a_different_filename_is_the_same_revision(
         self, store: Store, tmp_path: Path

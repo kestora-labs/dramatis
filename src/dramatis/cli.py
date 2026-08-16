@@ -5,7 +5,11 @@ a project store. Neither requires a model or a network connection (Invariant 6),
 work offline and always will.
 
 ``analyse`` is the exception, and the only command that calls a provider. Its imports are
-deferred so the two offline commands keep working when no provider SDK is installed.
+deferred so the other commands keep working when no provider SDK is installed.
+
+Every command locates the project file rather than assuming it (see ``dramatis.locate``),
+and only ``ingest`` may bring one into existence. ``status`` answers which project is in
+use and what is in it.
 """
 
 from __future__ import annotations
@@ -18,12 +22,16 @@ from pathlib import Path
 
 from dramatis import __version__
 from dramatis.ingest import IngestError, ingest_file
+from dramatis.locate import STORE_FILENAME, StoreNotFound, resolve_store
 from dramatis.providers import ProviderError
 from dramatis.schema import schema_version
 from dramatis.store import Store
 from dramatis.validation import Issue, validate_file
 
-DEFAULT_STORE = Path("dramatis.sqlite")
+STORE_HELP = (
+    f"project file to use. Without this, {STORE_FILENAME} is looked for in the current "
+    "directory and every directory above it."
+)
 
 
 # -- validate -------------------------------------------------------------------------
@@ -75,8 +83,9 @@ def _run_validate(args: argparse.Namespace) -> int:
 
 
 def _run_ingest(args: argparse.Namespace) -> int:
+    location = resolve_store(args.store)
     try:
-        with Store(args.store) as store:
+        with Store(location.path) as store:
             result = ingest_file(
                 store,
                 args.path,
@@ -94,7 +103,8 @@ def _run_ingest(args: argparse.Namespace) -> int:
     if args.as_json:
         json.dump(
             {
-                "store": str(args.store),
+                "store": str(location.path),
+                "store_created": not location.exists,
                 "collection_id": result.collection_id,
                 "work_id": result.work_id,
                 "document_id": result.document_id,
@@ -109,11 +119,88 @@ def _run_ingest(args: argparse.Namespace) -> int:
         sys.stdout.write("\n")
     else:
         print(result.summary)
-        print(f"  store       {args.store}")
+        created = "" if location.exists else "  (new project)"
+        print(f"  store       {location.path}{created}")
         print(f"  collection  {result.collection_id}")
         print(f"  work        {result.work_id}")
         print(f"  document    {result.document_id}")
         print(f"  revision    {result.revision_id}")
+
+    return 0
+
+
+# -- status ---------------------------------------------------------------------------
+
+
+def _run_status(args: argparse.Namespace) -> int:
+    location = resolve_store(args.store)
+    try:
+        path = location.require()
+    except StoreNotFound as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
+    with Store(path) as store:
+        collections = store.list_collections()
+        works = store.list_works()
+        summary = {
+            "store": str(path),
+            "located": location.how,
+            "store_version": store.store_version,
+            "collections": [{"id": entry["id"], "name": entry["name"]} for entry in collections],
+            "characters": store.count("characters"),
+            "works": [],
+        }
+        for work in works:
+            revisions = store.list_text_revisions(work["id"])
+            snapshots = store.list_snapshots(work["id"])
+            summary["works"].append(
+                {
+                    "id": work["id"],
+                    "title": work["title"],
+                    "creator": work.get("creator"),
+                    "revisions": len(revisions),
+                    "snapshots": [
+                        {
+                            "id": snapshot.id,
+                            "label": snapshot.label,
+                            "created_at": snapshot.created_at,
+                            "text_revision_id": snapshot.text_revision_id,
+                            "analysis_run_id": snapshot.analysis_run_id,
+                            "characters": len(snapshot.document.get("characters", [])),
+                            "relations": len(snapshot.document.get("relations", [])),
+                        }
+                        for snapshot in snapshots
+                    ],
+                }
+            )
+
+    if args.as_json:
+        json.dump(summary, sys.stdout, indent=2, ensure_ascii=False)
+        sys.stdout.write("\n")
+        return 0
+
+    print(f"project     {summary['store']}")
+    print(f"            {summary['located']}")
+
+    if not summary["collections"]:
+        print("\nnothing ingested yet.")
+        return 0
+
+    for entry in summary["collections"]:
+        print(f"\ncollection  {entry['name']}  ({entry['id']})")
+    print(f"registry    {summary['characters']} character(s)")
+
+    for work in summary["works"]:
+        creator = f" — {work['creator']}" if work["creator"] else ""
+        print(f"\nwork        {work['title']}{creator}  ({work['id']})")
+        print(f"            {work['revisions']} revision(s), {len(work['snapshots'])} snapshot(s)")
+        for snapshot in work["snapshots"]:
+            label = f"  {snapshot['label']}" if snapshot["label"] else ""
+            print(
+                f"  {snapshot['id']}  {snapshot['created_at']}  "
+                f"{snapshot['characters']} characters, {snapshot['relations']} relations{label}"
+            )
 
     return 0
 
@@ -132,7 +219,10 @@ def _run_analyse(args: argparse.Namespace) -> int:
     provider = AnthropicProvider(model=args.model)
 
     try:
-        with Store(args.store) as store:
+        # Analysis reads a project; it never brings one into existence. A read that
+        # silently created an empty store would report success for work it did not do.
+        path = resolve_store(args.store).require()
+        with Store(path) as store:
             result = analyse(
                 store,
                 args.revision,
@@ -141,6 +231,7 @@ def _run_analyse(args: argparse.Namespace) -> int:
                 label=args.label,
             )
     except (
+        StoreNotFound,
         PipelineError,
         ExtractionError,
         ResolutionError,
@@ -186,6 +277,12 @@ def _run_analyse(args: argparse.Namespace) -> int:
 def _run_serve(args: argparse.Namespace) -> int:
     from dramatis.server import DEFAULT_HOST, ServerError, serve
 
+    try:
+        path = resolve_store(args.store).require()
+    except StoreNotFound as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
     if args.host != DEFAULT_HOST:
         print(
             f"warning: serving on {args.host}, not just this machine. A project file holds "
@@ -194,8 +291,8 @@ def _run_serve(args: argparse.Namespace) -> int:
         )
 
     try:
-        print(f"Dramatis on http://{args.host}:{args.port}  (store: {args.store})")
-        serve(args.store, host=args.host, port=args.port)
+        print(f"Dramatis on http://{args.host}:{args.port}  (project: {path})")
+        serve(path, host=args.host, port=args.port)
     except ServerError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
@@ -243,12 +340,7 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     ingest.add_argument("path", type=Path, metavar="FILE")
-    ingest.add_argument(
-        "--store",
-        type=Path,
-        default=DEFAULT_STORE,
-        help=f"project file to write to (default: {DEFAULT_STORE})",
-    )
+    ingest.add_argument("--store", type=Path, default=None, help=STORE_HELP)
     ingest.add_argument("--work", help="work title (default: derived from the filename)")
     ingest.add_argument("--collection", help="collection name (default: the work title)")
     ingest.add_argument("--creator", help="author of the work")
@@ -268,6 +360,23 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     ingest.set_defaults(handler=_run_ingest)
 
+    status = subcommands.add_parser(
+        "status",
+        help="say which project this is and what is in it",
+        description=(
+            "Report the project file in use, how it was found, and what it holds. Reads "
+            "only, and never creates a project."
+        ),
+    )
+    status.add_argument("--store", type=Path, default=None, help=STORE_HELP)
+    status.add_argument(
+        "--json",
+        action="store_true",
+        dest="as_json",
+        help="emit machine-readable results on stdout",
+    )
+    status.set_defaults(handler=_run_status)
+
     analyse = subcommands.add_parser(
         "analyse",
         aliases=["analyze"],
@@ -279,12 +388,7 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     analyse.add_argument("revision", metavar="REVISION_ID")
-    analyse.add_argument(
-        "--store",
-        type=Path,
-        default=DEFAULT_STORE,
-        help=f"project file to read and write (default: {DEFAULT_STORE})",
-    )
+    analyse.add_argument("--store", type=Path, default=None, help=STORE_HELP)
     analyse.add_argument("--model", default=None, help="model identifier to use")
     analyse.add_argument(
         "--effort",
@@ -309,12 +413,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "and never leaves the loopback interface unless told to."
         ),
     )
-    serve.add_argument(
-        "--store",
-        type=Path,
-        default=DEFAULT_STORE,
-        help=f"project file to read (default: {DEFAULT_STORE})",
-    )
+    serve.add_argument("--store", type=Path, default=None, help=STORE_HELP)
     serve.add_argument("--port", type=int, default=7373, help="port to listen on (default: 7373)")
     serve.add_argument(
         "--host",

@@ -271,3 +271,54 @@ Absolute versus relative scaling across snapshots is a separate question and bel
 phase 3.5, where comparing two graphs makes it matter.
 
 *Reversible* — the scale is one function with tests pinning its endpoints.
+
+---
+
+## D15 — A project holds one collection
+
+**Phase 1.10.** A store may contain exactly one collection. Ingesting a work without naming
+one joins whatever collection the project already holds; naming a *different* one is
+refused, with an error saying to use a separate file.
+
+The character registry is scoped to a collection. A project holding two collections would
+hold two casts that cannot see each other, which is not a project — it is two projects
+sharing a filename. Worse, the mistake is silent: you would notice when a character who
+appears in both properties turned out to be two characters, long after the analyses that
+made them.
+
+The rule is what makes a shared universe work. Two novels ingested into one project share
+one registry, so a character appearing in both is one character — the case that motivated
+scoping the registry above the work in the first place.
+
+**This supersedes part of phase 1.1.** That bullet let an explicit collection name move a
+work between collections within one store. There is no longer anywhere to move it to, and
+the test now asserts the refusal instead. Renaming a collection is consequently not possible
+either; that is a gap, and belongs with the curation work in phase 5 rather than here.
+
+*Reversible* in code, but not in data: a project that had been allowed to accumulate two
+casts could not be cleanly separated afterwards.
+
+---
+
+## D16 — Projects are located, and only `ingest` may create one
+
+**Phase 1.10.** Commands search for `dramatis.sqlite` in the working directory and every
+directory above it, the way `git` finds `.git`. A path given with `--store` is taken as
+given and never searched for. Every command that reads requires the project to exist;
+`ingest` alone may bring one into being.
+
+Before this the default was a bare relative path, so a command run one directory over did
+not fail — it created a second, empty project and reported success. For someone keeping
+several properties in separate folders that is a quiet way to end up with two
+half-populated stores that both look plausible, and nothing in the output would have told
+them.
+
+The two halves address different failures. Discovery means a command works from anywhere
+inside a project instead of only at its root. Refusing to create on read paths means a
+command never reports success for work it did not do.
+
+An explicitly named path is deliberately exempt from discovery: being sent somewhere
+unexpected because a file happened to sit in a parent directory would be worse than the
+problem discovery solves.
+
+*Reversible* cheaply.

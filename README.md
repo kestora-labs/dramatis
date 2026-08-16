@@ -22,15 +22,38 @@ A [Kestora Labs](https://github.com/kestora-labs) product.
 pip install -e ".[anthropic,serve]"
 export ANTHROPIC_API_KEY=...          # or run `ant auth login`
 
-dramatis ingest my-novel.txt --store project.sqlite --work "My Novel"
-dramatis analyse rev:abc123 --store project.sqlite
+cd ~/writing/my-novel
+dramatis ingest draft.txt --work "My Novel"    # creates dramatis.sqlite here
+dramatis status                                # what is this project, and what is in it
+dramatis analyse rev:abc123
 
 npm ci --prefix web && npm --prefix web run build
-dramatis serve --store project.sqlite                 # http://127.0.0.1:7373
+dramatis serve                                 # http://127.0.0.1:7373
 ```
 
-`analyse` is the only command that calls a model. `ingest`, `validate`, and `serve` never
-do, and work with no credential and no network.
+`analyse` is the only command that calls a model. `ingest`, `status`, `validate`, and
+`serve` never do, and work with no credential and no network.
+
+## The project file
+
+A project is one SQLite file — texts, character registry, and every snapshot. Copy it and
+you have copied the project.
+
+Commands look for `dramatis.sqlite` in the current directory and every directory above it,
+so they work anywhere inside a project. Only `ingest` creates one; everything else says so
+rather than starting an empty project you did not ask for. `--store` names a file directly
+and is never searched for.
+
+**A project holds one collection**, and the character registry is scoped to it. Two works in
+the same project share one cast, which is what a series or a shared universe wants:
+
+```bash
+dramatis ingest meteor-girl.txt --work "Meteor Girl" --collection "Golden Age"
+dramatis ingest the-spark.txt   --work "The Spark"     # joins the same collection
+```
+
+An unrelated property belongs in its own file. Ingesting one into an existing project is
+refused, because merging two casts into one namespace is not something you can undo.
 
 Edge width and node size are drawn on a square-root scale. Interaction counts are heavily
 skewed — two leads share dozens of passages while most pairs share one or two — and a

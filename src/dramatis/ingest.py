@@ -35,9 +35,12 @@ class IngestResult:
     @property
     def summary(self) -> str:
         state = "already present" if self.already_present else "ingested"
+        # ASCII only: a Windows console under a legacy code page renders a typographic
+        # ellipsis as a replacement character, which looks like corruption in the one line
+        # a user reads most often.
         return (
             f"{state}: {self.revision_id} ({self.characters:,} characters, "
-            f"sha256 {self.sha256[:12]}…)"
+            f"sha256 {self.sha256[:12]}...)"
         )
 
 
@@ -100,16 +103,31 @@ def ingest_file(
     work_id = ids.work_id(title)
     document_id = ids.document_id(path.stem or path.name)
 
-    # A work keeps the collection it is already in unless the caller names one explicitly.
-    # Without this, re-ingesting a file without repeating --collection would mint a second,
-    # empty collection from the default and report the work as belonging to it, which is
-    # both untrue and quietly corrupting: the collection is the scope of the character
-    # registry, so moving a work between collections changes which characters it shares.
     existing_work = store.get_work(work_id)
+    existing_collections = store.list_collections()
+
     if existing_work is not None and collection_name is None:
+        # A work keeps the collection it is already in unless the caller names one.
+        # Without this, re-ingesting without repeating --collection would mint a second,
+        # empty collection from the default and report the work as belonging to it — untrue,
+        # and quietly corrupting, since the collection scopes the character registry.
         collection_id = str(existing_work["collection_id"])
+    elif collection_name is None and len(existing_collections) == 1:
+        # A new work joins the collection the store already holds. This is what makes a
+        # shared universe work: two novels ingested into one project share one registry,
+        # so a character appearing in both is one character.
+        collection_id = str(existing_collections[0]["id"])
     else:
         collection_id = ids.collection_id(collection)
+        others = [entry for entry in existing_collections if entry["id"] != collection_id]
+        if others:
+            names = ", ".join(f"{entry['name']!r}" for entry in others)
+            raise IngestError(
+                f"this project already holds the collection {names}, and a project holds "
+                f"one collection. The registry is collection-scoped, so putting {collection!r} "
+                "here would merge two casts into one namespace. Use a separate project file "
+                "for it, or pass the existing collection's name to add a work to it."
+            )
         store.upsert_collection(collection_id, collection)
 
     document_sha = content_hash(text)

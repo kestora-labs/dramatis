@@ -468,3 +468,55 @@ being installed at all.
 
 *Reversible* cheaply in code, though not to `force-include`: that arrangement cannot be
 tested from a checkout, which is the whole of the argument against it.
+
+---
+
+## D21 — A run checkpoints to a cassette, and the fingerprint decides what is already done
+
+**Phase 1.15.** `CheckpointProvider` wraps the live provider, serves any call the cassette
+already holds, and writes each new exchange to disk as it arrives. `dramatis analyse
+--checkpoint <path>` opts into it.
+
+The first run against the whole novel made sixty-three extraction calls, all of them
+successful, and lost every one when the stage after them raised. Nothing was wrong with
+those calls. They were simply held in a list in memory, because the pipeline has exactly
+two states — nothing written, or a finished snapshot — and an error anywhere between them
+lands on the first. On a three-chapter excerpt that is invisible. On a novel it is the
+difference between a fault costing pennies and costing the whole run, and it gets worse as
+the corpus grows.
+
+**No new keying was needed, which is the good part.** D7 built a request fingerprint over
+every field that determines a response, to stop a stale recording being served silently.
+That is the same question a checkpoint asks — *has this exact work been done?* — so the
+machinery transfers whole, and the consequence falls out for free: change a prompt, a
+schema, an effort, or a token budget and only the calls that depended on it are missing
+from the cassette. Fixing one stage re-runs that stage. D22 raises resolution's budget, and
+because `max_tokens` is in the fingerprint, the extraction calls stay valid and the re-run
+costs one call rather than sixty-four. Nothing had to be taught that; it is D7 being right.
+
+Three choices worth stating.
+
+**A separate class, not a flag on `RecordingProvider`.** Recording exists for deliberate
+re-recording and must always call live and overwrite; checkpointing must look first. One
+class doing both, switched by an argument, would eventually serve a re-record the stale
+answer it was invoked to replace — the exact failure D7 exists to prevent.
+
+**Saved per call, not at the end.** A checkpoint written when the run finishes tells the
+run that did not finish nothing. This means many small writes, so `Cassette.save()` now
+writes alongside and renames: an interrupted save costs the call in flight and never the
+calls already banked. A checkpoint that can corrupt itself is not a checkpoint.
+
+**Opt-in, and the caller names the file.** A cassette holds every prompt sent, which for a
+real project is the manuscript. Invariant 7 is about egress and this is a local file, so it
+is not a breach — but a tool that silently drops a plaintext copy of an unpublished novel
+beside the project, under a name the author did not choose, is not one that has earned the
+privacy posture the README claims. `*.checkpoint.json` is in `.gitignore` for the same
+reason.
+
+What this does **not** do is checkpoint the pipeline's own stages. Verification, resolution,
+and aggregation all re-run on a resume; they are cheap, deterministic given the same
+extraction, and local. Only the model calls are worth persisting, and only they are
+expensive to repeat.
+
+*Reversible* cheaply — the flag is opt-in and nothing else in the pipeline knows the
+provider is wrapped.

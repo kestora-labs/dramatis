@@ -22,6 +22,10 @@ web/dist/
 *.sqlite3
 data/
 
+# Run checkpoints hold every prompt sent, so they hold the corpus verbatim. Cassettes kept
+# deliberately as test fixtures are recorded from public-domain text and named otherwise.
+*.checkpoint.json
+
 # Scratch text at the root: excerpts to try a run against, drafts pasted in to look at.
 # Corpus text belongs under fixtures/ with its provenance, or outside the repo entirely.
 /*.txt

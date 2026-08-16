@@ -24,6 +24,7 @@ from dramatis.providers import (
 from dramatis.providers.cassette import (
     CASSETTE_VERSION,
     Cassette,
+    CheckpointProvider,
     RecordingProvider,
     ReplayProvider,
 )
@@ -237,6 +238,136 @@ class TestStaleRecordingsFailLoudly:
         )
         with pytest.raises(StaleRecordingError, match="Re-record"):
             Cassette.load(cassette_path)
+
+
+class TestCheckpointResumesARun:
+    """A run is dozens of calls that are discarded together if any later stage raises.
+
+    The property under test throughout: work already paid for is never paid for twice, and
+    work whose determining inputs changed is never served from a stale answer.
+    """
+
+    def test_a_recorded_call_is_served_without_reaching_the_provider(
+        self, cassette_path: Path
+    ) -> None:
+        RecordingProvider(ScriptedProvider(["done"]), cassette_path).complete(a_request())
+
+        # Scripted with nothing: reaching it at all raises rather than answering.
+        live = ScriptedProvider([])
+        resumed = CheckpointProvider(live, cassette_path)
+
+        assert resumed.complete(a_request()).text == "done"
+        assert live.call_count == 0
+
+    def test_an_unrecorded_call_reaches_the_provider_and_is_kept(self, cassette_path: Path) -> None:
+        live = ScriptedProvider(["fresh"])
+        CheckpointProvider(live, cassette_path).complete(a_request())
+
+        assert live.call_count == 1
+        assert ReplayProvider(cassette_path).complete(a_request()).text == "fresh"
+
+    def test_it_counts_what_it_served_and_what_it_fetched(self, cassette_path: Path) -> None:
+        provider = CheckpointProvider(ScriptedProvider(["one", "two"]), cassette_path)
+        provider.complete(a_request(prompt="first"))
+        provider.complete(a_request(prompt="second"))
+        provider.complete(a_request(prompt="first"))
+
+        assert (provider.fetched, provider.served) == (2, 1)
+
+    def test_a_second_run_pays_only_for_the_calls_the_first_did_not_make(
+        self, cassette_path: Path
+    ) -> None:
+        """The failure this bullet exists for: a run dies partway and is started again."""
+        first = ScriptedProvider(["w0", "w1"])
+        interrupted = CheckpointProvider(first, cassette_path)
+        interrupted.complete(a_request(prompt="window 0"))
+        interrupted.complete(a_request(prompt="window 1"))
+
+        second = ScriptedProvider(["w2"])
+        resumed = CheckpointProvider(second, cassette_path)
+        for prompt in ("window 0", "window 1", "window 2"):
+            resumed.complete(a_request(prompt=prompt))
+
+        assert second.call_count == 1, "a completed call was paid for twice"
+        assert (resumed.served, resumed.fetched) == (2, 1)
+
+    def test_it_saves_after_each_call_rather_than_at_the_end(self, cassette_path: Path) -> None:
+        """A checkpoint written when the run finishes is worthless to the run that did not."""
+        provider = CheckpointProvider(ScriptedProvider(["one", "two"]), cassette_path)
+
+        provider.complete(a_request(prompt="first"))
+        assert len(Cassette.load(cassette_path)) == 1, "nothing on disk after the first call"
+
+        provider.complete(a_request(prompt="second"))
+        assert len(Cassette.load(cassette_path)) == 2
+
+    @pytest.mark.parametrize(
+        "change",
+        [
+            {"prompt": "a different window"},
+            {"system": "an edited prompt"},
+            {"max_tokens": 32768},
+            {"effort": "max"},
+            {"output_schema": {"type": "object"}},
+        ],
+    )
+    def test_a_changed_request_is_fetched_afresh(
+        self, cassette_path: Path, change: dict[str, Any]
+    ) -> None:
+        """No invalidation logic of its own — the fingerprint already decides this (D7).
+
+        The case that matters in practice is `max_tokens`: raising one stage's budget must
+        re-run that stage and leave every other call served from disk.
+        """
+        RecordingProvider(ScriptedProvider(["stale"]), cassette_path).complete(a_request())
+
+        live = ScriptedProvider(["current"])
+        served = CheckpointProvider(live, cassette_path).complete(a_request(**change))
+
+        assert served.text == "current"
+        assert live.call_count == 1
+
+    def test_a_missing_checkpoint_is_started_rather_than_refused(self, tmp_path: Path) -> None:
+        """Unlike replay, a first run has nothing to resume and that is not an error."""
+        absent = tmp_path / "nested" / "run.checkpoint.json"
+        CheckpointProvider(ScriptedProvider(["first"]), absent).complete(a_request())
+
+        assert absent.is_file()
+
+    def test_recording_still_always_calls_live(self, cassette_path: Path) -> None:
+        """The two must not converge: a re-record that served its own stale answer is useless."""
+        RecordingProvider(ScriptedProvider(["old"]), cassette_path).complete(a_request())
+
+        live = ScriptedProvider(["new"])
+        assert RecordingProvider(live, cassette_path).complete(a_request()).text == "new"
+        assert live.call_count == 1
+
+
+class TestCassettesSurviveAnInterruptedWrite:
+    def test_saving_leaves_no_debris_beside_the_cassette(self, cassette_path: Path) -> None:
+        provider = CheckpointProvider(ScriptedProvider(["one", "two"]), cassette_path)
+        provider.complete(a_request(prompt="first"))
+        provider.complete(a_request(prompt="second"))
+
+        alongside = {path.name for path in cassette_path.parent.iterdir()}
+        assert alongside == {cassette_path.name}
+
+    def test_a_failed_write_leaves_the_previous_cassette_intact(
+        self, cassette_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The point of writing to one side and renaming: an interruption costs the new
+        call, never the calls already banked."""
+        provider = CheckpointProvider(ScriptedProvider(["one", "two"]), cassette_path)
+        provider.complete(a_request(prompt="first"))
+
+        def explode(*args: Any, **kwargs: Any) -> None:
+            raise OSError("disk full")
+
+        monkeypatch.setattr("dramatis.providers.cassette.os.replace", explode)
+        with pytest.raises(OSError):
+            provider.complete(a_request(prompt="second"))
+
+        assert len(Cassette.load(cassette_path)) == 1, "the banked call was lost"
 
 
 class TestCassettesLeakNothing:

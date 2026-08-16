@@ -329,3 +329,20 @@ def test_analyse_rejects_an_unknown_effort() -> None:
 
     with pytest.raises(SystemExit):
         _build_parser().parse_args(["analyse", "rev:abc", "--effort", "enormous"])
+
+
+def test_analyse_takes_no_checkpoint_unless_asked(tmp_path: Path) -> None:
+    """A checkpoint holds every prompt sent, so nothing is written beside a project
+    without being asked for."""
+    from dramatis.cli import _build_parser
+
+    assert _build_parser().parse_args(["analyse", "rev:abc"]).checkpoint is None
+
+
+def test_analyse_accepts_a_checkpoint_path(tmp_path: Path) -> None:
+    from dramatis.cli import _build_parser
+
+    checkpoint = tmp_path / "run.checkpoint.json"
+    parsed = _build_parser().parse_args(["analyse", "rev:abc", "--checkpoint", str(checkpoint)])
+
+    assert parsed.checkpoint == checkpoint

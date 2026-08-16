@@ -23,7 +23,7 @@ from pathlib import Path
 from dramatis import __version__
 from dramatis.ingest import IngestError, ingest_file
 from dramatis.locate import STORE_FILENAME, StoreNotFound, resolve_store
-from dramatis.providers import ProviderError
+from dramatis.providers import Provider, ProviderError
 from dramatis.schema import schema_version
 from dramatis.store import COLLECTIVES_ARE_ACTORS, Store
 from dramatis.validation import Issue, validate_file
@@ -294,11 +294,16 @@ def _run_analyse(args: argparse.Namespace) -> int:
     from dramatis.extraction import ExtractionError
     from dramatis.pipeline import PipelineError, analyse
     from dramatis.providers.anthropic_provider import AnthropicProvider
+    from dramatis.providers.cassette import CheckpointProvider
     from dramatis.resolution import ResolutionError
     from dramatis.snapshot import SnapshotError
     from dramatis.verification import VerificationError
 
-    provider = AnthropicProvider(model=args.model)
+    provider: Provider = AnthropicProvider(model=args.model)
+    checkpoint: CheckpointProvider | None = None
+    if args.checkpoint is not None:
+        checkpoint = CheckpointProvider(provider, args.checkpoint)
+        provider = checkpoint
 
     try:
         # Analysis reads a project; it never brings one into existence. A read that
@@ -326,6 +331,15 @@ def _run_analyse(args: argparse.Namespace) -> int:
 
     snapshot = result.snapshot
     document = snapshot.document
+
+    # stderr, and only when it actually resumed something: on a first run the checkpoint has
+    # nothing to say, and --json puts a parseable document on stdout that a note would spoil.
+    if checkpoint is not None and checkpoint.served:
+        print(
+            f"note: {checkpoint.served} model call(s) served from {args.checkpoint}, "
+            f"{checkpoint.fetched} made live.",
+            file=sys.stderr,
+        )
 
     if args.as_json:
         json.dump(document, sys.stdout, indent=2, ensure_ascii=False)
@@ -501,6 +515,17 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["low", "medium", "high", "xhigh", "max"],
         default="medium",
         help="how much work the model should spend per window (default: medium)",
+    )
+    analyse.add_argument(
+        "--checkpoint",
+        type=Path,
+        default=None,
+        help=(
+            "record every model call to this file and serve it back on a later run, so an "
+            "interrupted analysis resumes instead of paying for the calls again. The file "
+            "holds the text sent to the model — keep it beside the project, not in version "
+            "control."
+        ),
     )
     analyse.add_argument("--label", help="human-facing name for this snapshot")
     analyse.add_argument(

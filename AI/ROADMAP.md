@@ -256,6 +256,19 @@ text. No medium-specific vocabulary appears anywhere in the schema (grep for `ch
 > it. The phase reopens rather than deferring to Phase 2: every snapshot made before 1.12
 > is one whose prompt cannot be recovered.
 
+- [x] **1.15** — Checkpoint a run's model calls, so an interrupted analysis resumes instead
+      of paying for the work again. Opt-in `--checkpoint`, keyed by the request fingerprint
+      that already exists, written after every call rather than at the end. See **D21**.
+
+> **Why 1.15 exists.** The first run against the whole novel made sixty-three successful
+> extraction calls and then raised in the stage after them, and every one of those results
+> was discarded — they live in a list in memory until `save_snapshot` at the very end, so
+> the pipeline has no state between "nothing" and "a finished snapshot". The cause of that
+> particular failure is 1.16's business; this bullet is about the loss being total and
+> independent of the cause. Any error in any later stage destroys the same work, and the
+> longer the corpus the more there is to destroy — which makes this the bullet that has to
+> land first, because without it every attempt at the next one costs another full run.
+
 **Acceptance:** Ingesting fixture **A** end to end produces a snapshot that validates
 against the schema. Elizabeth Bennet and Fitzwilliam Darcy are present as single nodes
 with their aliases merged, joined by an edge among the graph's heaviest. Every stored

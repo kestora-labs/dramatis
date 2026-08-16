@@ -121,11 +121,15 @@ class AnthropicProvider:
     def __init__(
         self,
         *,
-        model: str = DEFAULT_MODEL,
+        model: str | None = None,
         client: Any | None = None,
         timeout: float | None = None,
     ) -> None:
-        self.model = model
+        # None means unspecified, not "send no model". Callers forward an optional setting
+        # they did not choose — an omitted --model, an absent config key — and a plain
+        # default in the signature would be overwritten by it, leaving the model empty in
+        # the request and the API to reject it.
+        self.model = model or DEFAULT_MODEL
         self._timeout = timeout
         self._client = client
 

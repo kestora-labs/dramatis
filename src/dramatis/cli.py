@@ -392,7 +392,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     analyse.add_argument("revision", metavar="REVISION_ID")
     analyse.add_argument("--store", type=Path, default=None, help=STORE_HELP)
-    analyse.add_argument("--model", default=None, help="model identifier to use")
+    analyse.add_argument(
+        "--model",
+        default=None,
+        help="model identifier to use. Without this, the provider's default is used.",
+    )
     analyse.add_argument(
         "--effort",
         choices=["low", "medium", "high", "xhigh", "max"],

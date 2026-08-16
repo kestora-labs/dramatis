@@ -156,6 +156,22 @@ class TestRequestShape:
 
         assert client.messages.create_calls[0]["model"] == "claude-haiku-4-5"
 
+    @pytest.mark.parametrize("unspecified", [None, ""])
+    def test_an_unspecified_model_means_the_default(self, unspecified: str | None) -> None:
+        """Callers forward an optional setting they did not choose — an omitted --model, an
+        absent config key. That must not reach the API as an empty model."""
+        client = FakeClient()
+        provider(client, model=unspecified).complete(ModelRequest(prompt="p"))
+
+        assert client.messages.create_calls[0]["model"] == DEFAULT_MODEL
+
+    def test_a_request_never_carries_an_empty_model(self) -> None:
+        client = FakeClient()
+        provider(client, model=None).complete(ModelRequest(prompt="p"))
+
+        sent = client.messages.create_calls[0]["model"]
+        assert isinstance(sent, str) and sent
+
 
 class TestStreaming:
     def test_small_requests_do_not_stream(self) -> None:

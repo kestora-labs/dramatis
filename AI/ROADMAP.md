@@ -451,6 +451,56 @@ desktop build and completes a first analysis without touching a terminal.
 
 ---
 
+### Phase 7 — The prompts as the object of study
+
+*Everything before this treats a prompt as an input. From here it is the thing being
+revised, and revising it has to be measurable by someone who did not write it.*
+
+- [ ] **7.1** — An evaluation harness: run a fixture through the pipeline and score the
+      result against its expectation floor, reporting which checks moved in which direction.
+      Non-zero exit on a regression. Nothing later in this phase means anything without it.
+- [ ] **7.2** — Frozen regression baselines, generated from a trusted run rather than
+      hand-written — the exact-match fixtures **D5** deferred until there was a pipeline
+      worth freezing against.
+- [ ] **7.3** — Recorded runs published as evaluation inputs, so the harness replays a real
+      corpus with no key and no network. A cassette of a full-novel run already exists as a
+      by-product of **1.15**; this makes it a fixture rather than a side effect.
+- [ ] **7.4** — The resolution prompt out of its module, under the same file-and-hash
+      discipline as extraction. *(Promoted from the Backlog. **D18** covers only the
+      extraction prompt, so a changed resolution prompt still silently voids comparability.)*
+- [ ] **7.5** — Per-project prompt overrides: a project may carry its own prompts, recorded
+      in the run's parameters and honoured by `require_comparable()`, so a house style is a
+      first-class thing to study rather than a local edit to an installed package.
+- [ ] **7.6** — A prompt changelog, and a contribution guide stating what evidence a prompt
+      change must carry to be reviewable at all.
+
+> **Why this phase is not like the others.** The rest of the roadmap finishes. This one does
+> not, and it is placed last because it depends on nearly all of it — the harness needs
+> fixtures **B**, **C**, and **D** to be real (Phases 3–4), and contributors need something
+> installable and citable to contribute *to* (Phase 6).
+>
+> The reason it is a phase at all rather than a habit is that prompt work without
+> measurement is taste, and taste does not merge. Every prompt question this project has
+> already hit came from a live run and was settled by argument: whether a collective is a
+> character (**D19**), whether an indefinite referent is one, and — still open — whether
+> `extract.md`'s *"or described in relation to each other"* should count Wickham describing
+> Lady Catherine as an interaction between them, which is the sole negative control fixture
+> **A** currently fails. Each of those is defensible either way. What decides them is a
+> corpus, a floor, and a number that moves.
+>
+> **1.15 is what makes this affordable.** Because every model call is fingerprinted and
+> recorded separately, a change to the resolution prompt replays sixty-three extraction calls
+> from disk and costs one live call — so an experiment costs cents rather than the price of a
+> whole run. Prompt refinement stops being something only the person paying the bill can do,
+> which is the precondition for anyone else joining in.
+
+**Acceptance:** A prompt change that improves one fixture and regresses another is reported
+as such before it is merged, by a command anyone can run. A contributor with no API key
+reproduces the evaluation from published recordings. Every prompt the pipeline sends is a
+file with a version and a hash, and no prompt reaches a model from inside a module.
+
+---
+
 ## Backlog
 
 Not scheduled. Do not build without promotion to a phase.
@@ -463,11 +513,6 @@ Not scheduled. Do not build without promotion to a phase.
 - **Connectors** — Google Drive, Scrivener, Obsidian, Markdown vaults, TEI.
 - **BookNLP interop** — ingest its output as an alternative extractor.
 - **Collaborative annotation** for editorial teams and seminar use.
-- **The resolution prompt should follow the extraction prompt out of its module** (1.12 moved
-  only the latter, which is what D18 covers). It is a real gap: a changed resolution prompt
-  changes results as much as a changed extraction prompt, and only the extraction one is
-  hashed. Left inline for now because a prompt that cannot change without a code change
-  cannot drift behind its version label, which is the failure D18 addresses.
 
 ---
 

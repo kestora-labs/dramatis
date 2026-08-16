@@ -226,7 +226,7 @@ text. No medium-specific vocabulary appears anywhere in the schema (grep for `ch
 - [x] **1.11** — Write down what a project is: one corpus studied over time, holding
       settings as well as data. Glossary entry, and a `settings` accessor over the existing
       `meta` table. See **D17**.
-- [ ] **1.12** — Move the extraction prompt to `src/dramatis/prompts/extract.md`, and record
+- [x] **1.12** — Move the extraction prompt to `src/dramatis/prompts/extract.md`, and record
       a hash of the prompt text actually sent in every run. `require_comparable()` refuses
       two snapshots whose prompt hashes differ, whatever their versions claim. See **D18**.
 - [ ] **1.13** — A project-level setting for whether a collective counts as an actor, asked
@@ -383,6 +383,11 @@ Not scheduled. Do not build without promotion to a phase.
 - **Connectors** — Google Drive, Scrivener, Obsidian, Markdown vaults, TEI.
 - **BookNLP interop** — ingest its output as an alternative extractor.
 - **Collaborative annotation** for editorial teams and seminar use.
+- **The resolution prompt should follow the extraction prompt out of its module** (1.12 moved
+  only the latter, which is what D18 covers). It is a real gap: a changed resolution prompt
+  changes results as much as a changed extraction prompt, and only the extraction one is
+  hashed. Left inline for now because a prompt that cannot change without a code change
+  cannot drift behind its version label, which is the failure D18 addresses.
 
 ---
 

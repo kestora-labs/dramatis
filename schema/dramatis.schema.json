@@ -188,6 +188,11 @@
         },
         "provider": { "type": "string" },
         "prompt_version": { "type": "string", "minLength": 1 },
+        "prompt_sha256": {
+          "description": "SHA-256 of the extraction prompt text as sent. prompt_version is a label a human maintains and may stay put across an edit; this is the prompt itself. Two runs whose hashes differ were given different instructions and are not comparable as analyses of the same text, whatever their versions claim.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
         "pipeline_version": { "type": "string" },
         "application_version": { "type": "string" },
         "parameters": {

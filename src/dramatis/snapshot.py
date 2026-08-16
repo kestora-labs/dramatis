@@ -46,6 +46,7 @@ class AnalysisRun:
 
     model: str
     prompt_version: str
+    prompt_sha256: str | None = None
     provider: str | None = None
     pipeline_version: str | None = None
     application_version: str | None = None
@@ -66,6 +67,10 @@ class AnalysisRun:
                 "model": self.model,
                 "provider": self.provider,
                 "prompt_version": self.prompt_version,
+                # The prompt itself, not the label somebody put on it: two runs under
+                # differently-worded instructions are different configurations even when
+                # both call themselves extract-v1.
+                "prompt_sha256": self.prompt_sha256,
                 "pipeline_version": self.pipeline_version,
                 "parameters": self.parameters,
                 "started_at": self.started_at,
@@ -81,6 +86,7 @@ class AnalysisRun:
             "parameters": dict(self.parameters),
         }
         for key in (
+            "prompt_sha256",
             "provider",
             "pipeline_version",
             "application_version",

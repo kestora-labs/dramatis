@@ -137,6 +137,52 @@ def require_comparable(*aggregations: Aggregation) -> str:
     return bases.pop() if bases else INTERACTION_PASSAGES
 
 
+def require_comparable_snapshots(*documents: dict[str, Any]) -> None:
+    """Refuse to compare stored snapshots that were not asked the same question.
+
+    Two snapshots are a reading of one corpus over time only if the analysis was held still
+    while the text moved (Invariant 4). A differing weight basis makes the numbers different
+    quantities; a differing prompt makes them answers to differently-worded questions. Either
+    way the comparison would look right and mean nothing.
+
+    Anything that diffs, ranks, or overlays two snapshots calls this first.
+    """
+    prompts: set[str] = set()
+    unknown = 0
+    for document in documents:
+        runs = document.get("analysis_runs") or []
+        digests = {run.get("prompt_sha256") for run in runs}
+        if not digests or None in digests:
+            unknown += 1
+        prompts.update(digest for digest in digests if digest)
+
+    if unknown:
+        raise ComparabilityError(
+            f"{unknown} of these snapshots record no prompt hash, so whether they were "
+            "produced under the same instructions is unknowable rather than merely unknown. "
+            "They predate the prompt being recorded; re-run the analysis to compare them."
+        )
+    if len(prompts) > 1:
+        raise ComparabilityError(
+            "these snapshots were produced under different extraction prompts "
+            f"({', '.join(sorted(short[:12] for short in prompts))}); they are answers to "
+            "differently-worded questions and are not comparable, whatever their "
+            "prompt_version claims"
+        )
+
+    bases = {
+        relation.get("weight_basis")
+        for document in documents
+        for relation in document.get("relations") or []
+        if relation.get("weight_basis")
+    }
+    if len(bases) > 1:
+        raise ComparabilityError(
+            "these snapshots were computed on different weight bases "
+            f"({', '.join(sorted(bases))}); their weights are not comparable"
+        )
+
+
 def _context(segmentation: Segmentation, position: int, quotation: str) -> tuple[str, str]:
     """Return the text either side of a quotation within its segment."""
     segment = segmentation.segments[position]

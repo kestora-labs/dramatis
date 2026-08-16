@@ -18,10 +18,11 @@ from dramatis.extraction import (
     DEFAULT_WINDOW_CHARACTERS,
     PROMPT_VERSION,
     RESPONSE_SCHEMA,
-    SYSTEM_PROMPT,
     ExtractionError,
     build_windows,
     extract,
+    prompt_sha256,
+    system_prompt,
 )
 from dramatis.providers import ModelRequest, ModelResponse, ProviderError
 from dramatis.providers.scripted import ScriptedProvider
@@ -148,12 +149,65 @@ class TestTheRequest:
 
     def test_the_system_prompt_demands_verbatim_quotation(self) -> None:
         """Phase 1.7 verifies this; asking for something checkable is what enables checking."""
-        assert "exactly, character for character" in SYSTEM_PROMPT.replace("\n", " ")
-        assert "paraphrase" in SYSTEM_PROMPT
+        assert "exactly, character for character" in system_prompt().replace("\n", " ")
+        assert "paraphrase" in system_prompt()
 
     def test_the_system_prompt_permits_an_empty_answer(self) -> None:
         """Without this, a passage with no characters invites invention."""
-        assert "empty lists" in SYSTEM_PROMPT
+        assert "empty lists" in system_prompt()
+
+
+class TestThePromptIsAFile:
+    """D18. The prompt ships as a file so it can be read and revised; the consequence is
+    that a run must record which prompt it actually used, not which one it claims."""
+
+    # Pinned at the move from a string literal in extraction.py. It changes only when the
+    # prompt text does — which is allowed, and is exactly what must not happen silently.
+    PROMPT_AT_THE_MOVE = "1e4357acd81c2d088d31ce5687b6a5b75cb249962aaf8c15857c07584e293498"
+
+    def test_moving_the_prompt_out_of_the_module_changed_no_byte_of_it(self) -> None:
+        assert prompt_sha256() == self.PROMPT_AT_THE_MOVE
+
+    def test_the_file_is_the_prompt_with_nothing_stripped_or_added(self) -> None:
+        """Anything trimmed, templated, or reflowed on the way out would make "the prompt
+        that was sent" and "the file on disk" two different strings with one hash."""
+        from importlib.resources import files
+
+        on_disk = files("dramatis.prompts").joinpath("extract.md").read_text(encoding="utf-8")
+
+        assert system_prompt() == on_disk
+
+    def test_the_prompt_sent_is_the_prompt_hashed(self) -> None:
+        """The hash is worthless if it covers a different string from the one that went."""
+        import hashlib
+
+        segmentation = segment_text(PASSAGE)
+        provider = ScriptedProvider([a_reply()])
+        extraction = extract(segmentation, provider)
+
+        sent = provider.calls[0].system
+        assert extraction.prompt_sha256 == hashlib.sha256(sent.encode("utf-8")).hexdigest()
+
+    def test_an_extraction_records_the_prompt_it_used(self) -> None:
+        extraction = extract(segment_text(PASSAGE), ScriptedProvider([a_reply()]))
+
+        assert extraction.prompt_sha256 == prompt_sha256()
+        assert extraction.prompt_version == PROMPT_VERSION
+
+    def test_a_missing_prompt_says_the_installation_is_broken(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """It is not a corpus problem or a credential problem, and saying so saves the
+        reader from looking where the fault is not."""
+        import dramatis.extraction as extraction_module
+
+        extraction_module.system_prompt.cache_clear()
+        monkeypatch.setattr(extraction_module, "PROMPT_FILE", "not-a-prompt.md")
+        try:
+            with pytest.raises(ExtractionError, match="missing from the installation"):
+                extraction_module.system_prompt()
+        finally:
+            extraction_module.system_prompt.cache_clear()
 
     def test_windows_are_read_independently(self) -> None:
         """No window sees another's text, so one window's error cannot propagate."""

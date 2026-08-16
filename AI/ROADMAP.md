@@ -190,7 +190,7 @@ text. No medium-specific vocabulary appears anywhere in the schema (grep for `ch
 
 - [x] **1.1** — Ingest a single plain-text file; store it with a content hash as a text
       revision.
-- [ ] **1.2** — Segment into an ordered path of typed segments, with types supplied by the
+- [x] **1.2** — Segment into an ordered path of typed segments, with types supplied by the
       caller and defaulting to a flat `section` when unknown.
 - [ ] **1.3** — Provider-agnostic model adapter, BYO key, with a recorded, replayable
       request log so tests never depend on a live API.

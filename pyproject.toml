@@ -22,6 +22,9 @@ dependencies = ["jsonschema>=4.21"]
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.6", "pyyaml>=6.0"]
 
+[project.scripts]
+dramatis = "dramatis.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/kestora-labs/dramatis"
 Source = "https://github.com/kestora-labs/dramatis"

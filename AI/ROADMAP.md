@@ -149,16 +149,16 @@ Chosen in Phase 0, revisable only with a `DECISIONS.md` entry.
 
 *No application. Establish the contract everything else depends on.*
 
-- [ ] **0.1** — Initialise the git repository and language scaffold: `pyproject.toml`,
+- [x] **0.1** — Initialise the git repository and language scaffold: `pyproject.toml`,
       `package.json`, formatter and linter config, test runners wired up and proven by one
       trivial passing test on each side.
-- [ ] **0.2** — CI running tests and linting on push, proven green.
-- [ ] **0.3** — `LICENSE` (Apache-2.0 for code), `docs/` under CC BY 4.0,
+- [x] **0.2** — CI running tests and linting on push, proven green.
+- [x] **0.3** — `LICENSE` (Apache-2.0 for code), `docs/` under CC BY 4.0,
       `CODE_OF_CONDUCT.md`, `CONTRIBUTING.md` stating these working rules, `DECISIONS.md`.
-- [ ] **0.4** — `schema/dramatis.schema.json` v0.1: collection, work, document, text
+- [x] **0.4** — `schema/dramatis.schema.json` v0.1: collection, work, document, text
       revision, analysis run, snapshot, character, relation, evidence, locator, selector,
       provenance, review status.
-- [ ] **0.5** — A validator: `dramatis validate <file.json>` passes or fails a document
+- [x] **0.5** — A validator: `dramatis validate <file.json>` passes or fails a document
       against the schema, with useful error messages.
 - [ ] **0.6** — Fixture **A** committed with a hand-authored, hand-verified expected graph.
 - [ ] **0.7** — Hand-authored skeleton fixtures for **B**, **C**, **D** — structure only,

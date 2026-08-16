@@ -192,7 +192,7 @@ text. No medium-specific vocabulary appears anywhere in the schema (grep for `ch
       revision.
 - [x] **1.2** — Segment into an ordered path of typed segments, with types supplied by the
       caller and defaulting to a flat `section` when unknown.
-- [ ] **1.3** — Provider-agnostic model adapter, BYO key, with a recorded, replayable
+- [x] **1.3** — Provider-agnostic model adapter, BYO key, with a recorded, replayable
       request log so tests never depend on a live API.
 - [ ] **1.4** — Map-reduce extraction over segments: characters, aliases, pairwise
       interactions, each with a verbatim supporting quotation.

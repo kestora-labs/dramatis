@@ -104,3 +104,43 @@ its content never changes. A revision takes a new path. Documents in the wild re
 version, and a version that quietly changed meaning would make them unreadable.
 
 *Not reversible* once a version has been published and third parties have recorded it.
+
+---
+
+## D7 — Two kinds of test double, and a fingerprint to keep recordings honest
+
+**Phase 1.3.** The suite uses **scripted** fakes for the bulk of provider testing, plus a
+small number of **recorded** real exchanges replayed from a cassette, behind a `live`
+pytest marker that is deselected by default and never runs in CI.
+
+Neither alone is sufficient. Scripted fakes never go stale but prove nothing about how a
+real provider behaves. Recordings prove the response shape but go stale *silently* — a
+prompt gets edited, the recording no longer answers the question the code asks, and the
+suite keeps passing against a stale answer.
+
+The fix for the second is a **request fingerprint**: a hash over every field that
+determines the response — prompt, system, max_tokens, effort, output schema. A replay
+whose cassette has no entry for that fingerprint raises rather than falling back, and the
+message names which fields differ from the nearest recording. `metadata` is excluded,
+since it labels a call for humans and never reaches the provider.
+
+*Reversible* — dropping the recorded layer would leave a working scripted suite.
+
+---
+
+## D8 — ModelRequest carries no sampling parameters
+
+**Phase 1.3.** No `temperature`, `top_p`, or `top_k` field on the request type, and the
+Anthropic provider never sends one.
+
+Current frontier models reject all three with a 400. A field that worked only against
+older models would be a trap: it would look available, be accepted by the type, and fail
+at the provider. Where those knobs were once used to trade determinism against variety,
+`effort` and the prompt do that work now.
+
+The consequence worth knowing: a caller wanting output variety cannot get it by raising
+temperature. That is a real capability loss, and the replacement is prompt-level — ask
+for several distinct options and choose among them.
+
+*Reversible* if a supported provider ever needs them, but they would belong in a
+provider-specific extension rather than the core request type.

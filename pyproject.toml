@@ -21,6 +21,7 @@ dependencies = ["jsonschema>=4.21"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.6", "pyyaml>=6.0"]
+anthropic = ["anthropic>=0.40"]
 
 [project.scripts]
 dramatis = "dramatis.cli:main"
@@ -42,4 +43,10 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q --strict-markers"
+# Live tests are deselected by default and never run in CI: they cost money, need a
+# credential, and would make the suite depend on a network. Run them deliberately with
+# `pytest -m live` when re-recording cassettes.
+addopts = "-q --strict-markers -m 'not live'"
+markers = [
+    "live: makes a real, billable provider call. Deselected by default; needs a credential.",
+]

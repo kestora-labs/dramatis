@@ -1,9 +1,22 @@
 # Prompts
 
-Every other file in this directory is a prompt, and **the whole file is sent verbatim**.
-There is no header, no front matter, and no comment syntax that gets stripped first —
-anything written here reaches the model, so this README exists to say so somewhere the model
-will never read.
+Every other file in this directory is prompt text, and **is sent verbatim**. There is no
+header, no front matter, and no comment syntax that gets stripped first — anything written
+here reaches the model, so this README exists to say so somewhere the model will never read.
+
+## What gets sent
+
+`extract.md` is a complete prompt on its own and describes the default: people only, no
+groups, no indefinite referents.
+
+`extract-collectives.md` is appended to it when a project sets `collectives_are_actors`
+(**D19**), and opens by naming the instruction it replaces. Two files rather than two whole
+prompts: copies of the ninety per cent they share would drift apart, and the difference
+between them is the thing a reader wants to see.
+
+So the text sent is a composition, and the hash a run records covers the composition rather
+than either file. A project's setting is therefore already inside the provenance guarantee —
+turning collectives on changes the hash, and snapshots either side stop comparing.
 
 ## Editing one
 

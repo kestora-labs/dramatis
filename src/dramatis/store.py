@@ -26,6 +26,22 @@ from typing import Any
 
 STORE_VERSION = 3
 
+COLLECTIVES_ARE_ACTORS = "collectives_are_actors"
+"""Project setting: whether a group may be a character in its own right (D19).
+
+The name lives here, with the other settings vocabulary, rather than in the module that
+acts on it. Ingest records it and analysis reads it; neither should have to import the
+other, and ingest in particular must not reach into a module that knows about providers.
+"""
+
+DEFAULT_COLLECTIVES_ARE_ACTORS = False
+"""Off unless a project says otherwise.
+
+A group reported beside its own members stands as their equal and counts their contacts a
+second time, which is what the first live run produced. Corpora where a faction really is
+an actor turn it on, and every run records which question was asked.
+"""
+
 SETTING_PREFIX = "setting:"
 """Namespace separating a project's settings from the store's own machinery.
 

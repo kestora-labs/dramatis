@@ -251,6 +251,16 @@ class TestStatus:
         assert main(["status"]) == 0
         assert "settings" not in capsys.readouterr().out
 
+    def test_it_reports_the_collectives_setting_once_answered(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        main(["ingest", str(a_text(tmp_path)), "--work", "A Work", "--collectives-as-actors"])
+        capsys.readouterr()
+
+        assert main(["status"]) == 0
+        assert "collectives_are_actors = true" in capsys.readouterr().out
+
     def test_json_output_is_machine_readable(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
     ) -> None:

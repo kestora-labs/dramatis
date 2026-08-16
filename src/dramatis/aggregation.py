@@ -147,6 +147,21 @@ def require_comparable_snapshots(*documents: dict[str, Any]) -> None:
 
     Anything that diffs, ranks, or overlays two snapshots calls this first.
     """
+    # Checked before the prompt hash, which a change of setting necessarily changes too.
+    # Both refusals would be correct; only this one names the decision somebody made
+    # rather than two digests they cannot read (D19).
+    collectives = {
+        run.get("parameters", {}).get("collectives_are_actors")
+        for document in documents
+        for run in document.get("analysis_runs") or []
+    }
+    if len(collectives - {None}) > 1:
+        raise ComparabilityError(
+            "these snapshots were analysed with collectives counted as actors in one and "
+            "not the other; a graph whose nodes are people and one whose nodes are people "
+            "and groups are not two readings of the same corpus"
+        )
+
     prompts: set[str] = set()
     unknown = 0
     for document in documents:

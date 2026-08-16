@@ -22,7 +22,13 @@ from dramatis.providers import Provider
 from dramatis.resolution import Resolution, resolve
 from dramatis.segmentation import SegmentationSpec, segment_text
 from dramatis.snapshot import AnalysisRun, build_document, save_snapshot
-from dramatis.store import Store, StoredSnapshot, utc_now
+from dramatis.store import (
+    COLLECTIVES_ARE_ACTORS,
+    DEFAULT_COLLECTIVES_ARE_ACTORS,
+    Store,
+    StoredSnapshot,
+    utc_now,
+)
 from dramatis.verification import (
     DEFAULT_MAX_REJECTION_RATE,
     Verification,
@@ -92,11 +98,19 @@ def analyse(
             segment_types=list(segmentation.segment_types),
         )
 
+    # The terms the project is studied under, not an argument to this call (D17, D19). Two
+    # analyses of one corpus must ask the same question unless somebody deliberately changed
+    # it, and a per-call argument would let them differ by accident.
+    collectives_are_actors = bool(
+        store.get_setting(COLLECTIVES_ARE_ACTORS, DEFAULT_COLLECTIVES_ARE_ACTORS)
+    )
+
     extraction = extract(
         segmentation,
         provider,
         target_characters=target_characters,
         effort=effort,
+        collectives_are_actors=collectives_are_actors,
     )
 
     verification = verify(extraction, segmentation, max_rejection_rate=max_rejection_rate)
@@ -125,6 +139,7 @@ def analyse(
         "segment_types": list(segmentation.segment_types),
         "resolution_prompt_version": resolution.prompt_version,
         "weight_basis": aggregation.weight_basis,
+        COLLECTIVES_ARE_ACTORS: collectives_are_actors,
     }
 
     run = AnalysisRun(

@@ -201,7 +201,7 @@ text. No medium-specific vocabulary appears anywhere in the schema (grep for `ch
 - [x] **1.7** — Verbatim verification gate (Invariant 3) rejecting failed extractions.
 - [x] **1.8** — Persist as a snapshot bound to `(text_revision, analysis_run)`, recording
       model ID, prompt version, and parameters.
-- [ ] **1.9** — `dramatis serve` renders the graph: edge width on a sqrt scale, node size
+- [x] **1.9** — `dramatis serve` renders the graph: edge width on a sqrt scale, node size
       by degree.
 
 **Acceptance:** Ingesting fixture **A** end to end produces a snapshot that validates

@@ -229,3 +229,45 @@ The graph is the same; the run is not. Both facts belong in the record, and the 
 asserts both rather than pretending the runs are interchangeable.
 
 *Reversible* — but only alongside a decision about what a snapshot identifier promises.
+
+---
+
+## D13 — The API serves the stored document, and binds to loopback
+
+**Phase 1.9.** `GET /api/snapshots/{id}` returns the archived document unchanged: no view
+model, no reshaping, no computed fields. The client does its own layout maths from the same
+document a reader would cite. This is D11's reasoning one layer out — a second
+representation of the same graph is a second place for the truth to live, and the two
+drift. A test asserts the served bytes equal the stored ones.
+
+The server binds `127.0.0.1` by default and warns when told otherwise. A project file holds
+unpublished work; serving it on every interface by default would put a manuscript on the
+office network because someone typed a command.
+
+`fastapi` and `uvicorn` are an optional extra, loaded separately: building the application
+needs only the framework, while listening on a port needs the server. Splitting them keeps
+tests free of a dependency that only a running process uses, and keeps Invariant 6 true —
+validating and analysing a project works with neither installed.
+
+*Reversible* cheaply.
+
+---
+
+## D14 — Square-root scaling for edge width and node size
+
+**Phase 1.9.** Both encodings map onto their range through a square root rather than
+linearly.
+
+Interaction counts in a novel are heavily skewed: two leads share dozens of passages while
+most pairs share one or two. Linear width renders the leads as ropes and collapses everyone
+else into indistinguishable hairlines, hiding exactly the mid-weight structure a reader is
+looking for. Under a square root a weight of 1 against a maximum of 100 occupies a tenth of
+the range instead of a hundredth.
+
+Node size uses the same curve so the two encodings read consistently — one compressing while
+the other did not would make a graph harder to read, not easier.
+
+Absolute versus relative scaling across snapshots is a separate question and belongs to
+phase 3.5, where comparing two graphs makes it matter.
+
+*Reversible* — the scale is one function with tests pinning its endpoints.

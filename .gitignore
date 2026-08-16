@@ -14,6 +14,7 @@ htmlcov/
 # Node
 node_modules/
 .vite/
+web/dist/
 
 # Dramatis local data — never commit a user's corpus or analyses
 *.dramatis

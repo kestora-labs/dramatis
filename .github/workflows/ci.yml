@@ -54,3 +54,5 @@ jobs:
         run: npm --prefix web run format:check
       - name: Test
         run: npm --prefix web test
+      - name: Build
+        run: npm --prefix web run build

@@ -180,6 +180,30 @@ def _run_analyse(args: argparse.Namespace) -> int:
     return 0
 
 
+# -- serve ----------------------------------------------------------------------------
+
+
+def _run_serve(args: argparse.Namespace) -> int:
+    from dramatis.server import DEFAULT_HOST, ServerError, serve
+
+    if args.host != DEFAULT_HOST:
+        print(
+            f"warning: serving on {args.host}, not just this machine. A project file holds "
+            "unpublished work — make sure that is what you intend.",
+            file=sys.stderr,
+        )
+
+    try:
+        print(f"Dramatis on http://{args.host}:{args.port}  (store: {args.store})")
+        serve(args.store, host=args.host, port=args.port)
+    except ServerError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:  # pragma: no cover - interactive
+        pass
+    return 0
+
+
 # -- parser ---------------------------------------------------------------------------
 
 
@@ -276,6 +300,28 @@ def _build_parser() -> argparse.ArgumentParser:
         help="write the snapshot document to stdout",
     )
     analyse.set_defaults(handler=_run_analyse)
+
+    serve = subcommands.add_parser(
+        "serve",
+        help="browse stored snapshots in a browser",
+        description=(
+            "Serve stored snapshots on this machine. Reads only: it never calls a model "
+            "and never leaves the loopback interface unless told to."
+        ),
+    )
+    serve.add_argument(
+        "--store",
+        type=Path,
+        default=DEFAULT_STORE,
+        help=f"project file to read (default: {DEFAULT_STORE})",
+    )
+    serve.add_argument("--port", type=int, default=7373, help="port to listen on (default: 7373)")
+    serve.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="interface to bind (default: 127.0.0.1, this machine only)",
+    )
+    serve.set_defaults(handler=_run_serve)
 
     return parser
 

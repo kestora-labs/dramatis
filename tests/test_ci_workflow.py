@@ -43,11 +43,13 @@ def test_python_job_lints_formats_and_tests(workflow: dict) -> None:
     assert "pytest" in commands
 
 
-def test_web_job_typechecks_formats_and_tests(workflow: dict) -> None:
+def test_web_job_typechecks_formats_tests_and_builds(workflow: dict) -> None:
     commands = _commands(workflow["jobs"]["web"])
     assert "run typecheck" in commands
     assert "run format:check" in commands
     assert "npm --prefix web test" in commands
+    # A client that no longer builds is broken even when its unit tests pass.
+    assert "run build" in commands
 
 
 def test_python_matrix_covers_the_supported_floor(workflow: dict) -> None:

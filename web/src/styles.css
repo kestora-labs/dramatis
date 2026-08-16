@@ -1,0 +1,101 @@
+:root {
+  --ink: #1a202c;
+  --muted: #4a5568;
+  --line: #e2e8f0;
+  --paper: #ffffff;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  color: var(--ink);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 22rem 1fr;
+  height: 100vh;
+}
+
+aside {
+  border-right: 1px solid var(--line);
+  padding: 1.25rem;
+  overflow-y: auto;
+}
+
+h1 {
+  font-size: 1.1rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 0 0 1rem;
+}
+
+label {
+  display: block;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+}
+
+select {
+  width: 100%;
+  padding: 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font: inherit;
+}
+
+dl {
+  margin: 1.5rem 0;
+  font-size: 0.85rem;
+}
+
+dt {
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 0.75rem;
+}
+
+dd {
+  margin: 0.15rem 0 0;
+}
+
+code {
+  font-size: 0.8em;
+  background: #f7fafc;
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+}
+
+.note {
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.5;
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+}
+
+.error {
+  background: #fff5f5;
+  border-left: 3px solid #c53030;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+}
+
+.graph {
+  height: 100%;
+  width: 100%;
+}

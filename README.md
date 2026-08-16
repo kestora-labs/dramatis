@@ -13,8 +13,28 @@ the relationships evolved as the work was written.
 
 A [Kestora Labs](https://github.com/kestora-labs) product.
 
-> **Status: pre-alpha.** Phase 0 of the build. There is no application yet — only the
-> schema and its validator. See [`AI/ROADMAP.md`](AI/ROADMAP.md).
+> **Status: pre-alpha.** Phase 1 of the build — the walking skeleton. A single text can be
+> ingested, analysed, and viewed as a graph. See [`AI/ROADMAP.md`](AI/ROADMAP.md).
+
+## Trying it
+
+```bash
+pip install -e ".[anthropic,serve]"
+export ANTHROPIC_API_KEY=...          # or run `ant auth login`
+
+dramatis ingest my-novel.txt --store project.sqlite --work "My Novel"
+dramatis analyse rev:abc123 --store project.sqlite
+
+npm ci --prefix web && npm --prefix web run build
+dramatis serve --store project.sqlite                 # http://127.0.0.1:7373
+```
+
+`analyse` is the only command that calls a model. `ingest`, `validate`, and `serve` never
+do, and work with no credential and no network.
+
+Edge width and node size are drawn on a square-root scale. Interaction counts are heavily
+skewed — two leads share dozens of passages while most pairs share one or two — and a
+linear scale renders the leads as ropes and everyone else as indistinguishable hairlines.
 
 ## Privacy
 

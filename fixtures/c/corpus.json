@@ -1,0 +1,64 @@
+{
+  "fixture": "c",
+  "shape": "reference material alongside serial narrative",
+  "work": "Kanto Relay",
+  "creator": "synthetic — written for this repository",
+  "segment_types": ["transmission", "paragraph"],
+
+  "conventions": {
+    "revision_convention": "YAML frontmatter field `revision`",
+    "status_vocabulary": ["settled", "provisional", "open"],
+    "narrative_unit": "transmission",
+    "note": "Chosen to be unlike any convention the code might special-case. Phase 4 must infer this structure and have the user confirm it. Nothing here may be hardcoded."
+  },
+
+  "documents": [
+    { "path": "series-bible/ada-mbeki.md", "role": "reference", "revision": 3, "status": "settled" },
+    { "path": "series-bible/tomas-reiner.md", "role": "reference", "revision": 2, "status": "provisional" },
+    { "path": "series-bible/the-quorum.md", "role": "reference", "revision": 1, "status": "open" },
+    { "path": "transmissions/t01.md", "role": "narrative", "index": 1, "stage": "drafted", "revision": 4 },
+    { "path": "transmissions/t02.md", "role": "narrative", "index": 2, "stage": "drafted", "revision": 2 },
+    { "path": "transmissions/t03.md", "role": "narrative", "index": 3, "stage": "outline", "revision": 1 }
+  ],
+
+  "characters_present": [
+    { "name": "Ada Mbeki", "declared": true, "enacted": true, "kind": "person" },
+    { "name": "Tomas Reiner", "declared": true, "enacted": false, "kind": "person" },
+    { "name": "The Quorum", "declared": true, "enacted": true, "kind": "collective" },
+    { "name": "Sister Yeong", "declared": false, "enacted": true, "kind": "person" }
+  ],
+
+  "provenance_disagreements": {
+    "declared_but_never_enacted": [
+      {
+        "between": ["Ada Mbeki", "Tomas Reiner"],
+        "why": "Given a whole section in two bible documents and marked load-bearing, yet the pair share no scene in any drafted transmission. The gap an author most wants surfaced.",
+        "expected_provenance": ["asserted"]
+      }
+    ],
+    "enacted_but_never_declared": [
+      {
+        "between": ["Ada Mbeki", "Sister Yeong"],
+        "why": "The most page time of any pair in the corpus, and the bible does not mention the relationship at all. Sister Yeong has no profile.",
+        "expected_provenance": ["observed"]
+      }
+    ],
+    "note": "A pipeline that merges the two provenance classes into a single graph loses both findings. Keeping them distinct is Invariant 5."
+  },
+
+  "kind_control": {
+    "character": "The Quorum",
+    "expected_kind": "collective",
+    "why": "It issues decisions and never speaks. A pipeline that renders it as a person, or drops it for having no dialogue, has lost something deliberate."
+  },
+
+  "alias_control": {
+    "character": "Ada Mbeki",
+    "aliases": ["Ada", "Relay Chief Mbeki", "M."],
+    "why": "'M.' appears only in the bible frontmatter and never in narrative. Aliases declared in reference material must still resolve when the narrative uses them."
+  },
+
+  "mixed_stages": {
+    "note": "t03 is an outline, not prose. Extraction must either handle it or exclude it deliberately — silently treating an outline as narrative inflates relations that were only ever planned."
+  }
+}

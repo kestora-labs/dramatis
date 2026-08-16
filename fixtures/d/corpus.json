@@ -1,0 +1,69 @@
+{
+  "fixture": "d",
+  "shape": "scholarly corpus — multiple editions with critical apparatus",
+  "work": "The Salt Road",
+  "creator": "synthetic — written for this repository",
+  "segment_types": ["part", "paragraph"],
+
+  "editions": [
+    { "id": "1889-first", "label": "First edition", "year": 1889, "authoritative": true },
+    { "id": "1903-revised", "label": "Revised edition", "year": 1903, "authoritative": true }
+  ],
+
+  "editions_are_not_revisions": {
+    "note": "Fixture B's drafts supersede one another; these editions do not. Both are authoritative, both citable, both current. A reader may legitimately want the graph of the 1889 text specifically.",
+    "consequence": "An edition must not be modelled as the newest text revision of a work. Both must remain addressable."
+  },
+
+  "documents": [
+    { "path": "editions/1889-first/text.md", "role": "narrative", "edition": "1889-first" },
+    { "path": "editions/1903-revised/text.md", "role": "narrative", "edition": "1903-revised" },
+    {
+      "path": "apparatus/commentary.md",
+      "role": "reference",
+      "third_party": true,
+      "licence": "CC BY 4.0",
+      "note": "Not by the author. Claims from it must be separately attributable and excludable on export."
+    }
+  ],
+
+  "characters_present": [
+    { "name": "Corin Ashe", "in_editions": ["1889-first", "1903-revised"] },
+    {
+      "name": "Hesper",
+      "in_editions": ["1889-first"],
+      "same_character_as": "Perdita",
+      "note": "Renamed in the revised edition. Same function, same lines."
+    },
+    {
+      "name": "Perdita",
+      "in_editions": ["1903-revised"],
+      "same_character_as": "Hesper"
+    },
+    { "name": "Marlow", "in_editions": ["1889-first", "1903-revised"] }
+  ],
+
+  "cross_edition_identity": {
+    "pairs": [["Hesper", "Perdita"]],
+    "requirement": "Resolve within an edition, map across editions. Merging the two into one node that belongs to neither loses the ability to answer 'who is in the 1889 text?', which is the question this shape exists to serve."
+  },
+
+  "mention_versus_presence": {
+    "character": "the magistrate",
+    "mentioned_in": ["editions/1889-first/text.md", "editions/1903-revised/text.md"],
+    "appears_in": [],
+    "why": "Named in both editions and present in neither. A graph placing him on the page has confused mention with presence."
+  },
+
+  "expected_relations": [
+    { "between": ["Corin Ashe", "Hesper"], "editions": ["1889-first"] },
+    { "between": ["Corin Ashe", "Perdita"], "editions": ["1903-revised"] },
+    { "between": ["Corin Ashe", "Marlow"], "editions": ["1889-first", "1903-revised"] },
+    { "between": ["Hesper", "Marlow"], "editions": ["1889-first"] },
+    { "between": ["Perdita", "Marlow"], "editions": ["1903-revised"] }
+  ],
+
+  "citation_requirement": {
+    "note": "Every claim drawn from this corpus must record which edition it came from, via the locator's document_id and the work's edition field. A claim that cannot name its edition is not citable."
+  }
+}

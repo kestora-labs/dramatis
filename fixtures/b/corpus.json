@@ -1,0 +1,54 @@
+{
+  "fixture": "b",
+  "shape": "multi-file draft",
+  "work": "The Lamplighter's Daughter",
+  "creator": "synthetic — written for this repository",
+  "segment_types": ["chapter", "paragraph"],
+
+  "revision_convention": {
+    "kind": "directory-per-revision",
+    "note": "One convention among many, stated here as data. No code may depend on it. Phase 4's structure inference must reach the same conclusion without reading this file."
+  },
+
+  "documents": [
+    { "path": "cast.md", "role": "reference", "title": "Cast" },
+    { "path": "draft-1/chapter-01.md", "role": "narrative", "revision": "draft-1", "index": 1 },
+    { "path": "draft-1/chapter-02.md", "role": "narrative", "revision": "draft-1", "index": 2 },
+    { "path": "draft-1/chapter-03.md", "role": "narrative", "revision": "draft-1", "index": 3 },
+    { "path": "draft-2/chapter-01.md", "role": "narrative", "revision": "draft-2", "index": 1 },
+    { "path": "draft-2/chapter-02.md", "role": "narrative", "revision": "draft-2", "index": 2 },
+    { "path": "draft-2/chapter-03.md", "role": "narrative", "revision": "draft-2", "index": 3 }
+  ],
+
+  "revisions": [
+    { "id": "draft-1", "label": "First draft", "order": 1 },
+    { "id": "draft-2", "label": "Second draft", "order": 2 }
+  ],
+
+  "expected_diff": {
+    "between": ["draft-1", "draft-2"],
+    "changed_documents": ["chapter-03.md"],
+    "unchanged_documents": ["chapter-01.md", "chapter-02.md", "cast.md"],
+    "relations_expected_to_weaken": [["Auber Vance", "Idris Kell"]],
+    "relations_expected_to_strengthen": [
+      ["Neve Vance", "Idris Kell"],
+      ["Auber Vance", "Neve Vance"]
+    ],
+    "why": "In draft-2 the confrontation at the bridge is relayed through Neve rather than fought directly by Auber. Everything else is held constant, so a diff reporting changes elsewhere is reporting noise.",
+    "attribution": "text_revision",
+    "note": "The attribution matters as much as the change. Both drafts must be analysed by the same run configuration, or the diff cannot distinguish a rewrite from a better prompt."
+  },
+
+  "characters_present": [
+    "Auber Vance",
+    "Neve Vance",
+    "Idris Kell",
+    "Mrs Ferrin"
+  ],
+
+  "minor_character_control": {
+    "character": "Mrs Ferrin",
+    "appears_in": ["chapter-02.md"],
+    "why": "One scene only. A pipeline that promotes her to a principal is over-weighting dialogue volume in a single passage."
+  }
+}

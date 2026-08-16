@@ -166,7 +166,7 @@ Chosen in Phase 0, revisable only with a `DECISIONS.md` entry.
       must be present as single nodes with aliases merged, relations that must exist, and
       pairs that must *not* be joined. Plus deliberately malformed documents for the
       negative case.
-- [ ] **0.7** — Hand-authored skeleton fixtures for **B**, **C**, **D** — structure only,
+- [x] **0.7** — Hand-authored skeleton fixtures for **B**, **C**, **D** — structure only,
       no analysis.
 
 > **On the expectation floor.** An earlier draft of 0.6 asked for a hand-verified expected

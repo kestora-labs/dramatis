@@ -26,6 +26,15 @@ from typing import Any
 
 STORE_VERSION = 3
 
+SETTING_PREFIX = "setting:"
+"""Namespace separating a project's settings from the store's own machinery.
+
+Both live in ``meta``, and they are different kinds of thing. ``store_version`` is a fact
+about the file that nobody decided; a setting is a decision somebody made about how this
+corpus is studied (D17). Listing them together would present the first as though it had
+been chosen, and would let a future internal key collide with a setting somebody relies on.
+"""
+
 DDL = """
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
@@ -215,6 +224,19 @@ def form_key(form: str) -> str:
     return " ".join(form.split()).casefold()
 
 
+def _setting_key(name: str) -> str:
+    """Namespace a setting name, refusing one that would escape the namespace.
+
+    A name arriving with the prefix already on it is a caller who thinks they are passing a
+    raw key; honouring it would write ``setting:setting:x``, and refusing costs nothing.
+    """
+    if not name or name.strip() != name:
+        raise ValueError(f"a setting name must be non-empty and unpadded, not {name!r}")
+    if name.startswith(SETTING_PREFIX):
+        raise ValueError(f"pass the setting name, not the stored key: {name!r}")
+    return SETTING_PREFIX + name
+
+
 class Store:
     """A Dramatis project file."""
 
@@ -270,6 +292,47 @@ class Store:
             "SELECT value FROM meta WHERE key = 'store_version'"
         ).fetchone()
         return int(row["value"])
+
+    # -- settings -----------------------------------------------------------------------
+    #
+    # A project holds the terms it is studied under, not only its data (D17). Values are
+    # JSON so a setting reads back as the type it was written as: a switch stored as the
+    # string "false" is true, and would be a quiet way to analyse a corpus the wrong way
+    # round.
+    #
+    # Whether a particular setting may be changed after it is set is policy, and belongs
+    # with the setting rather than here. This layer stores and retrieves.
+
+    def get_setting(self, name: str, default: Any = None) -> Any:
+        """Return a setting, or ``default`` when it has never been set.
+
+        A project predating a setting is indistinguishable here from one that never chose;
+        a caller that needs to tell them apart should ask ``settings()`` for what is
+        actually recorded, and a run that needs to be reproducible must record the value it
+        used rather than the default it might get next time.
+        """
+        row = self.connection.execute(
+            "SELECT value FROM meta WHERE key = ?", (_setting_key(name),)
+        ).fetchone()
+        if row is None:
+            return default
+        return json.loads(row["value"])
+
+    def set_setting(self, name: str, value: Any) -> None:
+        with self.transaction() as connection:
+            connection.execute(
+                "INSERT INTO meta (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (_setting_key(name), json.dumps(value)),
+            )
+
+    def settings(self) -> dict[str, Any]:
+        """Every setting this project records, without the store's own keys."""
+        rows = self.connection.execute(
+            "SELECT key, value FROM meta WHERE key LIKE ? ORDER BY key",
+            (SETTING_PREFIX + "%",),
+        ).fetchall()
+        return {row["key"][len(SETTING_PREFIX) :]: json.loads(row["value"]) for row in rows}
 
     # -- writes -------------------------------------------------------------------------
 

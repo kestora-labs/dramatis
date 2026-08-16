@@ -89,3 +89,39 @@ def test_code_of_conduct_is_attributed() -> None:
     coc = _prose("CODE_OF_CONDUCT.md")
     assert "Contributor Covenant" in coc
     assert "version 2.1" in coc
+
+
+# -- packaging -----------------------------------------------------------------------------
+
+
+def _wheel_packages() -> list[str]:
+    config = tomllib.loads(_read("pyproject.toml"))
+    return config["tool"]["hatch"]["build"]["targets"]["wheel"]["packages"]
+
+
+def test_the_extraction_prompt_sits_inside_what_the_wheel_ships() -> None:
+    """D18. A prompt outside the shipped package is present in a checkout and absent from
+    an install, so `analyse` works for whoever wrote it and fails for everyone else.
+
+    This asserts the coupling rather than building a wheel, which CI should not have to do.
+    The built artefact was checked by hand once, at the move: `dramatis/prompts/extract.md`
+    is in it and `AI/` is not.
+    """
+    prompt = ROOT / "src" / "dramatis" / "prompts" / "extract.md"
+    assert prompt.is_file(), "the extraction prompt is missing"
+
+    shipped = [(ROOT / package).resolve() for package in _wheel_packages()]
+    assert any(directory in prompt.resolve().parents for directory in shipped), (
+        f"{prompt} is outside every packaged directory {_wheel_packages()}; it will not install"
+    )
+
+
+def test_nothing_excludes_the_prompt_from_the_build() -> None:
+    """Hatchling ships every file under a packaged directory unless told otherwise. If a
+    future exclusion arrives, this fails and asks whether the prompt survived it."""
+    wheel = tomllib.loads(_read("pyproject.toml"))["tool"]["hatch"]["build"]["targets"]["wheel"]
+
+    assert not set(wheel) - {"packages"}, (
+        f"the wheel target grew {sorted(set(wheel) - {'packages'})}; confirm the prompt and "
+        "any other non-Python package data are still included"
+    )

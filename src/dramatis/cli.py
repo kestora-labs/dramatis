@@ -149,6 +149,7 @@ def _run_status(args: argparse.Namespace) -> int:
             "store_version": store.store_version,
             "collections": [{"id": entry["id"], "name": entry["name"]} for entry in collections],
             "characters": store.count("characters"),
+            "settings": store.settings(),
             "works": [],
         }
         for work in works:
@@ -182,6 +183,17 @@ def _run_status(args: argparse.Namespace) -> int:
 
     print(f"project     {summary['store']}")
     print(f"            {summary['located']}")
+
+    # Before the ingested-anything check: settings are properties of the study, and a
+    # project may hold them before it holds a word of text.
+    settings = summary["settings"]
+    if settings:
+        print()
+        for position, (name, value) in enumerate(settings.items()):
+            label = "settings" if position == 0 else ""
+            # Rendered as JSON so a value reads as the type it is — `true` is the switch,
+            # `"true"` is somebody's typo.
+            print(f"{label:<12}{name} = {json.dumps(value, ensure_ascii=False)}")
 
     if not summary["collections"]:
         print("\nnothing ingested yet.")

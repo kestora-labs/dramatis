@@ -18,7 +18,10 @@ verifies it — but asking for something checkable is what makes checking possib
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
+from functools import cache
+from importlib.resources import files
 from typing import Any
 
 from dramatis.providers import ModelRequest, ModelResponse, Provider, ProviderError
@@ -26,42 +29,48 @@ from dramatis.segmentation import Segmentation
 from dramatis.text import normalise_whitespace
 
 PROMPT_VERSION = "extract-v1"
-"""Bumped whenever the prompt or schema below changes.
+"""A label a human maintains, bumped when the prompt or schema changes meaningfully.
 
-Recorded in every snapshot. Two graphs produced under different prompt versions are not
-comparable as an analysis of the same text, and Invariant 4 exists so a reader can tell.
+It answers "what changed, in words a person can use". It cannot answer "was this the same
+prompt", because a file anyone may edit can differ while the label stays put — that is what
+``prompt_sha256`` is for (D18). Both are recorded because they answer different questions.
 """
+
+PROMPT_PACKAGE = "dramatis.prompts"
+PROMPT_FILE = "extract.md"
 
 DEFAULT_WINDOW_CHARACTERS = 12_000
 """Target window size. Windows never split a segment, so a single long segment may exceed
 this; the budget is a target, not a ceiling."""
 
-SYSTEM_PROMPT = """\
-You extract characters and their interactions from a passage of a narrative work.
 
-You will be given one passage. Report only what this passage shows. Do not use knowledge \
-of the work from anywhere else, and do not infer events that happen outside the passage.
+@cache
+def system_prompt() -> str:
+    """The extraction prompt, read from the package.
 
-Report a character for every person, group, or entity that appears or is referred to in \
-the passage. Use the fullest form of the name the passage itself gives. If the passage \
-refers to the same character by more than one form — a first name, a title, an epithet, \
-an assumed name — list the other forms as aliases. Do not merge two characters because \
-they seem similar, and do not split one character because the passage names them \
-differently in different places.
+    The file's bytes are the prompt's bytes: nothing is stripped, templated, or reflowed, so
+    "the prompt that was sent" and "the file on disk" are the same string and the hash of one
+    is the hash of the other. It ships inside the package rather than beside the repository
+    because the wheel contains only ``src/dramatis`` — a prompt anywhere else would be present
+    in a checkout and missing from an install.
+    """
+    try:
+        return files(PROMPT_PACKAGE).joinpath(PROMPT_FILE).read_text(encoding="utf-8")
+    except (FileNotFoundError, ModuleNotFoundError) as error:
+        raise ExtractionError(
+            f"the extraction prompt {PROMPT_PACKAGE}.{PROMPT_FILE} is missing from the "
+            "installation. Reinstall dramatis; analysis cannot proceed without it."
+        ) from error
 
-Report an interaction for every pair of characters the passage shows in contact: speaking \
-to each other, acting on each other, or described in relation to each other. Two \
-characters merely appearing in the same passage is not an interaction.
 
-Every interaction must carry a quotation. Copy the quotation from the passage exactly, \
-character for character, including its punctuation. Do not paraphrase it, do not \
-normalise it, do not correct it, and do not join text from two places into one quotation. \
-Choose the shortest span that shows the interaction. A quotation that does not appear in \
-the passage verbatim will be rejected, and the interaction discarded with it.
+def prompt_sha256() -> str:
+    """Hash of the prompt text actually sent.
 
-If the passage shows no characters or no interactions, return empty lists. Returning \
-nothing is a correct answer for a passage that contains nothing.\
-"""
+    Recorded in every run so that two analyses claiming one ``PROMPT_VERSION`` but produced
+    under different instructions are known to be incomparable rather than assumed alike.
+    """
+    return hashlib.sha256(system_prompt().encode("utf-8")).hexdigest()
+
 
 RESPONSE_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -160,6 +169,7 @@ class Extraction:
     prompt_version: str
     model: str
     provider: str
+    prompt_sha256: str = ""
     input_tokens: int = 0
     output_tokens: int = 0
     warnings: tuple[str, ...] = field(default_factory=tuple)
@@ -333,7 +343,7 @@ def extract(
 
         request = ModelRequest(
             prompt=text,
-            system=SYSTEM_PROMPT,
+            system=system_prompt(),
             max_tokens=max_tokens,
             effort=effort,
             output_schema=RESPONSE_SCHEMA,
@@ -379,6 +389,7 @@ def extract(
     return Extraction(
         findings=tuple(findings),
         prompt_version=PROMPT_VERSION,
+        prompt_sha256=prompt_sha256(),
         model=model,
         provider=provider_name or getattr(provider, "name", "unknown"),
         input_tokens=input_tokens,

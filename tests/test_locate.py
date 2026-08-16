@@ -211,6 +211,46 @@ class TestStatus:
         assert main(["status"]) == 0
         assert "nothing ingested yet" in capsys.readouterr().out
 
+    def test_it_reports_the_settings_the_project_is_studied_under(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        main(["ingest", str(a_text(tmp_path)), "--work", "A Work"])
+        with Store(tmp_path / STORE_FILENAME) as store:
+            store.set_setting("collectives_are_actors", True)
+        capsys.readouterr()
+
+        assert main(["status"]) == 0
+        out = capsys.readouterr().out
+
+        assert "collectives_are_actors = true" in out, "a setting must read as its own type"
+
+    def test_settings_are_shown_before_anything_is_ingested(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    ) -> None:
+        """A project may hold the terms of the study before it holds a word of text, and
+        `status` returns early once it has said nothing is ingested."""
+        a_project(tmp_path)
+        with Store(tmp_path / STORE_FILENAME) as store:
+            store.set_setting("collectives_are_actors", False)
+        monkeypatch.chdir(tmp_path)
+
+        assert main(["status"]) == 0
+        out = capsys.readouterr().out
+
+        assert "collectives_are_actors = false" in out
+        assert "nothing ingested yet" in out
+
+    def test_a_project_with_no_settings_says_nothing_about_them(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        main(["ingest", str(a_text(tmp_path)), "--work", "A Work"])
+        capsys.readouterr()
+
+        assert main(["status"]) == 0
+        assert "settings" not in capsys.readouterr().out
+
     def test_json_output_is_machine_readable(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
     ) -> None:
@@ -226,6 +266,7 @@ class TestStatus:
         assert payload["works"][0]["revisions"] == 1
         assert payload["works"][0]["snapshots"] == []
         assert payload["store_version"] >= 3
+        assert payload["settings"] == {}
 
     def test_it_counts_the_registry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture

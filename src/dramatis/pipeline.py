@@ -131,6 +131,7 @@ def analyse(
         model=extraction.model or "none",
         provider=extraction.provider or None,
         prompt_version=extraction.prompt_version,
+        prompt_sha256=extraction.prompt_sha256 or None,
         pipeline_version=PIPELINE_VERSION,
         application_version=__version__,
         parameters=parameters,

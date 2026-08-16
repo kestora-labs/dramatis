@@ -342,6 +342,62 @@ class TestTheWholePipeline:
         assert run["application_version"]
         assert run["parameters"]["weight_basis"] == "interaction_passages"
 
+    def test_the_snapshot_records_the_prompt_itself_not_only_its_label(self, project) -> None:
+        """D18. A field that never reaches the stored document is a guarantee in name only,
+        and this is the field two snapshots are compared on."""
+        from dramatis.aggregation import require_comparable_snapshots
+        from dramatis.extraction import prompt_sha256
+
+        store, ingested = project
+        provider = ScriptedProvider([one_window_reply(), a_grouping()])
+
+        document = analyse(store, ingested.revision_id, provider).snapshot.document
+
+        assert document["analysis_runs"][0]["prompt_sha256"] == prompt_sha256()
+        require_comparable_snapshots(document, document)
+
+    def test_two_runs_under_one_prompt_stay_comparable(self, project) -> None:
+        from dramatis.aggregation import require_comparable_snapshots
+
+        store, ingested = project
+
+        first = analyse(
+            store, ingested.revision_id, ScriptedProvider([one_window_reply(), a_grouping()])
+        ).snapshot.document
+        second = analyse(
+            store, ingested.revision_id, ScriptedProvider([one_window_reply(), a_grouping()])
+        ).snapshot.document
+
+        require_comparable_snapshots(first, second)
+
+    def test_editing_the_prompt_makes_the_next_snapshot_incomparable(
+        self, project, monkeypatch
+    ) -> None:
+        """The acceptance criterion for 1.12, and the reason the hash exists: the version
+        label is unchanged throughout, so nothing but the hash could catch this."""
+        from dramatis.aggregation import ComparabilityError, require_comparable_snapshots
+        from dramatis.extraction import system_prompt
+
+        store, ingested = project
+        before = analyse(
+            store, ingested.revision_id, ScriptedProvider([one_window_reply(), a_grouping()])
+        ).snapshot.document
+
+        edited = system_prompt() + "\nAlso: prefer the shortest quotation available.\n"
+        monkeypatch.setattr("dramatis.extraction.system_prompt", lambda: edited)
+
+        after = analyse(
+            store, ingested.revision_id, ScriptedProvider([one_window_reply(), a_grouping()])
+        ).snapshot.document
+
+        assert (
+            before["analysis_runs"][0]["prompt_version"]
+            == after["analysis_runs"][0]["prompt_version"]
+        ), "the labels agree, which is exactly the case the hash is for"
+
+        with pytest.raises(ComparabilityError, match="different extraction prompts"):
+            require_comparable_snapshots(before, after)
+
     def test_an_invented_quotation_never_reaches_the_snapshot(self, project) -> None:
         store, ingested = project
         reply = a_reply(

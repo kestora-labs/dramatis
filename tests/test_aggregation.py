@@ -18,6 +18,7 @@ from dramatis.aggregation import (
     ComparabilityError,
     aggregate,
     require_comparable,
+    require_comparable_snapshots,
 )
 from dramatis.extraction import (
     Extraction,
@@ -214,6 +215,62 @@ class TestComparability:
 
     def test_no_aggregations_yields_the_default(self) -> None:
         assert require_comparable() == INTERACTION_PASSAGES
+
+
+class TestSnapshotsAreComparableOnlyUnderOnePrompt:
+    """D18. Two snapshots are a reading of one corpus over time only if the analysis was
+    held still while the text moved. A changed prompt moves the analysis."""
+
+    @staticmethod
+    def _snapshot(digest: str | None, basis: str = INTERACTION_PASSAGES) -> dict:
+        run = {"id": "run:x", "model": "m", "prompt_version": "extract-v1"}
+        if digest is not None:
+            run["prompt_sha256"] = digest
+        return {
+            "analysis_runs": [run],
+            "relations": [{"id": "rel:a--b", "weight": 1, "weight_basis": basis}],
+        }
+
+    A = "a" * 64
+    B = "b" * 64
+
+    def test_one_prompt_compares(self) -> None:
+        require_comparable_snapshots(self._snapshot(self.A), self._snapshot(self.A))
+
+    def test_a_changed_prompt_refuses_even_under_one_version(self) -> None:
+        """Both say extract-v1. The label is what a human maintains; the hash is the fact."""
+        with pytest.raises(ComparabilityError, match="different extraction prompts"):
+            require_comparable_snapshots(self._snapshot(self.A), self._snapshot(self.B))
+
+    def test_the_refusal_names_the_prompt_as_the_reason(self) -> None:
+        with pytest.raises(ComparabilityError) as failure:
+            require_comparable_snapshots(self._snapshot(self.A), self._snapshot(self.B))
+
+        message = str(failure.value)
+        assert "prompt" in message
+        assert "prompt_version" in message, "a reader will check the versions and see them agree"
+
+    def test_a_snapshot_predating_the_hash_is_unknowable_not_merely_different(self) -> None:
+        """Treating an absent hash as "no prompt" would let it compare equal to another
+        absent one, which asserts a sameness nothing recorded."""
+        with pytest.raises(ComparabilityError, match="unknowable"):
+            require_comparable_snapshots(self._snapshot(None), self._snapshot(self.A))
+
+    def test_two_snapshots_that_both_predate_the_hash_still_refuse(self) -> None:
+        with pytest.raises(ComparabilityError, match="unknowable"):
+            require_comparable_snapshots(self._snapshot(None), self._snapshot(None))
+
+    def test_a_differing_weight_basis_still_refuses(self) -> None:
+        with pytest.raises(ComparabilityError, match="weight bases"):
+            require_comparable_snapshots(
+                self._snapshot(self.A), self._snapshot(self.A, basis="words_exchanged")
+            )
+
+    def test_a_hand_written_document_is_refused_rather_than_assumed_alike(self) -> None:
+        """A document assembled by hand records no prompt because no prompt produced it.
+        That is the unknowable case, not the comparable one."""
+        with pytest.raises(ComparabilityError, match="unknowable"):
+            require_comparable_snapshots(minimal_document(), minimal_document())
 
 
 # -- what gets dropped -----------------------------------------------------------------------

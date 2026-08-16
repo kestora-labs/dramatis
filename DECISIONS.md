@@ -322,3 +322,105 @@ unexpected because a file happened to sit in a parent directory would be worse t
 problem discovery solves.
 
 *Reversible* cheaply.
+
+---
+
+## D17 — A project is the study of one corpus over time, and holds settings
+
+**Phase 1.11.** A project is a single narrative corpus studied over time: one collection,
+many text revisions, many analysis runs, many snapshots. It is the unit of continuity —
+what makes this month's graph and last month's the same enquiry rather than two unrelated
+pictures.
+
+D15 and D16 were derived from this without it ever being written down. Both read as
+arbitrary restrictions on their own — why may a store hold only one collection, why may a
+read not create a file — and read as consequences once the definition is stated. That is
+reason enough to state it, but it also settles something new.
+
+A project holds **settings**, not only data. If a project is a study, then how the study is
+conducted is a property of the project, and two snapshots within one project should differ
+because the text changed or the run changed, not because a question was silently put a
+different way. This is what makes a project-level analysis setting coherent rather than an
+arbitrary place to hang a flag, and D19 depends on it.
+
+Settings live in the existing `meta` key/value table, which has held only `store_version`
+until now.
+
+*Reversible* only in the sense that a definition can be rewritten. D15, D16, and D19 rest
+on it.
+
+---
+
+## D18 — The extraction prompt is a file that ships, and every run records the prompt it used
+
+**Phase 1.12.** `SYSTEM_PROMPT` moves out of [`extraction.py`](src/dramatis/extraction.py)
+into `src/dramatis/prompts/extract.md`. A prompt is prose, it is the thing most often
+revised, and it is what a reviewer of an analysis most needs to read. None of that is
+served by a triple-quoted string in the middle of a module.
+
+It goes in the package rather than in `AI/`, because
+`[tool.hatch.build.targets.wheel] packages = ["src/dramatis"]` ships only the package: a
+prompt in `AI/` would be present in a checkout and absent from an install, so `analyse`
+would work here and fail for everyone else. The package directory ships with the wheel and
+with a desktop build later, and the file is still plain Markdown that can be opened and
+edited. This also separates the **shipped default** from a **per-project override**, which
+`AI/` would have conflated — the place a user edits a prompt is their project, not the
+installed package.
+
+The harder half. `PROMPT_VERSION` is recorded in every snapshot so two graphs can be
+compared, and Invariant 4 exists so a reader can attribute a change to the text or to the
+analysis. Once the prompt is an editable file, that string is a *claim*: edit the file and
+two snapshots both say `extract-v1` while having been produced by different instructions.
+A comparison that silently lies is worse than one not offered.
+
+So every run records a hash of the prompt text actually sent. The version stays the human
+label; the hash is the fact. `require_comparable()` refuses two snapshots whose prompt
+hashes differ even when their versions match. Editing the prompt remains allowed and
+becomes visible, which is the trade worth making — the alternative, forbidding edits, would
+protect the guarantee by removing the reason to want it.
+
+*Reversible* cheaply in code. Not retrospectively: snapshots made before the hash existed
+carry no record of their prompt, so their comparability with later ones is unknowable
+rather than merely unknown. There is one such snapshot, from the first live run.
+
+---
+
+## D19 — Whether a collective is an actor is a project setting
+
+**Phase 1.13.** The first live run made "the Netherfield party", "Mr. Bingley's sisters",
+and "Mrs. Long's nieces" into characters. The prompt instructs it to: *"Report a character
+for every person, group, or entity."* This is not a defect in the model's reading.
+
+It is not obviously a defect in the prompt either. In some works a collective genuinely is
+an actor — a family, a crew, a House, a faction — and corpus **C** is where that bites, a
+character having a relationship with a body rather than a person. Excluding groups outright
+would make that unrepresentable, and Invariant 1 argues against assuming every corpus is
+about individuals.
+
+What is a defect is the two coexisting as peers. Miss Bingley and Mrs Hurst were separately
+nodes, so "Mr. Bingley's sisters" double-counted them and produced one edge where the text
+supports two. Nothing recorded that one contains the others. That is not a group being
+represented; it is a group being confused with a person.
+
+So the corpus decides, and the project records the decision: a setting fixed when a project
+is first created, stored in `meta`, copied into each run's `parameters` beside `effort`, and
+part of comparability. Two snapshots analysed under different settings are not two readings
+of one corpus — they are answers to different questions, and `require_comparable()` should
+say so. Changing the setting later is permitted and reports that it breaks comparison with
+existing snapshots, rather than being forbidden or allowed in silence.
+
+The question is asked on the first ingest into a new project, because D16 leaves no separate
+initialisation step to hang it on.
+
+Two alternatives were rejected. **Dropping collectives** is one clause in the prompt and
+costs corpus C. **Extracting them and folding them into their members afterwards** is
+attractive because it needs no setting, but it rewrites what the passage said, which
+contradicts the `observed` provenance the claim carries.
+
+Separately, and not governed by this setting: "another young man" is not a collective but an
+indefinite referent — a phrase standing in for someone unidentified. It is excluded under
+every setting, because an unnamed someone is not an identity to hold a relationship. That is
+a prompt correction, not a configuration question.
+
+*Reversible* in code. Not in data: snapshots already made under one setting stay as they
+are, which is the point of recording it.

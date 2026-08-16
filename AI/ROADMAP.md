@@ -288,11 +288,7 @@ text. No medium-specific vocabulary appears anywhere in the schema (grep for `ch
       genuinely different characters is still dropped. The Jane/Elizabeth case is the
       constraint, not an afterthought: it must keep failing closed. See **D23**.
 
-- [ ] **1.18** — Stop a form that only one character ever claimed from becoming an alias on
-      that basis alone. Conflict cannot see an uncontested vocative, so something other than
-      conflict has to.
-
-> **Why 1.17–1.18 exist.** The first full-novel run resolved cleanly and then showed the
+> **Why 1.17 exists.** The first full-novel run resolved cleanly and then showed the
 > alias guard failing in both directions at once.
 >
 > **Over-dropping.** `_resolve_aliases` runs before grouping, so its notion of "claimed by
@@ -312,12 +308,12 @@ text. No medium-specific vocabulary appears anywhere in the schema (grep for `ch
 > one, because after grouping the claimants are two *different* characters and the conflict
 > is real. Getting 1.17 right means `lizzy` survives and `miss bennet` does not.
 >
-> **Under-dropping.** `you` and `madam` are registered aliases of Elizabeth Bennet, because
-> only one character ever claimed them and conflict detection has nothing to compare. `she`
-> was caught only because two characters happened to claim it. This is the standing cost of
-> choosing conflict over a stop-list, and it needs a signal that is not another list —
-> whether the form appears capitalised in the passage, or is addressed rather than referred
-> to, or something better.
+> **Under-dropping, and why it is not here.** `you` and `madam` are registered aliases of
+> Elizabeth Bennet, because only one character ever claimed them and conflict detection has
+> nothing to compare; `she` was caught only because two characters happened to claim it.
+> That was drafted as 1.18 and has moved to **7.7**. It is not a filter anyone can write
+> without first deciding what a name is, and that decision is a prompt question settled by
+> measurement rather than a guard settled by argument. See **D24**.
 
 **Acceptance:** Ingesting fixture **A** end to end produces a snapshot that validates
 against the schema. Elizabeth Bennet and Fitzwilliam Darcy are present as single nodes
@@ -473,6 +469,10 @@ revised, and revising it has to be measurable by someone who did not write it.*
       first-class thing to study rather than a local edit to an installed package.
 - [ ] **7.6** — A prompt changelog, and a contribution guide stating what evidence a prompt
       change must carry to be reviewable at all.
+- [ ] **7.7** — Settle what counts as a name rather than a way of referring to someone, and
+      stop the second kind entering the registry. `you`, `madam`, `my dear aunt`, and
+      `my sister` are aliases of real characters today. *(Drafted as 1.18 and deferred here
+      by **D24**; depends on 7.1, since the whole question is which rule scores better.)*
 
 > **Why this phase is not like the others.** The rest of the roadmap finishes. This one does
 > not, and it is placed last because it depends on nearly all of it — the harness needs

@@ -614,3 +614,54 @@ rather than creating it, and is an argument for doing 1.18 rather than against h
 this.
 
 *Reversible* cheaply: the ordering is one call site and the guard's signature.
+
+---
+
+## D24 — Deciding what counts as a name is deferred to Phase 7, and Phase 1 closes without it
+
+**Phase 1.17 / 7.7.** The bullet drafted as 1.18 — stop a form only one character ever
+claimed from becoming an alias on that basis alone — moves to **7.7**. Phase 1 is complete
+with it gone.
+
+The defect is real and unchanged: `you` and `madam` are aliases of Elizabeth Bennet, and
+D23 added `my dear aunt` and `my sister` to the list by removing the spurious contest that
+had been suppressing them. Conflict detection cannot see them, because only one character
+ever claimed them, and `she` was caught only by the accident of two characters claiming it.
+
+**Why it cannot be finished here.** Every available fix is a decision about what a name is,
+and none of them is a guard:
+
+- Filtering in resolution means a rule for which strings look like names. That is a
+  stop-list wearing a hat, and D7 rejected stop-lists for a reason that has not weakened —
+  it encodes one language's conventions into the core, and Invariant 1 argues against
+  assuming the shape of a corpus.
+- Fixing it in `extract.md` means telling the model not to offer possessives and vocatives
+  as aliases. That is the likeliest right answer, and it is a prompt change.
+- Fixing it in the resolution prompt is the same kind of change one layer along.
+
+Two of the three are prompt edits, and the third is the one D7 already argued against. A
+prompt edit cannot be justified by argument: `my sister` said by Darcy really does denote
+Georgiana, so a rule excluding it is trading a true alias for a class of false ones, and
+whether that trade is worth making is a number, not an opinion. Phase 7 exists to produce
+that number, and 7.7 depends on 7.1 for exactly this reason. Landing a guess in Phase 1
+would mean choosing between three defensible options with no way to tell which won, and
+then treating the guess as settled.
+
+**What this costs.** Phase 1's acceptance names Elizabeth and Darcy as single nodes with
+their aliases merged, and after D23 they are. Fixture A's floor is stricter than that
+acceptance and two of its checks still fail: `Miss Bennet` is its own node rather than
+Jane's alias, and the Lady Catherine / Wickham negative control has an edge. Both are the
+same shape as 7.7 — the first needs the convention that the eldest unmarried daughter is
+"Miss ⟨surname⟩", which resolution never sees the text to learn; the second is
+`extract.md`'s *"or described in relation to each other"* doing what it says. Neither is a
+defect in code that Phase 1 could close, and D5 already warned that this floor states more
+than any single phase promises.
+
+So Phase 1 closes on its own acceptance, with three known gaps recorded and homed rather
+than silently carried. The alternative — holding the phase open until the fixture floor is
+clean — would keep it open until the prompts are finished, which is Phase 7, which is the
+phase that does not finish.
+
+*Reversible* — promoting 7.7 back into Phase 1 is a bullet move, though doing so would
+re-open a phase whose acceptance is met in order to work on something its acceptance does
+not mention.

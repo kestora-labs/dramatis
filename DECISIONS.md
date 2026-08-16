@@ -54,8 +54,11 @@ runs exactly the commands that pass locally on both toolchains — asserted by t
 `tests/test_ci_workflow.py`. The bullet is complete in substance; the green badge follows
 the first push.
 
-**Outstanding:** confirm a green run on `kestora-labs/dramatis`. The organisation exists as
-of 2026-08-16, so only the first push remains.
+**Resolved 2026-08-16.** `kestora-labs/dramatis` was created public and `main` pushed. The
+first CI run passed on all four jobs — Python 3.11, 3.12, 3.13, and Web — so the workflow is
+now proven by an actual run rather than by local equivalence. The tests in
+`tests/test_ci_workflow.py` remain, since they are what stops the workflow drifting away
+from the commands contributors run.
 
 ---
 

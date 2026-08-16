@@ -283,6 +283,42 @@ text. No medium-specific vocabulary appears anywhere in the schema (grep for `ch
 > `{"groups":[{...`" — which reads as a model emitting nonsense and sends the reader to the
 > prompt rather than to the budget.
 
+- [ ] **1.17** — Disambiguate aliases *after* grouping rather than before, so a form claimed
+      by several surface variants of one character is kept, while a form claimed by several
+      genuinely different characters is still dropped. The Jane/Elizabeth case is the
+      constraint, not an afterthought: it must keep failing closed.
+
+- [ ] **1.18** — Stop a form that only one character ever claimed from becoming an alias on
+      that basis alone. Conflict cannot see an uncontested vocative, so something other than
+      conflict has to.
+
+> **Why 1.17–1.18 exist.** The first full-novel run resolved cleanly and then showed the
+> alias guard failing in both directions at once.
+>
+> **Over-dropping.** `_resolve_aliases` runs before grouping, so its notion of "claimed by
+> more than one character" is really "claimed by more than one *surface form*" — and
+> deciding which surface forms are one character is exactly what the step after it does. So
+> `lizzy`, seen thirty-six times, was dropped as ambiguous because it was claimed by
+> "Elizabeth", "Elizabeth Bennet", and "Eliza Bennet"; `mr. darcy`, `charles`, and
+> `my aunt philips` went the same way. The mechanism is right and D7's "conflict, not
+> vocabulary" reasoning stands — it correctly dropped `my father` (four different fathers),
+> `your sister`, and `she`. Only the ordering is wrong.
+>
+> **The constraint that makes 1.17 non-trivial.** `miss bennet` was claimed by "Elizabeth",
+> "Elizabeth Bennet", *and* "Jane" — extraction proposed it as Elizabeth's alias in some
+> windows, which is precisely the error `fixtures/a/README.md` calls this fixture's chief
+> value. The guard dropped it as contested, and that accident is the only reason the trap
+> did not spring. A fix that resolves claimants to characters first must still refuse this
+> one, because after grouping the claimants are two *different* characters and the conflict
+> is real. Getting 1.17 right means `lizzy` survives and `miss bennet` does not.
+>
+> **Under-dropping.** `you` and `madam` are registered aliases of Elizabeth Bennet, because
+> only one character ever claimed them and conflict detection has nothing to compare. `she`
+> was caught only because two characters happened to claim it. This is the standing cost of
+> choosing conflict over a stop-list, and it needs a signal that is not another list —
+> whether the form appears capitalised in the passage, or is addressed rather than referred
+> to, or something better.
+
 **Acceptance:** Ingesting fixture **A** end to end produces a snapshot that validates
 against the schema. Elizabeth Bennet and Fitzwilliam Darcy are present as single nodes
 with their aliases merged, joined by an edge among the graph's heaviest. Every stored

@@ -144,3 +144,44 @@ for several distinct options and choose among them.
 
 *Reversible* if a supported provider ever needs them, but they would belong in a
 provider-specific extension rather than the core request type.
+
+---
+
+## D9 — Verification rejects per interaction, and refuses the run past a threshold
+
+**Phase 1.7.** Invariant 3 says extractions failing the verbatim check are rejected rather
+than warned about, but does not say what "an extraction" is. Both readings are bad on their
+own: rejecting the whole run for one invented quotation discards sixty windows of correct
+work, while rejecting only the offending interaction lets a badly misbehaving run produce a
+thin graph that looks plausible and leaves no trace of what went missing.
+
+So: rejection is per interaction, plus a circuit breaker. Above a quarter of quotations
+unverifiable — over a minimum sample, since a rate computed from two is noise — the whole
+extraction is refused with the numbers in the message. The threshold is a smoke alarm, not
+a quality target: accurate quoting fails a few percent at most, usually on typography.
+
+*Reversible* — the threshold is a parameter, and setting it to 1.0 restores pure
+per-interaction rejection.
+
+---
+
+## D10 — A wrong locator is not an invented quotation
+
+**Phase 1.7.** Verification separates two failures that look alike. A quotation that is not
+in the work is an invention and is rejected. A quotation that *is* in the work but carries
+the wrong passage is sound evidence with a bad address: it is relocated and counted, not
+rejected.
+
+The first implementation also rejected quotations spanning a paragraph break, on the
+grounds that no single passage contains them. Running it against fixture A disproved that —
+two of its hand-verified quotations run from narration into the speech that answers it, and
+both are verbatim in the work. Refusing them would have been the gate lying about what it
+checks. They are now attributed to the passage where the span begins.
+
+Verification therefore searches the leaf passages joined, rather than the raw text, so a
+match yields the passage directly and a quotation is checked against exactly the material a
+locator can name. A quotation inside the work but outside every addressable passage — front
+matter, say — is rejected with its own reason, since no honest locator exists for it.
+
+*Not reversible* in spirit: rejecting real evidence for a locator fault is the failure this
+entry exists to prevent.

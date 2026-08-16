@@ -198,7 +198,7 @@ text. No medium-specific vocabulary appears anywhere in the schema (grep for `ch
       interactions, each with a verbatim supporting quotation.
 - [x] **1.5** — Alias resolution into a per-collection character registry with stable IDs.
 - [x] **1.6** — Aggregate to relations with a `weight` and a declared `weight_basis`.
-- [ ] **1.7** — Verbatim verification gate (Invariant 3) rejecting failed extractions.
+- [x] **1.7** — Verbatim verification gate (Invariant 3) rejecting failed extractions.
 - [ ] **1.8** — Persist as a snapshot bound to `(text_revision, analysis_run)`, recording
       model ID, prompt version, and parameters.
 - [ ] **1.9** — `dramatis serve` renders the graph: edge width on a sqrt scale, node size

@@ -203,12 +203,33 @@ text. No medium-specific vocabulary appears anywhere in the schema (grep for `ch
       model ID, prompt version, and parameters.
 - [x] **1.9** — `dramatis serve` renders the graph: edge width on a sqrt scale, node size
       by degree.
+- [ ] **1.10** — Make the project file findable and knowable. Four parts: a `status`
+      command reporting the resolved store path, its works, revisions, snapshots and
+      registry size; **no silent creation on read paths** — `analyse` and `serve` pointed
+      at a non-existent store say so rather than conjuring an empty one; project discovery
+      that walks up from the working directory, as `git` finds `.git`; and a recorded
+      decision on whether a store holds one work or one collection, with the CLI made to
+      reflect it.
+
+> **Why 1.10 exists.** The store defaults to `dramatis.sqlite` relative to the working
+> directory. Run a command from the wrong folder and nothing fails — a second, empty
+> project is created and the command reports success. For the intended user, who keeps
+> several properties in separate folders, that is a quiet way to end up with two
+> half-populated stores that both look plausible. Phase 1 proved the pipeline; this makes
+> the thing the pipeline writes to something a person can locate and identify.
+>
+> The fourth part is a decision, not a feature. The character registry is scoped to a
+> **collection**, so a shared universe spanning several works wants one store holding all
+> of them. The code already allows it; nothing in the CLI suggests it, and a default
+> filename sitting in the current directory actively implies one project per folder.
 
 **Acceptance:** Ingesting fixture **A** end to end produces a snapshot that validates
 against the schema. Elizabeth Bennet and Fitzwilliam Darcy are present as single nodes
 with their aliases merged, joined by an edge among the graph's heaviest. Every stored
 quotation is found verbatim in the source. The whole run is reproducible from the
-recorded run metadata.
+recorded run metadata. A command run against a store that does not exist says so, and
+`dramatis status` answers "which project am I in, and what is in it" without opening the
+file by hand.
 
 ---
 

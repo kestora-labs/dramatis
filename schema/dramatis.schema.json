@@ -1,0 +1,385 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kestora.dev/dramatis/schema/0.1/dramatis.schema.json",
+  "title": "Dramatis snapshot document",
+  "description": "A character relationship graph derived from a narrative work, bound to the exact text and the exact analysis that produced it. Deliberately medium-neutral: nothing in this schema names a unit of any particular form. Structural position is an ordered path of typed segments whose types are supplied per work.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "collection",
+    "works",
+    "text_revisions",
+    "analysis_runs",
+    "snapshot",
+    "characters",
+    "relations"
+  ],
+  "properties": {
+    "schema_version": {
+      "description": "Semantic version of this schema that the document was written against.",
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "collection": { "$ref": "#/$defs/collection" },
+    "works": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/work" }
+    },
+    "documents": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/document" },
+      "default": []
+    },
+    "text_revisions": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/textRevision" }
+    },
+    "analysis_runs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/analysisRun" }
+    },
+    "snapshot": { "$ref": "#/$defs/snapshot" },
+    "characters": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/character" }
+    },
+    "relations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/relation" }
+    }
+  },
+
+  "$defs": {
+    "id": {
+      "description": "A stable identifier, unique within its kind in this document.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+
+    "unitInterval": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+
+    "provenance": {
+      "description": "Where a claim came from. 'observed' means the narrative text enacts it. 'asserted' means the author stated it in reference material outside the narrative. 'human' means a person entered or corrected it in the application.",
+      "type": "string",
+      "enum": ["observed", "asserted", "human"]
+    },
+
+    "reviewStatus": {
+      "description": "How far a claim has travelled through human review. Corrections must survive re-analysis.",
+      "type": "string",
+      "enum": ["proposed", "accepted", "corrected", "rejected"],
+      "default": "proposed"
+    },
+
+    "collection": {
+      "description": "A set of related works sharing one character registry. A standalone work is a collection of one.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" }
+      }
+    },
+
+    "work": {
+      "description": "A single narrative body within a collection.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "type": "string", "minLength": 1 },
+        "creator": { "type": "string" },
+        "language": {
+          "description": "BCP 47 language tag.",
+          "type": "string"
+        },
+        "segment_types": {
+          "description": "Ordered vocabulary of structural segment types used by locators in this work, outermost first. Supplied as data, never fixed by this schema, so any medium can be addressed. Example: [\"part\", \"section\", \"paragraph\"].",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "edition": {
+          "description": "Free-text edition identifier, for collections holding several editions of one work.",
+          "type": "string"
+        }
+      }
+    },
+
+    "document": {
+      "description": "One file within a corpus. A work may be a single document or many.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "work_id", "role"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "work_id": { "$ref": "#/$defs/id" },
+        "title": { "type": "string" },
+        "path": {
+          "description": "Path relative to the corpus root, if the document came from a file.",
+          "type": "string"
+        },
+        "role": {
+          "description": "'narrative' documents enact the story and yield observed relations. 'reference' documents describe it from outside and yield asserted relations.",
+          "type": "string",
+          "enum": ["narrative", "reference"]
+        },
+        "media_type": { "type": "string" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+
+    "textRevision": {
+      "description": "An immutable, content-hashed state of a work's text. One of the two axes a snapshot is bound to.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "work_id", "sha256"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "work_id": { "$ref": "#/$defs/id" },
+        "label": {
+          "description": "Human-facing name for this revision, supplied by the user.",
+          "type": "string"
+        },
+        "sha256": {
+          "description": "Hash over the normalised concatenation of the revision's documents. Two revisions with the same hash are the same text.",
+          "$ref": "#/$defs/sha256"
+        },
+        "document_ids": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "created_at": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+
+    "analysisRun": {
+      "description": "One execution of the extraction pipeline. The second axis a snapshot is bound to. Recorded in full so a result can be cited and reproduced.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "model", "prompt_version"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "model": {
+          "description": "Provider-qualified model identifier as reported by the provider.",
+          "type": "string",
+          "minLength": 1
+        },
+        "provider": { "type": "string" },
+        "prompt_version": { "type": "string", "minLength": 1 },
+        "pipeline_version": { "type": "string" },
+        "application_version": { "type": "string" },
+        "parameters": {
+          "description": "Sampling and decoding parameters as sent to the provider.",
+          "type": "object",
+          "additionalProperties": true
+        },
+        "started_at": { "$ref": "#/$defs/timestamp" },
+        "completed_at": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+
+    "snapshot": {
+      "description": "A graph produced by binding one analysis run to one text revision. Immutable. The two axes stay separate so a change can always be attributed to the text or to the analysis, never ambiguously to both.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "work_id", "text_revision_id", "analysis_run_id"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "work_id": { "$ref": "#/$defs/id" },
+        "text_revision_id": { "$ref": "#/$defs/id" },
+        "analysis_run_id": { "$ref": "#/$defs/id" },
+        "label": { "type": "string" },
+        "created_at": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+
+    "segment": {
+      "description": "One step in a structural path. 'type' is drawn from the work's declared segment_types and is data, not an enumeration.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string", "minLength": 1 },
+        "index": {
+          "description": "Ordinal position among siblings, counting from 1.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "label": {
+          "description": "The segment's own name, where it has one.",
+          "type": "string"
+        }
+      }
+    },
+
+    "locator": {
+      "description": "A position within a work, expressed as an ordered path of typed segments from outermost to innermost.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "document_id": { "$ref": "#/$defs/id" },
+        "path": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/segment" }
+        }
+      }
+    },
+
+    "selector": {
+      "description": "A quotation with surrounding context, after the W3C Web Annotation TextQuoteSelector. Lets evidence be re-anchored once the underlying text has been edited, which character offsets alone cannot survive.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exact"],
+      "properties": {
+        "exact": {
+          "description": "The quoted text, verbatim. Must be found in the source or the extraction is rejected.",
+          "type": "string",
+          "minLength": 1
+        },
+        "prefix": { "type": "string" },
+        "suffix": { "type": "string" },
+        "start": {
+          "description": "Character offset into the revision's normalised text. A hint for fast lookup, never the authority.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "end": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "evidence": {
+      "description": "A passage supporting a claim, anchored so it survives revision of the text.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["locator", "selector"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "locator": { "$ref": "#/$defs/locator" },
+        "selector": { "$ref": "#/$defs/selector" },
+        "note": {
+          "description": "What this passage shows about the claim.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Free-text characterisation, e.g. \"dialogue\", \"narration\", \"stated-by-author\".",
+          "type": "string"
+        }
+      }
+    },
+
+    "character": {
+      "description": "A node. Identity is stable across snapshots so that graphs may be diffed.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "provenance"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": {
+          "description": "The form used to label the node.",
+          "type": "string",
+          "minLength": 1
+        },
+        "aliases": {
+          "description": "Other surface forms resolved to this character, including assumed names and titles.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": []
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["person", "collective", "entity", "unknown"],
+          "default": "person"
+        },
+        "salience": {
+          "description": "Relative prominence within the work, 0 to 1.",
+          "$ref": "#/$defs/unitInterval"
+        },
+        "confidence": { "$ref": "#/$defs/unitInterval" },
+        "provenance": { "$ref": "#/$defs/provenance" },
+        "review_status": { "$ref": "#/$defs/reviewStatus" },
+        "attributes": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "notes": { "type": "string" },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence" },
+          "default": []
+        }
+      }
+    },
+
+    "relation": {
+      "description": "An edge. Weight drives rendered thickness and is meaningful only against its declared basis.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source", "target", "weight", "weight_basis", "provenance"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "source": { "$ref": "#/$defs/id" },
+        "target": { "$ref": "#/$defs/id" },
+        "directed": {
+          "description": "False for mutual relations. True where the relation runs one way, such as one character concealing something from another.",
+          "type": "boolean",
+          "default": false
+        },
+        "weight": {
+          "description": "Closeness of the relationship, on the scale named by weight_basis.",
+          "type": "number",
+          "minimum": 0
+        },
+        "weight_basis": {
+          "description": "What the weight counts. Weights are comparable only within a shared basis, so this is required and must be carried through every export.",
+          "type": "string",
+          "minLength": 1
+        },
+        "types": {
+          "description": "Free-text relation types, e.g. \"kinship\", \"antagonism\", \"alliance\". Deliberately not enumerated: no closed vocabulary survives contact with real narrative.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": []
+        },
+        "valence": {
+          "description": "Affective tone, -1 hostile to +1 affectionate.",
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1
+        },
+        "confidence": { "$ref": "#/$defs/unitInterval" },
+        "provenance": { "$ref": "#/$defs/provenance" },
+        "review_status": { "$ref": "#/$defs/reviewStatus" },
+        "notes": { "type": "string" },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence" },
+          "default": []
+        }
+      }
+    }
+  }
+}

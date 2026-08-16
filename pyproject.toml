@@ -17,7 +17,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Topic :: Text Processing :: Linguistic",
 ]
-dependencies = []
+dependencies = ["jsonschema>=4.21"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.6", "pyyaml>=6.0"]

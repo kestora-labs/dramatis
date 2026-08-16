@@ -1,0 +1,29 @@
+meta {
+  name: Filter snapshots by work
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/snapshots?work_id={{workId}}
+  body: none
+  auth: none
+}
+
+params:query {
+  work_id: {{workId}}
+}
+
+assert {
+  res.status: eq 200
+}
+
+tests {
+  test("returns only that work's snapshots", function () {
+    const body = res.getBody();
+    expect(body).to.be.an("array");
+    for (const snapshot of body) {
+      expect(snapshot.work_id).to.equal(bru.getVar("workId"));
+    }
+  });
+}

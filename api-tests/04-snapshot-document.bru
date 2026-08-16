@@ -1,0 +1,136 @@
+meta {
+  name: Get snapshot document
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/snapshots/{{snapshotId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+tests {
+  test("returns a whole schema-shaped document", function () {
+    const body = res.getBody();
+    for (const key of [
+      "schema_version",
+      "collection",
+      "works",
+      "text_revisions",
+      "analysis_runs",
+      "snapshot",
+      "characters",
+      "relations",
+    ]) {
+      expect(body, `missing ${key}`).to.have.property(key);
+    }
+  });
+
+  test("the snapshot binds a text revision and an analysis run", function () {
+    const snapshot = res.getBody().snapshot;
+    expect(snapshot.text_revision_id).to.match(/^rev:/);
+    expect(snapshot.analysis_run_id).to.match(/^run:/);
+  });
+
+  test("both axes resolve to records carried in the document", function () {
+    // The document is meant to stand alone. An axis pointing at something not included
+    // would make it uninterpretable away from the store that produced it.
+    const body = res.getBody();
+    const revisions = body.text_revisions.map((r) => r.id);
+    const runs = body.analysis_runs.map((r) => r.id);
+    expect(revisions).to.include(body.snapshot.text_revision_id);
+    expect(runs).to.include(body.snapshot.analysis_run_id);
+  });
+
+  test("the analysis run records what a citation needs", function () {
+    const run = res.getBody().analysis_runs[0];
+    expect(run.model, "model").to.be.a("string").and.not.be.empty;
+    expect(run.prompt_version, "prompt version").to.be.a("string").and.not.be.empty;
+  });
+
+  test("every relation endpoint is a character in the document", function () {
+    // An edge drawn against a character that is not present renders as a phantom node.
+    const body = res.getBody();
+    const known = new Set(body.characters.map((c) => c.id));
+    for (const relation of body.relations) {
+      expect(known.has(relation.source), `${relation.id} source ${relation.source}`).to.be.true;
+      expect(known.has(relation.target), `${relation.id} target ${relation.target}`).to.be.true;
+    }
+  });
+
+  test("no relation joins a character to itself", function () {
+    for (const relation of res.getBody().relations) {
+      expect(relation.source, relation.id).to.not.equal(relation.target);
+    }
+  });
+
+  test("every weight declares the basis it was computed on", function () {
+    // Weights are comparable only within a shared basis. One travelling without its basis
+    // is a number that looks meaningful and is not.
+    for (const relation of res.getBody().relations) {
+      expect(relation.weight, `${relation.id} weight`).to.be.a("number").and.be.at.least(0);
+      expect(relation.weight_basis, `${relation.id} basis`).to.be.a("string").and.not.be.empty;
+    }
+  });
+
+  test("all relations share one weight basis", function () {
+    const bases = new Set(res.getBody().relations.map((r) => r.weight_basis));
+    expect(bases.size, `mixed bases: ${[...bases].join(", ")}`).to.be.at.most(1);
+  });
+
+  test("every character and relation records where its claim came from", function () {
+    const allowed = ["observed", "asserted", "human"];
+    for (const item of [...res.getBody().characters, ...res.getBody().relations]) {
+      expect(allowed, `provenance of ${item.id}`).to.include(item.provenance);
+    }
+  });
+
+  test("every piece of evidence carries a quotation and a locator", function () {
+    for (const relation of res.getBody().relations) {
+      for (const piece of relation.evidence ?? []) {
+        expect(piece.selector.exact, `quotation on ${relation.id}`).to.be.a("string").and.not.be
+          .empty;
+        expect(piece.locator.path, `locator on ${relation.id}`).to.be.an("array").that.is.not
+          .empty;
+      }
+    }
+  });
+
+  test("every locator segment names a type the work declares", function () {
+    // Structural position is a path of typed segments whose types are supplied per work.
+    // A locator using a type the work never declared cannot be resolved.
+    const body = res.getBody();
+    const declared = new Set(body.works[0].segment_types ?? []);
+    if (declared.size === 0) return;
+    for (const relation of body.relations) {
+      for (const piece of relation.evidence ?? []) {
+        for (const step of piece.locator.path) {
+          expect(declared.has(step.type), `undeclared segment type "${step.type}"`).to.be.true;
+        }
+      }
+    }
+  });
+
+  test("identifiers are unique within their kind", function () {
+    const body = res.getBody();
+    for (const [kind, items] of [
+      ["character", body.characters],
+      ["relation", body.relations],
+    ]) {
+      const ids = items.map((item) => item.id);
+      expect(new Set(ids).size, `duplicate ${kind} id`).to.equal(ids.length);
+    }
+  });
+}
+
+docs {
+  The substantive test. It does not merely check the shape: it asserts the invariants a
+  reader would rely on — that both axes resolve inside the document, that every edge has
+  real endpoints, that no weight travels without its basis, and that every quotation has
+  somewhere to point.
+}

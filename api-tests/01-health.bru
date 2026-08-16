@@ -1,0 +1,39 @@
+meta {
+  name: Health
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/health
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.store_present: eq true
+}
+
+tests {
+  test("reports the application and schema versions", function () {
+    const body = res.getBody();
+    expect(body.application_version).to.be.a("string").and.not.be.empty;
+    expect(body.schema_version).to.match(/^\d+\.\d+\.\d+$/);
+  });
+
+  test("names the project file it is serving", function () {
+    // Without this a reader cannot tell which project a graph came from.
+    expect(res.getBody().store).to.be.a("string").and.not.be.empty;
+  });
+
+  test("a project is present", function () {
+    // The rest of the suite has nothing to assert against otherwise.
+    expect(res.getBody().store_present, "no project — run `dramatis ingest` first").to.be.true;
+  });
+}
+
+docs {
+  Liveness plus the two version numbers a caller needs in order to know what it is
+  talking to. Everything after this assumes a project is present.
+}

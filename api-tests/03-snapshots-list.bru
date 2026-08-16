@@ -1,0 +1,58 @@
+meta {
+  name: List snapshots
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/snapshots
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+vars:post-response {
+  snapshotId: res.body[0].id
+}
+
+tests {
+  test("returns at least one snapshot", function () {
+    expect(res.getBody(), "no snapshots — run `dramatis analyse` first").to.be.an("array").that
+      .is.not.empty;
+  });
+
+  test("each entry names both of its axes", function () {
+    // A snapshot binds a text revision to an analysis run. A reader who cannot see both
+    // cannot tell whether a graph changed because the work did or because the analysis did.
+    for (const snapshot of res.getBody()) {
+      expect(snapshot.text_revision_id, "text revision").to.match(/^rev:/);
+      expect(snapshot.analysis_run_id, "analysis run").to.match(/^run:/);
+      expect(snapshot.text_revision_id).to.not.equal(snapshot.analysis_run_id);
+    }
+  });
+
+  test("each entry carries the hash of the document it summarises", function () {
+    for (const snapshot of res.getBody()) {
+      expect(snapshot.sha256, `hash of ${snapshot.id}`).to.match(/^[a-f0-9]{64}$/);
+    }
+  });
+
+  test("the listing is a summary, not a second copy of the graph", function () {
+    // The document is served whole from its own endpoint. A list that also carried
+    // characters and evidence would be a second representation, free to drift.
+    const raw = JSON.stringify(res.getBody());
+    expect(raw).to.not.include("evidence");
+    expect(raw).to.not.include("weight_basis");
+    for (const snapshot of res.getBody()) {
+      expect(snapshot.characters, "character count").to.be.a("number");
+      expect(snapshot.relations, "relation count").to.be.a("number");
+    }
+  });
+}
+
+docs {
+  Captures the newest snapshot's id as {{snapshotId}} for the request that follows.
+}

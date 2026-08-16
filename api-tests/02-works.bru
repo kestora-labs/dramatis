@@ -1,0 +1,45 @@
+meta {
+  name: Works
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/works
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+vars:post-response {
+  workId: res.body[0].id
+}
+
+tests {
+  test("returns at least one work", function () {
+    expect(res.getBody()).to.be.an("array").that.is.not.empty;
+  });
+
+  test("every work is identified and titled", function () {
+    for (const work of res.getBody()) {
+      expect(work.id, "work id").to.match(/^work:/);
+      expect(work.title, `title of ${work.id}`).to.be.a("string").and.not.be.empty;
+    }
+  });
+
+  test("every work names the collection that scopes its registry", function () {
+    // The collection is the scope of the character registry, so a work without one
+    // has no cast it can belong to.
+    for (const work of res.getBody()) {
+      expect(work.collection_id, `collection of ${work.id}`).to.match(/^col:/);
+    }
+  });
+}
+
+docs {
+  Captures the first work's id as {{workId}} for the filtering test later, so the suite
+  runs against any project rather than a fixture with known identifiers.
+}

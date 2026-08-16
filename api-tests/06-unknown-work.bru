@@ -1,0 +1,23 @@
+meta {
+  name: Filter by an unknown work
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/snapshots?work_id=work:nothing-by-this-name
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+tests {
+  test("an unknown work is an empty list, not an error", function () {
+    // Asking about a work that has no snapshots yet is a normal question with a normal
+    // answer. Only asking for a snapshot that does not exist is an error.
+    expect(res.getBody()).to.be.an("array").that.is.empty;
+  });
+}

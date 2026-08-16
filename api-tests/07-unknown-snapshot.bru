@@ -1,0 +1,21 @@
+meta {
+  name: Unknown snapshot
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/snapshots/snap:nothing-by-this-name
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 404
+}
+
+tests {
+  test("says which snapshot it could not find", function () {
+    expect(JSON.stringify(res.getBody())).to.include("nothing-by-this-name");
+  });
+}

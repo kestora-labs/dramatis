@@ -1,0 +1,22 @@
+meta {
+  name: Client is served
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{baseUrl}}/
+  body: none
+  auth: none
+}
+
+tests {
+  test("either serves the client or explains that it is not built", function () {
+    // 200 once `npm run build` has been run in web/; 503 with an instruction before that.
+    // Both are correct — a missing build is a setup step, not a server fault.
+    expect([200, 503]).to.include(res.getStatus());
+    if (res.getStatus() === 503) {
+      expect(JSON.stringify(res.getBody())).to.include("not been built");
+    }
+  });
+}

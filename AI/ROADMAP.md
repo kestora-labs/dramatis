@@ -283,10 +283,10 @@ text. No medium-specific vocabulary appears anywhere in the schema (grep for `ch
 > `{"groups":[{...`" — which reads as a model emitting nonsense and sends the reader to the
 > prompt rather than to the budget.
 
-- [ ] **1.17** — Disambiguate aliases *after* grouping rather than before, so a form claimed
+- [x] **1.17** — Disambiguate aliases *after* grouping rather than before, so a form claimed
       by several surface variants of one character is kept, while a form claimed by several
       genuinely different characters is still dropped. The Jane/Elizabeth case is the
-      constraint, not an afterthought: it must keep failing closed.
+      constraint, not an afterthought: it must keep failing closed. See **D23**.
 
 - [ ] **1.18** — Stop a form that only one character ever claimed from becoming an alias on
       that basis alone. Conflict cannot see an uncontested vocative, so something other than

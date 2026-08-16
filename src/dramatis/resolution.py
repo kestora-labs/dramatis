@@ -26,7 +26,7 @@ reviewed after the fact, so it stays a human act (phase 5.3).
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from dramatis import ids
@@ -194,13 +194,25 @@ def _gather(
 
 
 def _resolve_aliases(
-    primaries: dict[str, Candidate], alias_claims: dict[str, set[str]], alias_forms: dict[str, str]
+    primaries: dict[str, Candidate],
+    alias_claims: dict[str, set[str]],
+    alias_forms: dict[str, str],
+    assignments: dict[str, str],
 ) -> tuple[dict[str, tuple[str, str]], list[str], list[str]]:
     """Keep only aliases that unambiguously denote one character.
 
-    A form claimed by two different names is dropped. This is what removes pronouns and
-    generic epithets without a stop-list: they are dropped because they are contested, not
-    because they are on a list of words some language happens to use that way.
+    **Ambiguity is judged against characters, not against the names that proposed them**,
+    which is why this runs after grouping rather than before. Beforehand, "Elizabeth",
+    "Elizabeth Bennet", and "Eliza Bennet" are three claimants; afterwards they are one
+    character, and a form all three proposed is unanimous rather than contested. Judged too
+    early, the most common familiar form for the protagonist is discarded precisely because
+    everybody agreed on it.
+
+    A form claimed by two genuinely different characters is still dropped, and that is what
+    removes pronouns and generic epithets without a stop-list: they go because they are
+    contested, not because they are on a list of words some language happens to use that way.
+    ``assignments`` maps a name's form key to the character it resolved to, so "contested"
+    now means what it says.
     """
     kept: dict[str, tuple[str, str]] = {}
     dropped: list[str] = []
@@ -214,7 +226,13 @@ def _resolve_aliases(
                 "not treating it as an alias"
             )
             continue
-        if len(claimants) > 1:
+
+        owners = {assignments[claimant] for claimant in claimants if claimant in assignments}
+        if not owners:
+            # Every name that proposed it failed to resolve; there is nobody to attach to.
+            dropped.append(alias_key)
+            continue
+        if len(owners) > 1:
             dropped.append(alias_key)
             names = ", ".join(sorted(primaries[c].form for c in claimants if c in primaries))
             warnings.append(
@@ -222,7 +240,7 @@ def _resolve_aliases(
                 f"character ({names}); dropped as ambiguous"
             )
             continue
-        kept[alias_key] = (next(iter(claimants)), alias_forms.get(alias_key, alias_key))
+        kept[alias_key] = (next(iter(owners)), alias_forms.get(alias_key, alias_key))
 
     return kept, dropped, warnings
 
@@ -320,9 +338,6 @@ def resolve(
     if not primaries:
         return Resolution(prompt_version=None, warnings=tuple(warnings))
 
-    alias_owner, dropped, alias_warnings = _resolve_aliases(primaries, alias_claims, alias_forms)
-    warnings.extend(alias_warnings)
-
     registered = store.list_characters(collection_id)
     by_form: dict[str, RegisteredCharacter] = {}
     for character in registered:
@@ -364,6 +379,11 @@ def resolve(
     updated: list[str] = []
     claimed: dict[str, str] = {}  # surface forms claimed during this run
 
+    # First pass: settle identity. Aliases proposed by `alias_claims` are deliberately not
+    # consulted yet — deciding whether one of them is contested needs the character each
+    # claimant resolved to, which is exactly what this pass produces.
+    pending: list[tuple[RegisteredCharacter, list[str]]] = []
+
     for group in groups:
         if not isinstance(group, dict):
             warnings.append("discarded a non-object group")
@@ -388,12 +408,11 @@ def resolve(
         # `keys` only ever holds unresolved forms, so a group can never gather two
         # characters the registry already knows. That is what makes merging structurally
         # impossible here rather than merely guarded against.
-        aliases = [unresolved[key].form for key in keys if key != form_key(canonical)]
-        aliases += [form for owner, form in alias_owner.values() if owner in keys]
+        grouped = [unresolved[key].form for key in keys if key != form_key(canonical)]
 
         if target is not None:
             merged_aliases = tuple(
-                dict.fromkeys([*target.aliases, *aliases, *(f for f in forms if f != target.name)])
+                dict.fromkeys([*target.aliases, *grouped, *(f for f in forms if f != target.name)])
             )
             character = RegisteredCharacter(
                 id=target.id,
@@ -416,23 +435,48 @@ def resolve(
                 kind=kind,
                 provenance="observed",
                 aliases=tuple(
-                    dict.fromkeys(a for a in aliases if form_key(a) != form_key(canonical))
+                    dict.fromkeys(a for a in grouped if form_key(a) != form_key(canonical))
                 ),
             )
             created.append(identifier)
 
-        store.upsert_character(character)
+        pending.append((character, keys))
         for form in character.surface_forms:
             assignments[form_key(form)] = character.id
             claimed[form_key(form)] = character.id
         for key in keys:
             assignments[key] = character.id
 
-    # Aliases inherit their owner's identifier once the owner has one.
-    for alias_key, (owner_key, _form) in alias_owner.items():
-        owner_id = assignments.get(owner_key)
-        if owner_id is not None:
-            assignments.setdefault(alias_key, owner_id)
+    # Second pass: now that every name has a character, a form several names proposed can be
+    # judged on whether those names turned out to be one person.
+    alias_owner, dropped, alias_warnings = _resolve_aliases(
+        primaries, alias_claims, alias_forms, assignments
+    )
+    warnings.extend(alias_warnings)
+
+    owned: dict[str, list[str]] = {}
+    for owner_id, form in alias_owner.values():
+        owned.setdefault(owner_id, []).append(form)
+
+    for character, _keys in pending:
+        extra = [
+            form
+            for form in owned.get(character.id, [])
+            if form_key(form) != form_key(character.name)
+        ]
+        if extra:
+            character = replace(
+                character,
+                aliases=tuple(dict.fromkeys([*character.aliases, *extra])),
+            )
+        store.upsert_character(character)
+        for form in character.surface_forms:
+            assignments[form_key(form)] = character.id
+
+    # An alias whose owner the registry already knew has no pending record to attach to, so
+    # its assignment is recorded directly.
+    for alias_key, (owner_id, _form) in alias_owner.items():
+        assignments.setdefault(alias_key, owner_id)
 
     return Resolution(
         assignments=assignments,

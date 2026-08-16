@@ -212,6 +212,124 @@ class TestATruncatedGroupingIsReportedAsSuch:
 # -- ambiguity -------------------------------------------------------------------------------
 
 
+class TestAmbiguityIsJudgedAgainstCharacters:
+    """1.17. The guard asks whether a form is contested; the question is only meaningful
+    once it is known which names are the same person, so it is asked after grouping.
+
+    Both conditions have to hold at once, and they pull in opposite directions: the forms a
+    character's own variants agree on must survive, and the forms two real characters both
+    claim must not.
+    """
+
+    def test_a_form_all_variants_of_one_character_proposed_is_kept(self, store: Store) -> None:
+        """'Lizzy', seen thirty-six times, was dropped because Elizabeth agreed with herself."""
+        extraction = an_extraction(
+            [MentionedCharacter("Elizabeth", aliases=("Lizzy",))],
+            [MentionedCharacter("Elizabeth Bennet", aliases=("Lizzy",))],
+            [MentionedCharacter("Eliza Bennet", aliases=("Lizzy",))],
+        )
+        provider = ScriptedProvider(
+            [grouping(group("Elizabeth Bennet", ["Elizabeth", "Elizabeth Bennet", "Eliza Bennet"]))]
+        )
+
+        result = resolve(extraction, store, COLLECTION, provider=provider)
+
+        assert result.character_for("Lizzy") is not None
+        assert result.character_for("Lizzy") == result.character_for("Elizabeth Bennet")
+
+    def test_the_kept_form_is_recorded_on_the_character(self, store: Store) -> None:
+        """An assignment that never reaches the registry is lost to the next run (D12)."""
+        extraction = an_extraction(
+            [MentionedCharacter("Elizabeth", aliases=("Lizzy",))],
+            [MentionedCharacter("Elizabeth Bennet", aliases=("Lizzy",))],
+        )
+        provider = ScriptedProvider(
+            [grouping(group("Elizabeth Bennet", ["Elizabeth", "Elizabeth Bennet"]))]
+        )
+
+        resolve(extraction, store, COLLECTION, provider=provider)
+
+        registered = store.list_characters(COLLECTION)[0]
+        assert "Lizzy" in registered.aliases
+
+    def test_a_form_two_real_characters_proposed_is_still_dropped(self, store: Store) -> None:
+        """The trap fixture A exists for: unqualified 'Miss Bennet' is Jane, not Elizabeth.
+
+        Extraction proposes it for both, so after grouping the claimants are two different
+        characters and the conflict is real. It must keep failing closed.
+        """
+        extraction = an_extraction(
+            [MentionedCharacter("Elizabeth", aliases=("Miss Bennet",))],
+            [MentionedCharacter("Jane", aliases=("Miss Bennet",))],
+        )
+        provider = ScriptedProvider(
+            [grouping(group("Elizabeth Bennet", ["Elizabeth"]), group("Jane Bennet", ["Jane"]))]
+        )
+
+        result = resolve(extraction, store, COLLECTION, provider=provider)
+
+        assert result.character_for("Miss Bennet") is None
+        assert any("ambiguous" in warning for warning in result.warnings)
+
+    def test_grouping_decides_it_rather_than_the_number_of_claimants(self, store: Store) -> None:
+        """The same three claimants, kept or dropped purely on how they grouped."""
+        forms = [
+            MentionedCharacter("Ada", aliases=("the captain",)),
+            MentionedCharacter("Ada Vance", aliases=("the captain",)),
+            MentionedCharacter("Captain Vance", aliases=("the captain",)),
+        ]
+
+        merged = resolve(
+            an_extraction(*[[f] for f in forms]),
+            store,
+            COLLECTION,
+            provider=ScriptedProvider(
+                [grouping(group("Ada Vance", ["Ada", "Ada Vance", "Captain Vance"]))]
+            ),
+        )
+        assert merged.character_for("the captain") is not None
+
+    def test_the_baseline_still_drops_a_contested_form(self, store: Store) -> None:
+        """Without a model every name is its own character, so nothing merges and a
+        contested form is contested in fact as well as in appearance."""
+        extraction = an_extraction(
+            [MentionedCharacter("Ada", aliases=("she",))],
+            [MentionedCharacter("Neve", aliases=("she",))],
+        )
+
+        result = resolve(extraction, store, COLLECTION)
+
+        assert result.character_for("she") is None
+
+    def test_a_form_that_is_a_name_elsewhere_is_still_not_an_alias(self, store: Store) -> None:
+        """Unchanged by the reordering: a name of its own is never demoted to an alias."""
+        extraction = an_extraction(
+            [MentionedCharacter("Elizabeth Bennet", aliases=("Jane",))],
+            [MentionedCharacter("Jane")],
+        )
+        provider = ScriptedProvider(
+            [grouping(group("Elizabeth Bennet", ["Elizabeth Bennet"]), group("Jane", ["Jane"]))]
+        )
+
+        result = resolve(extraction, store, COLLECTION, provider=provider)
+
+        assert result.character_for("Jane") != result.character_for("Elizabeth Bennet")
+        assert any("own name elsewhere" in warning for warning in result.warnings)
+
+    def test_a_form_claimed_by_a_registered_character_resolves_to_it(self, store: Store) -> None:
+        """The alias's owner may already be in the registry, with no group to attach to."""
+        store.upsert_character(
+            RegisteredCharacter(
+                id="char:ada", collection_id=COLLECTION, name="Ada Vance", kind="person"
+            )
+        )
+        extraction = an_extraction([MentionedCharacter("Ada Vance", aliases=("the captain",))])
+
+        result = resolve(extraction, store, COLLECTION, provider=ScriptedProvider([grouping()]))
+
+        assert result.character_for("the captain") == "char:ada"
+
+
 class TestAmbiguousForms:
     def test_a_form_claimed_by_two_characters_is_dropped(self, store: Store) -> None:
         """How pronouns are excluded without a stop-list — by conflict, not vocabulary."""

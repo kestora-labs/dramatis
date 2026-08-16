@@ -564,3 +564,53 @@ and being mysterious.
 
 *Reversible* cheaply. The constants are three module-level numbers with tests pinning the
 properties rather than the values, and an explicit `max_tokens` still overrides them.
+
+---
+
+## D23 — Alias ambiguity is judged against characters, not against the names that proposed them
+
+**Phase 1.17.** `_resolve_aliases` moves after grouping and takes the assignments map, so
+"claimed by more than one character" is decided on resolved identities rather than on
+surface forms.
+
+D7's rule was right and its timing was wrong. Before grouping, "Elizabeth", "Elizabeth
+Bennet", and "Eliza Bennet" are three claimants; afterwards they are one character. So a
+form all three proposed was read as contested when it was in fact unanimous, and `lizzy` —
+the most common familiar form for the protagonist, seen thirty-six times — was discarded
+*because* everybody agreed on it. `mr. darcy`, `charles`, and `my aunt philips` went the
+same way. Deciding which surface forms are one character is precisely what the next step
+does, so the question could not be answered where it was being asked.
+
+Nothing about the principle changes. `my father` (four different fathers), `your sister`,
+`his sister`, and `she` are still dropped, still by conflict rather than by vocabulary, and
+still without a stop-list.
+
+**The constraint is the interesting half.** Unqualified "Miss Bennet" denotes Jane, and
+extraction proposed it as *Elizabeth's* alias in some windows — the error
+`fixtures/a/README.md` calls this fixture's chief value. Under the old ordering it was
+dropped as contested, and that accident was the only thing standing between the graph and
+being wrong throughout. It still fails closed, now for a stated reason rather than a lucky
+one: its claimants resolve to two different characters, so the conflict is real. The tests
+assert both halves together, because a change that satisfied either alone would be worse
+than no change.
+
+**Measured on the recorded run rather than argued.** Replaying the full novel through the
+new ordering — identical model output, courtesy of D21 — recovers eleven surface forms and
+loses none, leaving characters and relations untouched at 102 and 241. Fixture A's alias
+groups go from four of six to five of six. That the structure did not move is the point:
+this was only ever a defect of identity, not of the graph.
+
+**What it deliberately does not fix.** "Miss Bennet" is still its own node rather than
+Jane's alias. Resolving it needs the convention that the eldest unmarried daughter is
+"Miss ⟨surname⟩", and resolution is shown a list of names and occurrence counts, never the
+text — so the fixture's hardest case is not merely unsolved but structurally out of reach
+from where it is being asked. That belongs with the prompt and evaluation work in Phase 7.
+
+**A consequence worth stating.** The old over-firing was incidentally suppressing junk. With
+spurious contest removed, relational epithets like `my dear aunt` and `my sister` now attach
+where before they were blocked by an accident — five of the eleven recovered forms are of
+that kind. `you` and `madam` were already getting through, so this widens 1.18's surface
+rather than creating it, and is an argument for doing 1.18 rather than against having done
+this.
+
+*Reversible* cheaply: the ordering is one call site and the guard's signature.

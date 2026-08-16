@@ -127,8 +127,31 @@ class ModelResponse:
         """
         return self.stop_reason == "refusal"
 
+    @property
+    def truncated(self) -> bool:
+        """Whether the reply stopped because it ran out of budget rather than finishing.
+
+        A truncated reply is not a malformed one. Under constrained decoding it is a valid
+        prefix of a valid answer, which is exactly what makes the distinction worth drawing:
+        the text is well-formed as far as it goes, so the only thing that knows it is
+        incomplete is this field.
+        """
+        return self.stop_reason == "max_tokens"
+
     def json(self) -> Any:
-        """Parse the response text as JSON, raising ProviderError if it is not."""
+        """Parse the response text as JSON, raising ProviderError if it is not.
+
+        Truncation is checked before parsing, and reported as itself. Left to the parser it
+        surfaces as "expected JSON but got '{\"groups\":[{...'" — which reads as a model
+        emitting nonsense, and sends the reader to the prompt rather than to the budget that
+        actually ran out.
+        """
+        if self.truncated:
+            raise ProviderError(
+                f"{self.provider}/{self.model} reached its output token limit before "
+                f"finishing, so the reply is cut off after {len(self.text)} characters "
+                "rather than malformed. Raise max_tokens for this call."
+            )
         try:
             return json.loads(self.text)
         except json.JSONDecodeError as error:

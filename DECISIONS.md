@@ -520,3 +520,47 @@ expensive to repeat.
 
 *Reversible* cheaply — the flag is opt-in and nothing else in the pipeline knows the
 provider is wrapped.
+
+---
+
+## D22 — Resolution's budget is sized from the cast, and a truncated reply says so
+
+**Phase 1.16.** `resolve()` no longer takes a fixed `max_tokens=4096`. It computes one from
+the number of surface forms actually being grouped: a base for the envelope and for
+thinking, plus a worst-case allowance per form, clamped to a ceiling. `ModelResponse.json()`
+refuses a reply whose `stop_reason` is `max_tokens` before it tries to parse it.
+
+Every other model call in the pipeline is bounded by a window, so a constant works. This one
+is not. Resolution is a single call whose reply must name every form it was given, so its
+length is set by the size of the cast, and a constant is the wrong *shape* rather than
+merely the wrong number — 4096 fit a three-chapter excerpt of twenty-three names, could not
+fit a novel, and no larger constant would be right for the work after that.
+
+The allowance is deliberately the worst case: every form its own group, which is exactly
+what the deterministic baseline produces and what a model that declines to merge anything
+would produce. Forms that *do* merge cost far less, adding a string to a group rather than a
+group. Sizing for the pessimistic case means the budget is never the reason a cautious
+grouping fails, and since `max_tokens` is a ceiling rather than a charge, being generous
+costs nothing when it is not used.
+
+**The second half is why the first half was hard to see.** Under constrained decoding a
+reply that runs out of budget is not malformed — it is a valid prefix of a valid answer. So
+the failure surfaced through the JSON parser as *expected JSON from anthropic/claude-opus-5
+but got `{"groups":[{"canonical_name":"Elizabeth Bennet"…`*, which reads as a model emitting
+nonsense and sends the reader to the prompt. The one thing that knew the answer was
+incomplete was `stop_reason`, and nothing looked at it. Checking it before parsing is a
+three-line change that turns the most expensive failure this project has had into a sentence
+naming its own remedy. It is checked *before* parsing rather than in the parser's error path
+because a truncated reply can still parse by luck, and is no less incomplete for that.
+
+**What this does not do is make the call unbounded.** The ceiling sits below the smallest
+output cap among current models, so a request is never built that a provider would refuse
+outright. Above that the honest answer is not a bigger reply but **batching the name list**,
+which is a real design question — grouping decided in two passes can contradict itself, and
+the existing ambiguity guard protects against conflicts within one pass, not across two. That
+belongs in its own bullet with the curation work, not here. Until it exists, the ceiling plus
+the truncation message is the difference between a corpus that is too large being reported
+and being mysterious.
+
+*Reversible* cheaply. The constants are three module-level numbers with tests pinning the
+properties rather than the values, and an explicit `max_tokens` still overrides them.

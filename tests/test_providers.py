@@ -87,6 +87,37 @@ class TestModelResponse:
         with pytest.raises(ProviderError, match="p/m"):
             response.json()
 
+    def test_a_truncated_reply_is_reported_as_truncation(self) -> None:
+        """It is a valid prefix, so the parser's complaint would point at the wrong thing.
+
+        This is what the first full-novel run actually hit: the message named the JSON and
+        sent the reader to the prompt, when what had run out was the token budget.
+        """
+        cut_off = ModelResponse(
+            text='{"groups":[{"canonical_name":"Elizabeth Bennet","forms":["Eliz',
+            model="m",
+            provider="p",
+            stop_reason="max_tokens",
+        )
+
+        assert cut_off.truncated is True
+        with pytest.raises(ProviderError, match="output token limit") as failure:
+            cut_off.json()
+        assert "max_tokens" in str(failure.value), "the message should name the remedy"
+
+    def test_a_complete_reply_is_not_truncated(self) -> None:
+        finished = ModelResponse(text="{}", model="m", provider="p", stop_reason="end_turn")
+        assert finished.truncated is False
+        assert finished.json() == {}
+
+    def test_truncation_is_checked_before_parsing(self) -> None:
+        """A cut-off reply can still parse by luck; it is no less incomplete for that."""
+        parseable_but_cut_off = ModelResponse(
+            text='{"groups":[]}', model="m", provider="p", stop_reason="max_tokens"
+        )
+        with pytest.raises(ProviderError, match="output token limit"):
+            parseable_but_cut_off.json()
+
     def test_refusal_is_a_successful_call_with_no_content(self) -> None:
         """A decline is not an exception; code that ignores it sees an empty extraction."""
         refused = ModelResponse(text="", model="m", provider="p", stop_reason="refusal")

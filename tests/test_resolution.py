@@ -29,7 +29,16 @@ from dramatis.extraction import (
 )
 from dramatis.providers import ModelResponse
 from dramatis.providers.scripted import ScriptedProvider
-from dramatis.resolution import PROMPT_VERSION, SYSTEM_PROMPT, ResolutionError, resolve
+from dramatis.resolution import (
+    PROMPT_VERSION,
+    RESOLUTION_BASE_TOKENS,
+    RESOLUTION_MAX_TOKENS,
+    RESOLUTION_TOKENS_PER_FORM,
+    SYSTEM_PROMPT,
+    ResolutionError,
+    budget_for,
+    resolve,
+)
 from dramatis.store import AmbiguousAliasError, RegisteredCharacter, Store, form_key
 
 COLLECTION = "col:test"
@@ -109,6 +118,95 @@ class TestWithoutAModel:
     def test_an_empty_extraction_resolves_to_nothing(self, store: Store) -> None:
         result = resolve(an_extraction(), store, COLLECTION)
         assert result.assignments == {} and result.created == ()
+
+
+# -- the token budget ------------------------------------------------------------------------
+
+
+class TestTheBudgetIsSizedFromTheCast:
+    """Resolution is one call that must name every form it was given, so what it costs is
+    set by the size of the cast — not by any passage, and not by a constant.
+
+    The fixed 4096 this replaces fit a three-chapter excerpt with twenty-three names and
+    truncated on the whole novel, taking sixty-three good extraction calls with it.
+    """
+
+    def test_it_grows_with_the_number_of_forms(self) -> None:
+        assert budget_for(200) > budget_for(20) > budget_for(0)
+
+    def test_a_cast_of_none_still_affords_an_envelope(self) -> None:
+        assert budget_for(0) == RESOLUTION_BASE_TOKENS
+
+    def test_it_allows_for_every_form_being_its_own_group(self) -> None:
+        """The worst case is a model that merges nothing — the baseline's own behaviour."""
+        forms = 300
+        headroom = budget_for(forms) - RESOLUTION_BASE_TOKENS
+        assert headroom >= forms * RESOLUTION_TOKENS_PER_FORM
+
+    def test_it_stops_at_a_ceiling(self) -> None:
+        """Past this the answer is to batch the names, not to ask for a bigger reply (D22)."""
+        assert budget_for(1_000_000) == RESOLUTION_MAX_TOKENS
+
+    def test_the_ceiling_is_within_what_current_models_will_emit(self) -> None:
+        assert RESOLUTION_MAX_TOKENS <= 64_000, "smallest current output cap"
+
+    def test_a_negative_count_is_a_programming_error(self) -> None:
+        with pytest.raises(ValueError):
+            budget_for(-1)
+
+    def test_a_novel_sized_cast_is_afforded_more_than_the_old_constant(self) -> None:
+        """The regression this bullet exists for, stated as a number."""
+        assert budget_for(250) > 4096
+
+    def test_resolve_asks_for_a_budget_matching_the_forms_it_sends(self, store: Store) -> None:
+        extraction = an_extraction(
+            [MentionedCharacter(name) for name in ("Ada", "Bram", "Cleo", "Dara")]
+        )
+        provider = ScriptedProvider([grouping(group("Ada", ["Ada", "Bram", "Cleo", "Dara"]))])
+
+        resolve(extraction, store, COLLECTION, provider=provider)
+
+        assert provider.calls[0].max_tokens == budget_for(4)
+
+    def test_an_explicit_budget_still_wins(self, store: Store) -> None:
+        """Kept so a caller — or a test — can pin the number deliberately."""
+        extraction = an_extraction([MentionedCharacter("Ada")])
+        provider = ScriptedProvider([grouping(group("Ada", ["Ada"]))])
+
+        resolve(extraction, store, COLLECTION, provider=provider, max_tokens=1234)
+
+        assert provider.calls[0].max_tokens == 1234
+
+    def test_names_the_registry_already_knows_do_not_inflate_the_budget(self, store: Store) -> None:
+        """Only unresolved forms reach the model, so only they should be paid for."""
+        store.upsert_character(
+            RegisteredCharacter(id="char:ada", collection_id=COLLECTION, name="Ada", kind="person")
+        )
+        extraction = an_extraction([MentionedCharacter("Ada"), MentionedCharacter("Bram")])
+        provider = ScriptedProvider([grouping(group("Bram", ["Bram"]))])
+
+        resolve(extraction, store, COLLECTION, provider=provider)
+
+        assert provider.calls[0].max_tokens == budget_for(1)
+
+
+class TestATruncatedGroupingIsReportedAsSuch:
+    def test_it_names_the_budget_rather_than_the_json(self, store: Store) -> None:
+        """What the first full-novel run should have said, and did not."""
+        extraction = an_extraction([MentionedCharacter("Ada")])
+        cut_off = ScriptedProvider(
+            [
+                ModelResponse(
+                    text='{"groups":[{"canonical_name":"Ada","forms":["A',
+                    model="m",
+                    provider="scripted",
+                    stop_reason="max_tokens",
+                )
+            ]
+        )
+
+        with pytest.raises(ResolutionError, match="output token limit"):
+            resolve(extraction, store, COLLECTION, provider=cut_off)
 
 
 # -- ambiguity -------------------------------------------------------------------------------

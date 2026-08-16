@@ -269,6 +269,20 @@ text. No medium-specific vocabulary appears anywhere in the schema (grep for `ch
 > longer the corpus the more there is to destroy — which makes this the bullet that has to
 > land first, because without it every attempt at the next one costs another full run.
 
+- [x] **1.16** — Size resolution's token budget from the number of names being grouped rather
+      than fixing it, and report a reply that ran out of budget as truncated rather than as
+      malformed JSON. See **D22**.
+
+> **Why 1.16 exists.** Resolution is a single call that must name every surface form it was
+> given, so the length of its reply is set by the size of the cast — where every other model
+> call in the pipeline is bounded by a window. A constant is therefore not merely too small
+> at some size, it is the wrong shape: 4096 fit a three-chapter excerpt of twenty-three
+> names and could not fit a novel, and no larger constant would be right either. The second
+> half is what made the first half hard to see. A budget that runs out under constrained
+> decoding yields a valid *prefix*, so the failure arrived as "expected JSON but got
+> `{"groups":[{...`" — which reads as a model emitting nonsense and sends the reader to the
+> prompt rather than to the budget.
+
 **Acceptance:** Ingesting fixture **A** end to end produces a snapshot that validates
 against the schema. Elizabeth Bennet and Fitzwilliam Darcy are present as single nodes
 with their aliases merged, joined by an edge among the graph's heaviest. Every stored

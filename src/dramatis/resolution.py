@@ -36,6 +36,27 @@ from dramatis.store import RegisteredCharacter, Store, form_key
 
 PROMPT_VERSION = "resolve-v1"
 
+RESOLUTION_BASE_TOKENS = 8192
+"""What the reply costs before any name is in it: the JSON envelope, and room to think.
+
+Thinking shares the output budget on current models, so a base sized only for the envelope
+would spend the whole allowance reasoning and truncate the answer."""
+
+RESOLUTION_TOKENS_PER_FORM = 48
+"""Worst case per surface form — every form its own group, which is what the deterministic
+baseline does and what a model that declines to merge anything would produce.
+
+Forms that *do* merge cost far less, since they add a string to an existing group rather
+than a whole one. Sizing for the worst case means the budget is never the reason a cautious
+grouping fails."""
+
+RESOLUTION_MAX_TOKENS = 32_768
+"""A ceiling, deliberately below the smallest output cap among current models.
+
+Reaching it means the cast outgrew what one call can group, and the answer then is to batch
+the names rather than to raise this number — see D22. Until that exists, the ceiling is what
+turns "too big" into a reported failure instead of an unbounded request."""
+
 SYSTEM_PROMPT = """\
 You are given a list of names, as they appear in a narrative work, and the number of \
 passages each was seen in. Some of these are different ways of writing the same \
@@ -90,6 +111,20 @@ RESPONSE_SCHEMA: dict[str, Any] = {
 
 class ResolutionError(Exception):
     """Resolution could not complete."""
+
+
+def budget_for(form_count: int) -> int:
+    """Output tokens to allow when grouping this many surface forms.
+
+    Resolution is one call whose reply has to name every form it was given, so what it costs
+    is set by the size of the cast rather than by the length of any passage. A fixed budget
+    is therefore not merely too small at some size — it is the wrong shape, and will fail on
+    a large enough work whatever number is chosen. This scales, and clamps.
+    """
+    if form_count < 0:
+        raise ValueError("form_count cannot be negative")
+    wanted = RESOLUTION_BASE_TOKENS + RESOLUTION_TOKENS_PER_FORM * form_count
+    return min(wanted, RESOLUTION_MAX_TOKENS)
 
 
 @dataclass(frozen=True)
@@ -270,13 +305,16 @@ def resolve(
     collection_id: str,
     *,
     provider: Provider | None = None,
-    max_tokens: int = 4096,
+    max_tokens: int | None = None,
     effort: str | None = "medium",
 ) -> Resolution:
     """Resolve an extraction's surface forms into the collection's registry.
 
     Passing no provider uses the deterministic baseline, in which every distinct name is
     its own character. That is the honest floor: it under-merges rather than guessing.
+
+    ``max_tokens`` defaults to a budget derived from how many forms are actually being
+    grouped (``budget_for``); pass a number to override it.
     """
     primaries, alias_claims, alias_forms, warnings = _gather(extraction)
     if not primaries:
@@ -310,8 +348,15 @@ def resolve(
     elif provider is None:
         groups = _group_without_a_model(unresolved)
     else:
+        # Sized from the forms this call actually has to name, not from a constant: only
+        # `unresolved` reaches the model, since anything the registry already claims was
+        # answered above without asking.
         groups, model, provider_name = _group_with_a_model(
-            unresolved, registered, provider, max_tokens=max_tokens, effort=effort
+            unresolved,
+            registered,
+            provider,
+            max_tokens=budget_for(len(unresolved)) if max_tokens is None else max_tokens,
+            effort=effort,
         )
         prompt_version = PROMPT_VERSION
 

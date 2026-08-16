@@ -65,6 +65,17 @@ def character_id(name: str, *, disambiguator: str | None = None) -> str:
     return f"char:{slug}"
 
 
+def relation_id(first: str, second: str) -> str:
+    """Derive an identifier for the relation between two characters.
+
+    The endpoints are sorted, so the same pair yields the same identifier whichever way
+    round it was observed. An undirected edge that changed identity depending on which
+    character the model happened to name first would defeat diffing entirely.
+    """
+    left, right = sorted((first, second))
+    return f"rel:{left.removeprefix('char:')}--{right.removeprefix('char:')}"
+
+
 def revision_id(content_hash: str) -> str:
     """Derive a revision identifier from the hash of its content.
 

@@ -197,7 +197,7 @@ text. No medium-specific vocabulary appears anywhere in the schema (grep for `ch
 - [x] **1.4** — Map-reduce extraction over segments: characters, aliases, pairwise
       interactions, each with a verbatim supporting quotation.
 - [x] **1.5** — Alias resolution into a per-collection character registry with stable IDs.
-- [ ] **1.6** — Aggregate to relations with a `weight` and a declared `weight_basis`.
+- [x] **1.6** — Aggregate to relations with a `weight` and a declared `weight_basis`.
 - [ ] **1.7** — Verbatim verification gate (Invariant 3) rejecting failed extractions.
 - [ ] **1.8** — Persist as a snapshot bound to `(text_revision, analysis_run)`, recording
       model ID, prompt version, and parameters.

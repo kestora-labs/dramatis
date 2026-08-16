@@ -86,3 +86,75 @@ def test_no_subcommand_is_an_error(capsys: pytest.CaptureFixture) -> None:
         main([])
 
     assert exit_info.value.code != 0
+
+
+# -- ingest ---------------------------------------------------------------------------
+
+
+def _text_file(tmp_path: Path, name: str = "pride.txt", body: str = "Ada met Bram.\n") -> Path:
+    path = tmp_path / name
+    path.write_text(body, encoding="utf-8", newline="")
+    return path
+
+
+def test_ingest_reports_what_it_stored(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    store = tmp_path / "project.sqlite"
+
+    assert main(["ingest", str(_text_file(tmp_path)), "--store", str(store)]) == 0
+
+    out = capsys.readouterr().out
+    assert "ingested" in out
+    assert "rev:" in out
+    assert store.is_file()
+
+
+def test_ingest_is_idempotent_and_says_so(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    store = tmp_path / "project.sqlite"
+    path = _text_file(tmp_path)
+
+    assert main(["ingest", str(path), "--store", str(store)]) == 0
+    capsys.readouterr()
+    assert main(["ingest", str(path), "--store", str(store)]) == 0
+
+    assert "already present" in capsys.readouterr().out
+
+
+def test_ingest_json_output_is_machine_readable(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    store = tmp_path / "project.sqlite"
+
+    assert (
+        main(
+            [
+                "ingest",
+                str(_text_file(tmp_path)),
+                "--store",
+                str(store),
+                "--work",
+                "Pride and Prejudice",
+                "--json",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["work_id"] == "work:pride-and-prejudice"
+    assert payload["revision_id"].startswith("rev:")
+    assert len(payload["sha256"]) == 64
+    assert payload["already_present"] is False
+
+
+def test_ingest_missing_file_exits_one(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    assert (
+        main(["ingest", str(tmp_path / "absent.txt"), "--store", str(tmp_path / "p.sqlite")]) == 1
+    )
+    assert "no such file" in capsys.readouterr().err
+
+
+def test_ingest_rejects_an_unknown_role(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main(["ingest", str(_text_file(tmp_path)), "--role", "appendix"])
+
+    assert exit_info.value.code != 0

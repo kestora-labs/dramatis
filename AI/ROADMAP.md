@@ -188,7 +188,7 @@ text. No medium-specific vocabulary appears anywhere in the schema (grep for `ch
 
 *Text in, graph on screen. Corpus shape **A** only.*
 
-- [ ] **1.1** — Ingest a single plain-text file; store it with a content hash as a text
+- [x] **1.1** — Ingest a single plain-text file; store it with a content hash as a text
       revision.
 - [ ] **1.2** — Segment into an ordered path of typed segments, with types supplied by the
       caller and defaulting to a flat `section` when unknown.

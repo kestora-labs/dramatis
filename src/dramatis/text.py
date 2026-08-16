@@ -14,14 +14,50 @@ supposed to be.
 
 from __future__ import annotations
 
+import hashlib
 import re
+from collections.abc import Iterable
 
 _WHITESPACE = re.compile(r"\s+")
 
 
 def normalise_whitespace(text: str) -> str:
-    """Collapse runs of whitespace to a single space and strip the ends."""
+    """Collapse runs of whitespace to a single space and strip the ends.
+
+    For quotation matching only. This is lossy and must never be used for hashing — two
+    genuinely different texts can normalise to the same string.
+    """
     return _WHITESPACE.sub(" ", text).strip()
+
+
+def normalise_line_endings(text: str) -> str:
+    """Convert CRLF and CR to LF, and drop a leading byte-order mark.
+
+    For hashing. A text checked out on Windows and the same text on Linux must produce the
+    same hash, or a revision identifier would depend on who ingested it. Nothing else is
+    altered: indentation, blank lines, and trailing spaces are all preserved, because they
+    are part of the text and a change to them is a real change.
+    """
+    return text.lstrip("﻿").replace("\r\n", "\n").replace("\r", "\n")
+
+
+def content_hash(text: str) -> str:
+    """Return the SHA-256 of a single text, after line-ending normalisation."""
+    return hashlib.sha256(normalise_line_endings(text).encode("utf-8")).hexdigest()
+
+
+def revision_hash(contents: Iterable[str]) -> str:
+    """Return the SHA-256 of a revision made of one or more documents.
+
+    Defined as the hash of the normalised contents concatenated in document order, which is
+    what the schema says a text revision's hash is. A single-document revision therefore
+    hashes identically to its one document — the common case, and the least surprising
+    result. Reordering documents changes the hash, because it changes the work.
+    """
+    digest = hashlib.sha256()
+    for content in contents:
+        digest.update(normalise_line_endings(content).encode("utf-8"))
+    return digest.hexdigest()
 
 
 def find_quotation(source: str, quotation: str) -> int | None:

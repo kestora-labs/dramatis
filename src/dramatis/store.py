@@ -1,0 +1,308 @@
+"""Persistence.
+
+One SQLite file holds a whole project: its texts, and eventually its analyses. A single
+portable file is a deliberate feature — a researcher can archive it, send it, or deposit it
+without exporting anything, and Invariant 6 means it can be opened later with no API key
+and no network.
+
+Document contents are stored in the database rather than referenced on disk. A snapshot
+whose evidence cannot be resolved back to the exact text it was drawn from is not evidence,
+and a path on somebody's laptop is not a durable reference.
+
+Tables are created as the phases that need them arrive. The DDL is idempotent, so opening
+an older store simply adds what is missing.
+"""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+STORE_VERSION = 1
+
+DDL = """
+CREATE TABLE IF NOT EXISTS meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS collections (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    description TEXT
+);
+
+CREATE TABLE IF NOT EXISTS works (
+    id            TEXT PRIMARY KEY,
+    collection_id TEXT NOT NULL REFERENCES collections(id),
+    title         TEXT NOT NULL,
+    creator       TEXT,
+    language      TEXT,
+    edition       TEXT,
+    segment_types TEXT NOT NULL DEFAULT '[]'
+);
+
+CREATE TABLE IF NOT EXISTS documents (
+    id         TEXT PRIMARY KEY,
+    work_id    TEXT NOT NULL REFERENCES works(id),
+    title      TEXT,
+    path       TEXT,
+    role       TEXT NOT NULL CHECK (role IN ('narrative', 'reference')),
+    media_type TEXT,
+    sha256     TEXT NOT NULL,
+    content    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS text_revisions (
+    id         TEXT PRIMARY KEY,
+    work_id    TEXT NOT NULL REFERENCES works(id),
+    label      TEXT,
+    sha256     TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS revision_documents (
+    revision_id TEXT NOT NULL REFERENCES text_revisions(id),
+    document_id TEXT NOT NULL REFERENCES documents(id),
+    position    INTEGER NOT NULL,
+    PRIMARY KEY (revision_id, document_id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_works_collection ON works(collection_id);
+CREATE INDEX IF NOT EXISTS ix_documents_work ON documents(work_id);
+CREATE INDEX IF NOT EXISTS ix_revisions_work ON text_revisions(work_id);
+"""
+
+
+@dataclass(frozen=True)
+class Document:
+    id: str
+    work_id: str
+    role: str
+    sha256: str
+    content: str
+    title: str | None = None
+    path: str | None = None
+    media_type: str | None = None
+
+
+@dataclass(frozen=True)
+class TextRevision:
+    id: str
+    work_id: str
+    sha256: str
+    created_at: str
+    label: str | None = None
+    document_ids: tuple[str, ...] = ()
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+class Store:
+    """A Dramatis project file."""
+
+    def __init__(self, path: Path | str) -> None:
+        self.path = Path(path)
+        self._connection: sqlite3.Connection | None = None
+
+    # -- lifecycle ----------------------------------------------------------------------
+
+    def open(self) -> Store:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._connection = sqlite3.connect(self.path)
+        self._connection.row_factory = sqlite3.Row
+        self._connection.execute("PRAGMA foreign_keys = ON")
+        self._connection.executescript(DDL)
+        self._connection.execute(
+            "INSERT INTO meta (key, value) VALUES ('store_version', ?) ON CONFLICT(key) DO NOTHING",
+            (str(STORE_VERSION),),
+        )
+        self._connection.commit()
+        return self
+
+    def close(self) -> None:
+        if self._connection is not None:
+            self._connection.close()
+            self._connection = None
+
+    def __enter__(self) -> Store:
+        return self.open()
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
+
+    @property
+    def connection(self) -> sqlite3.Connection:
+        if self._connection is None:
+            raise RuntimeError("store is not open; use `with Store(path) as store:`")
+        return self._connection
+
+    @contextmanager
+    def transaction(self) -> Iterator[sqlite3.Connection]:
+        connection = self.connection
+        try:
+            yield connection
+        except Exception:
+            connection.rollback()
+            raise
+        connection.commit()
+
+    @property
+    def store_version(self) -> int:
+        row = self.connection.execute(
+            "SELECT value FROM meta WHERE key = 'store_version'"
+        ).fetchone()
+        return int(row["value"])
+
+    # -- writes -------------------------------------------------------------------------
+
+    def upsert_collection(self, identifier: str, name: str, description: str | None = None) -> str:
+        with self.transaction() as connection:
+            connection.execute(
+                "INSERT INTO collections (id, name, description) VALUES (?, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET name = excluded.name, "
+                "description = COALESCE(excluded.description, collections.description)",
+                (identifier, name, description),
+            )
+        return identifier
+
+    def upsert_work(
+        self,
+        identifier: str,
+        collection_id: str,
+        title: str,
+        *,
+        creator: str | None = None,
+        language: str | None = None,
+        edition: str | None = None,
+        segment_types: list[str] | None = None,
+    ) -> str:
+        with self.transaction() as connection:
+            connection.execute(
+                "INSERT INTO works (id, collection_id, title, creator, language, edition, "
+                "segment_types) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                # collection_id is updated, so a caller naming a collection explicitly can
+                # move a work. Callers must therefore pass the work's existing collection
+                # when they do not mean to move it — see ingest_file.
+                "ON CONFLICT(id) DO UPDATE SET title = excluded.title, "
+                "collection_id = excluded.collection_id, "
+                "creator = COALESCE(excluded.creator, works.creator), "
+                "language = COALESCE(excluded.language, works.language), "
+                "edition = COALESCE(excluded.edition, works.edition), "
+                "segment_types = excluded.segment_types",
+                (
+                    identifier,
+                    collection_id,
+                    title,
+                    creator,
+                    language,
+                    edition,
+                    json.dumps(segment_types or []),
+                ),
+            )
+        return identifier
+
+    def upsert_document(self, document: Document) -> str:
+        with self.transaction() as connection:
+            connection.execute(
+                "INSERT INTO documents (id, work_id, title, path, role, media_type, sha256, "
+                "content) VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET title = excluded.title, path = excluded.path, "
+                "role = excluded.role, media_type = excluded.media_type, "
+                "sha256 = excluded.sha256, content = excluded.content",
+                (
+                    document.id,
+                    document.work_id,
+                    document.title,
+                    document.path,
+                    document.role,
+                    document.media_type,
+                    document.sha256,
+                    document.content,
+                ),
+            )
+        return document.id
+
+    def upsert_text_revision(self, revision: TextRevision) -> str:
+        with self.transaction() as connection:
+            connection.execute(
+                "INSERT INTO text_revisions (id, work_id, label, sha256, created_at) "
+                "VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET label = COALESCE(excluded.label, "
+                "text_revisions.label)",
+                (
+                    revision.id,
+                    revision.work_id,
+                    revision.label,
+                    revision.sha256,
+                    revision.created_at,
+                ),
+            )
+            connection.execute(
+                "DELETE FROM revision_documents WHERE revision_id = ?", (revision.id,)
+            )
+            connection.executemany(
+                "INSERT INTO revision_documents (revision_id, document_id, position) "
+                "VALUES (?, ?, ?)",
+                [
+                    (revision.id, document_id, position)
+                    for position, document_id in enumerate(revision.document_ids)
+                ],
+            )
+        return revision.id
+
+    # -- reads --------------------------------------------------------------------------
+
+    def get_document(self, identifier: str) -> Document | None:
+        row = self.connection.execute(
+            "SELECT * FROM documents WHERE id = ?", (identifier,)
+        ).fetchone()
+        return None if row is None else Document(**dict(row))
+
+    def get_text_revision(self, identifier: str) -> TextRevision | None:
+        row = self.connection.execute(
+            "SELECT * FROM text_revisions WHERE id = ?", (identifier,)
+        ).fetchone()
+        if row is None:
+            return None
+        members = self.connection.execute(
+            "SELECT document_id FROM revision_documents WHERE revision_id = ? ORDER BY position",
+            (identifier,),
+        ).fetchall()
+        return TextRevision(
+            **dict(row), document_ids=tuple(member["document_id"] for member in members)
+        )
+
+    def get_work(self, identifier: str) -> dict[str, Any] | None:
+        row = self.connection.execute("SELECT * FROM works WHERE id = ?", (identifier,)).fetchone()
+        if row is None:
+            return None
+        work = dict(row)
+        work["segment_types"] = json.loads(work["segment_types"])
+        return work
+
+    def list_text_revisions(self, work_id: str) -> list[TextRevision]:
+        rows = self.connection.execute(
+            "SELECT id FROM text_revisions WHERE work_id = ? ORDER BY created_at, id",
+            (work_id,),
+        ).fetchall()
+        revisions = [self.get_text_revision(row["id"]) for row in rows]
+        return [revision for revision in revisions if revision is not None]
+
+    def revision_text(self, revision_id: str) -> str:
+        """Return the full text of a revision, documents concatenated in order."""
+        rows = self.connection.execute(
+            "SELECT d.content FROM revision_documents rd "
+            "JOIN documents d ON d.id = rd.document_id "
+            "WHERE rd.revision_id = ? ORDER BY rd.position",
+            (revision_id,),
+        ).fetchall()
+        return "".join(row["content"] for row in rows)

@@ -10,13 +10,20 @@ keeps passing against an answer to a question nobody asks any more. The fingerpr
 the fix — it covers every field that determines the response, so an edited prompt simply
 will not be found, and replay fails naming what it was asked for.
 
-Cassettes contain the full prompt text. Only ever commit cassettes recorded from
-public-domain or synthetic fixtures; never from someone's unpublished work.
+The same file serves a second purpose. A cassette written as a run proceeds is a
+**checkpoint**: the work already paid for, on disk, keyed by what determined it. That is
+what ``CheckpointProvider`` is for, and why the three providers here differ in exactly one
+respect — whether they look before they call, and whether they call at all.
+
+Cassettes contain the full prompt text, which for a checkpoint is the user's corpus. Only
+ever commit cassettes recorded from public-domain or synthetic fixtures; never from
+someone's unpublished work.
 """
 
 from __future__ import annotations
 
 import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -94,6 +101,15 @@ class Cassette:
         return cassette
 
     def save(self) -> None:
+        """Write the cassette out, replacing any previous one atomically.
+
+        A checkpoint is saved after every single call, so the window in which an interrupted
+        write could leave a half-written file is small but entered often — and a checkpoint
+        that can corrupt itself is not a checkpoint. Writing to a temporary file alongside
+        and renaming means an interruption leaves the previous cassette intact instead of
+        destroying the work it was holding. ``os.replace`` is atomic on POSIX and Windows
+        alike when both paths sit on one filesystem, which a sibling of the target does.
+        """
         payload = {
             "cassette_version": CASSETTE_VERSION,
             "recorded_at": self.recorded_at or datetime.now(UTC).isoformat(timespec="seconds"),
@@ -104,11 +120,16 @@ class Cassette:
             "interactions": sorted(self.interactions.values(), key=lambda e: e["fingerprint"]),
         }
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-            newline="\n",
-        )
+        pending = self.path.with_name(f"{self.path.name}.{os.getpid()}.pending")
+        try:
+            pending.write_text(
+                json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            os.replace(pending, self.path)
+        finally:
+            pending.unlink(missing_ok=True)
 
     def add(self, request: ModelRequest, response: ModelResponse) -> None:
         fingerprint = request.fingerprint()
@@ -182,25 +203,78 @@ class ReplayProvider:
         return response
 
 
+def _open(cassette: Cassette | Path | str) -> Cassette:
+    """Load a cassette if it exists, start a fresh one if it does not."""
+    if isinstance(cassette, Cassette):
+        return cassette
+    return Cassette.load(cassette) if Path(cassette).is_file() else Cassette(cassette)
+
+
 class RecordingProvider:
     """Wraps a live provider and writes every exchange to a cassette.
 
     Used only when deliberately re-recording. Nothing in the ordinary test run reaches it,
     because reaching it would mean making a live call.
+
+    Always calls the live provider, and overwrites whatever the cassette already held for
+    that fingerprint. That is the point — a re-record exists to replace a stale answer, and
+    consulting the cassette first would serve back the very recording it was invoked to
+    refresh. ``CheckpointProvider`` is the one that looks before it calls.
     """
 
     name = "recording"
 
     def __init__(self, inner: Provider, cassette: Cassette | Path | str) -> None:
         self.inner = inner
-        self.cassette = (
-            cassette
-            if isinstance(cassette, Cassette)
-            else (Cassette.load(cassette) if Path(cassette).is_file() else Cassette(cassette))
-        )
+        self.cassette = _open(cassette)
 
     def complete(self, request: ModelRequest) -> ModelResponse:
         response = self.inner.complete(request)
         self.cassette.add(request, response)
+        self.cassette.save()
+        return response
+
+
+class CheckpointProvider:
+    """Serves what the cassette already holds, and calls the live provider for the rest.
+
+    An analysis is dozens of independent model calls whose results live only in memory until
+    the pipeline finishes, so a failure in any later stage discards every call made before
+    it — including the sixty-odd that succeeded. This writes each exchange to disk as it
+    arrives and serves it back on the next attempt, so a re-run pays only for the work not
+    already done.
+
+    What counts as "already done" is the request fingerprint, so this needs no invalidation
+    logic of its own (D7): edit the prompt, the schema, the effort, or the token budget and
+    the entry simply is not found, and that call is made afresh while every unaffected call
+    is still served from disk. Fixing one stage's parameters therefore re-runs that stage and
+    nothing else.
+
+    A checkpoint holds the text sent to the model — the user's corpus. It is opt-in for that
+    reason, and the caller names the file, so nothing is ever written beside a project
+    without being asked for.
+    """
+
+    name = "checkpoint"
+
+    def __init__(self, inner: Provider, cassette: Cassette | Path | str) -> None:
+        self.inner = inner
+        self.cassette = _open(cassette)
+        self.served = 0
+        """Calls answered from the checkpoint."""
+        self.fetched = 0
+        """Calls that reached the live provider."""
+
+    def complete(self, request: ModelRequest) -> ModelResponse:
+        recorded = self.cassette.get(request)
+        if recorded is not None:
+            self.served += 1
+            return recorded
+
+        response = self.inner.complete(request)
+        self.fetched += 1
+        self.cassette.add(request, response)
+        # Saved per call rather than at the end: a checkpoint written once the run finishes
+        # would be worthless to the run that did not.
         self.cassette.save()
         return response

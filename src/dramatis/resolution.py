@@ -26,7 +26,7 @@ reviewed after the fact, so it stays a human act (phase 5.3).
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from dramatis import ids
@@ -35,6 +35,27 @@ from dramatis.providers import ModelRequest, Provider, ProviderError
 from dramatis.store import RegisteredCharacter, Store, form_key
 
 PROMPT_VERSION = "resolve-v1"
+
+RESOLUTION_BASE_TOKENS = 8192
+"""What the reply costs before any name is in it: the JSON envelope, and room to think.
+
+Thinking shares the output budget on current models, so a base sized only for the envelope
+would spend the whole allowance reasoning and truncate the answer."""
+
+RESOLUTION_TOKENS_PER_FORM = 48
+"""Worst case per surface form — every form its own group, which is what the deterministic
+baseline does and what a model that declines to merge anything would produce.
+
+Forms that *do* merge cost far less, since they add a string to an existing group rather
+than a whole one. Sizing for the worst case means the budget is never the reason a cautious
+grouping fails."""
+
+RESOLUTION_MAX_TOKENS = 32_768
+"""A ceiling, deliberately below the smallest output cap among current models.
+
+Reaching it means the cast outgrew what one call can group, and the answer then is to batch
+the names rather than to raise this number — see D22. Until that exists, the ceiling is what
+turns "too big" into a reported failure instead of an unbounded request."""
 
 SYSTEM_PROMPT = """\
 You are given a list of names, as they appear in a narrative work, and the number of \
@@ -90,6 +111,20 @@ RESPONSE_SCHEMA: dict[str, Any] = {
 
 class ResolutionError(Exception):
     """Resolution could not complete."""
+
+
+def budget_for(form_count: int) -> int:
+    """Output tokens to allow when grouping this many surface forms.
+
+    Resolution is one call whose reply has to name every form it was given, so what it costs
+    is set by the size of the cast rather than by the length of any passage. A fixed budget
+    is therefore not merely too small at some size — it is the wrong shape, and will fail on
+    a large enough work whatever number is chosen. This scales, and clamps.
+    """
+    if form_count < 0:
+        raise ValueError("form_count cannot be negative")
+    wanted = RESOLUTION_BASE_TOKENS + RESOLUTION_TOKENS_PER_FORM * form_count
+    return min(wanted, RESOLUTION_MAX_TOKENS)
 
 
 @dataclass(frozen=True)
@@ -159,13 +194,25 @@ def _gather(
 
 
 def _resolve_aliases(
-    primaries: dict[str, Candidate], alias_claims: dict[str, set[str]], alias_forms: dict[str, str]
+    primaries: dict[str, Candidate],
+    alias_claims: dict[str, set[str]],
+    alias_forms: dict[str, str],
+    assignments: dict[str, str],
 ) -> tuple[dict[str, tuple[str, str]], list[str], list[str]]:
     """Keep only aliases that unambiguously denote one character.
 
-    A form claimed by two different names is dropped. This is what removes pronouns and
-    generic epithets without a stop-list: they are dropped because they are contested, not
-    because they are on a list of words some language happens to use that way.
+    **Ambiguity is judged against characters, not against the names that proposed them**,
+    which is why this runs after grouping rather than before. Beforehand, "Elizabeth",
+    "Elizabeth Bennet", and "Eliza Bennet" are three claimants; afterwards they are one
+    character, and a form all three proposed is unanimous rather than contested. Judged too
+    early, the most common familiar form for the protagonist is discarded precisely because
+    everybody agreed on it.
+
+    A form claimed by two genuinely different characters is still dropped, and that is what
+    removes pronouns and generic epithets without a stop-list: they go because they are
+    contested, not because they are on a list of words some language happens to use that way.
+    ``assignments`` maps a name's form key to the character it resolved to, so "contested"
+    now means what it says.
     """
     kept: dict[str, tuple[str, str]] = {}
     dropped: list[str] = []
@@ -179,7 +226,13 @@ def _resolve_aliases(
                 "not treating it as an alias"
             )
             continue
-        if len(claimants) > 1:
+
+        owners = {assignments[claimant] for claimant in claimants if claimant in assignments}
+        if not owners:
+            # Every name that proposed it failed to resolve; there is nobody to attach to.
+            dropped.append(alias_key)
+            continue
+        if len(owners) > 1:
             dropped.append(alias_key)
             names = ", ".join(sorted(primaries[c].form for c in claimants if c in primaries))
             warnings.append(
@@ -187,7 +240,7 @@ def _resolve_aliases(
                 f"character ({names}); dropped as ambiguous"
             )
             continue
-        kept[alias_key] = (next(iter(claimants)), alias_forms.get(alias_key, alias_key))
+        kept[alias_key] = (next(iter(owners)), alias_forms.get(alias_key, alias_key))
 
     return kept, dropped, warnings
 
@@ -270,20 +323,20 @@ def resolve(
     collection_id: str,
     *,
     provider: Provider | None = None,
-    max_tokens: int = 4096,
+    max_tokens: int | None = None,
     effort: str | None = "medium",
 ) -> Resolution:
     """Resolve an extraction's surface forms into the collection's registry.
 
     Passing no provider uses the deterministic baseline, in which every distinct name is
     its own character. That is the honest floor: it under-merges rather than guessing.
+
+    ``max_tokens`` defaults to a budget derived from how many forms are actually being
+    grouped (``budget_for``); pass a number to override it.
     """
     primaries, alias_claims, alias_forms, warnings = _gather(extraction)
     if not primaries:
         return Resolution(prompt_version=None, warnings=tuple(warnings))
-
-    alias_owner, dropped, alias_warnings = _resolve_aliases(primaries, alias_claims, alias_forms)
-    warnings.extend(alias_warnings)
 
     registered = store.list_characters(collection_id)
     by_form: dict[str, RegisteredCharacter] = {}
@@ -310,14 +363,26 @@ def resolve(
     elif provider is None:
         groups = _group_without_a_model(unresolved)
     else:
+        # Sized from the forms this call actually has to name, not from a constant: only
+        # `unresolved` reaches the model, since anything the registry already claims was
+        # answered above without asking.
         groups, model, provider_name = _group_with_a_model(
-            unresolved, registered, provider, max_tokens=max_tokens, effort=effort
+            unresolved,
+            registered,
+            provider,
+            max_tokens=budget_for(len(unresolved)) if max_tokens is None else max_tokens,
+            effort=effort,
         )
         prompt_version = PROMPT_VERSION
 
     created: list[str] = []
     updated: list[str] = []
     claimed: dict[str, str] = {}  # surface forms claimed during this run
+
+    # First pass: settle identity. Aliases proposed by `alias_claims` are deliberately not
+    # consulted yet — deciding whether one of them is contested needs the character each
+    # claimant resolved to, which is exactly what this pass produces.
+    pending: list[tuple[RegisteredCharacter, list[str]]] = []
 
     for group in groups:
         if not isinstance(group, dict):
@@ -343,12 +408,11 @@ def resolve(
         # `keys` only ever holds unresolved forms, so a group can never gather two
         # characters the registry already knows. That is what makes merging structurally
         # impossible here rather than merely guarded against.
-        aliases = [unresolved[key].form for key in keys if key != form_key(canonical)]
-        aliases += [form for owner, form in alias_owner.values() if owner in keys]
+        grouped = [unresolved[key].form for key in keys if key != form_key(canonical)]
 
         if target is not None:
             merged_aliases = tuple(
-                dict.fromkeys([*target.aliases, *aliases, *(f for f in forms if f != target.name)])
+                dict.fromkeys([*target.aliases, *grouped, *(f for f in forms if f != target.name)])
             )
             character = RegisteredCharacter(
                 id=target.id,
@@ -371,23 +435,48 @@ def resolve(
                 kind=kind,
                 provenance="observed",
                 aliases=tuple(
-                    dict.fromkeys(a for a in aliases if form_key(a) != form_key(canonical))
+                    dict.fromkeys(a for a in grouped if form_key(a) != form_key(canonical))
                 ),
             )
             created.append(identifier)
 
-        store.upsert_character(character)
+        pending.append((character, keys))
         for form in character.surface_forms:
             assignments[form_key(form)] = character.id
             claimed[form_key(form)] = character.id
         for key in keys:
             assignments[key] = character.id
 
-    # Aliases inherit their owner's identifier once the owner has one.
-    for alias_key, (owner_key, _form) in alias_owner.items():
-        owner_id = assignments.get(owner_key)
-        if owner_id is not None:
-            assignments.setdefault(alias_key, owner_id)
+    # Second pass: now that every name has a character, a form several names proposed can be
+    # judged on whether those names turned out to be one person.
+    alias_owner, dropped, alias_warnings = _resolve_aliases(
+        primaries, alias_claims, alias_forms, assignments
+    )
+    warnings.extend(alias_warnings)
+
+    owned: dict[str, list[str]] = {}
+    for owner_id, form in alias_owner.values():
+        owned.setdefault(owner_id, []).append(form)
+
+    for character, _keys in pending:
+        extra = [
+            form
+            for form in owned.get(character.id, [])
+            if form_key(form) != form_key(character.name)
+        ]
+        if extra:
+            character = replace(
+                character,
+                aliases=tuple(dict.fromkeys([*character.aliases, *extra])),
+            )
+        store.upsert_character(character)
+        for form in character.surface_forms:
+            assignments[form_key(form)] = character.id
+
+    # An alias whose owner the registry already knew has no pending record to attach to, so
+    # its assignment is recorded directly.
+    for alias_key, (owner_id, _form) in alias_owner.items():
+        assignments.setdefault(alias_key, owner_id)
 
     return Resolution(
         assignments=assignments,

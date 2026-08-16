@@ -256,6 +256,65 @@ text. No medium-specific vocabulary appears anywhere in the schema (grep for `ch
 > it. The phase reopens rather than deferring to Phase 2: every snapshot made before 1.12
 > is one whose prompt cannot be recovered.
 
+- [x] **1.15** — Checkpoint a run's model calls, so an interrupted analysis resumes instead
+      of paying for the work again. Opt-in `--checkpoint`, keyed by the request fingerprint
+      that already exists, written after every call rather than at the end. See **D21**.
+
+> **Why 1.15 exists.** The first run against the whole novel made sixty-three successful
+> extraction calls and then raised in the stage after them, and every one of those results
+> was discarded — they live in a list in memory until `save_snapshot` at the very end, so
+> the pipeline has no state between "nothing" and "a finished snapshot". The cause of that
+> particular failure is 1.16's business; this bullet is about the loss being total and
+> independent of the cause. Any error in any later stage destroys the same work, and the
+> longer the corpus the more there is to destroy — which makes this the bullet that has to
+> land first, because without it every attempt at the next one costs another full run.
+
+- [x] **1.16** — Size resolution's token budget from the number of names being grouped rather
+      than fixing it, and report a reply that ran out of budget as truncated rather than as
+      malformed JSON. See **D22**.
+
+> **Why 1.16 exists.** Resolution is a single call that must name every surface form it was
+> given, so the length of its reply is set by the size of the cast — where every other model
+> call in the pipeline is bounded by a window. A constant is therefore not merely too small
+> at some size, it is the wrong shape: 4096 fit a three-chapter excerpt of twenty-three
+> names and could not fit a novel, and no larger constant would be right either. The second
+> half is what made the first half hard to see. A budget that runs out under constrained
+> decoding yields a valid *prefix*, so the failure arrived as "expected JSON but got
+> `{"groups":[{...`" — which reads as a model emitting nonsense and sends the reader to the
+> prompt rather than to the budget.
+
+- [x] **1.17** — Disambiguate aliases *after* grouping rather than before, so a form claimed
+      by several surface variants of one character is kept, while a form claimed by several
+      genuinely different characters is still dropped. The Jane/Elizabeth case is the
+      constraint, not an afterthought: it must keep failing closed. See **D23**.
+
+> **Why 1.17 exists.** The first full-novel run resolved cleanly and then showed the
+> alias guard failing in both directions at once.
+>
+> **Over-dropping.** `_resolve_aliases` runs before grouping, so its notion of "claimed by
+> more than one character" is really "claimed by more than one *surface form*" — and
+> deciding which surface forms are one character is exactly what the step after it does. So
+> `lizzy`, seen thirty-six times, was dropped as ambiguous because it was claimed by
+> "Elizabeth", "Elizabeth Bennet", and "Eliza Bennet"; `mr. darcy`, `charles`, and
+> `my aunt philips` went the same way. The mechanism is right and D7's "conflict, not
+> vocabulary" reasoning stands — it correctly dropped `my father` (four different fathers),
+> `your sister`, and `she`. Only the ordering is wrong.
+>
+> **The constraint that makes 1.17 non-trivial.** `miss bennet` was claimed by "Elizabeth",
+> "Elizabeth Bennet", *and* "Jane" — extraction proposed it as Elizabeth's alias in some
+> windows, which is precisely the error `fixtures/a/README.md` calls this fixture's chief
+> value. The guard dropped it as contested, and that accident is the only reason the trap
+> did not spring. A fix that resolves claimants to characters first must still refuse this
+> one, because after grouping the claimants are two *different* characters and the conflict
+> is real. Getting 1.17 right means `lizzy` survives and `miss bennet` does not.
+>
+> **Under-dropping, and why it is not here.** `you` and `madam` are registered aliases of
+> Elizabeth Bennet, because only one character ever claimed them and conflict detection has
+> nothing to compare; `she` was caught only because two characters happened to claim it.
+> That was drafted as 1.18 and has moved to **7.7**. It is not a filter anyone can write
+> without first deciding what a name is, and that decision is a prompt question settled by
+> measurement rather than a guard settled by argument. See **D24**.
+
 **Acceptance:** Ingesting fixture **A** end to end produces a snapshot that validates
 against the schema. Elizabeth Bennet and Fitzwilliam Darcy are present as single nodes
 with their aliases merged, joined by an edge among the graph's heaviest. Every stored
@@ -388,6 +447,60 @@ desktop build and completes a first analysis without touching a terminal.
 
 ---
 
+### Phase 7 — The prompts as the object of study
+
+*Everything before this treats a prompt as an input. From here it is the thing being
+revised, and revising it has to be measurable by someone who did not write it.*
+
+- [ ] **7.1** — An evaluation harness: run a fixture through the pipeline and score the
+      result against its expectation floor, reporting which checks moved in which direction.
+      Non-zero exit on a regression. Nothing later in this phase means anything without it.
+- [ ] **7.2** — Frozen regression baselines, generated from a trusted run rather than
+      hand-written — the exact-match fixtures **D5** deferred until there was a pipeline
+      worth freezing against.
+- [ ] **7.3** — Recorded runs published as evaluation inputs, so the harness replays a real
+      corpus with no key and no network. A cassette of a full-novel run already exists as a
+      by-product of **1.15**; this makes it a fixture rather than a side effect.
+- [ ] **7.4** — The resolution prompt out of its module, under the same file-and-hash
+      discipline as extraction. *(Promoted from the Backlog. **D18** covers only the
+      extraction prompt, so a changed resolution prompt still silently voids comparability.)*
+- [ ] **7.5** — Per-project prompt overrides: a project may carry its own prompts, recorded
+      in the run's parameters and honoured by `require_comparable()`, so a house style is a
+      first-class thing to study rather than a local edit to an installed package.
+- [ ] **7.6** — A prompt changelog, and a contribution guide stating what evidence a prompt
+      change must carry to be reviewable at all.
+- [ ] **7.7** — Settle what counts as a name rather than a way of referring to someone, and
+      stop the second kind entering the registry. `you`, `madam`, `my dear aunt`, and
+      `my sister` are aliases of real characters today. *(Drafted as 1.18 and deferred here
+      by **D24**; depends on 7.1, since the whole question is which rule scores better.)*
+
+> **Why this phase is not like the others.** The rest of the roadmap finishes. This one does
+> not, and it is placed last because it depends on nearly all of it — the harness needs
+> fixtures **B**, **C**, and **D** to be real (Phases 3–4), and contributors need something
+> installable and citable to contribute *to* (Phase 6).
+>
+> The reason it is a phase at all rather than a habit is that prompt work without
+> measurement is taste, and taste does not merge. Every prompt question this project has
+> already hit came from a live run and was settled by argument: whether a collective is a
+> character (**D19**), whether an indefinite referent is one, and — still open — whether
+> `extract.md`'s *"or described in relation to each other"* should count Wickham describing
+> Lady Catherine as an interaction between them, which is the sole negative control fixture
+> **A** currently fails. Each of those is defensible either way. What decides them is a
+> corpus, a floor, and a number that moves.
+>
+> **1.15 is what makes this affordable.** Because every model call is fingerprinted and
+> recorded separately, a change to the resolution prompt replays sixty-three extraction calls
+> from disk and costs one live call — so an experiment costs cents rather than the price of a
+> whole run. Prompt refinement stops being something only the person paying the bill can do,
+> which is the precondition for anyone else joining in.
+
+**Acceptance:** A prompt change that improves one fixture and regresses another is reported
+as such before it is merged, by a command anyone can run. A contributor with no API key
+reproduces the evaluation from published recordings. Every prompt the pipeline sends is a
+file with a version and a hash, and no prompt reaches a model from inside a module.
+
+---
+
 ## Backlog
 
 Not scheduled. Do not build without promotion to a phase.
@@ -400,11 +513,6 @@ Not scheduled. Do not build without promotion to a phase.
 - **Connectors** — Google Drive, Scrivener, Obsidian, Markdown vaults, TEI.
 - **BookNLP interop** — ingest its output as an alternative extractor.
 - **Collaborative annotation** for editorial teams and seminar use.
-- **The resolution prompt should follow the extraction prompt out of its module** (1.12 moved
-  only the latter, which is what D18 covers). It is a real gap: a changed resolution prompt
-  changes results as much as a changed extraction prompt, and only the extraction one is
-  hashed. Left inline for now because a prompt that cannot change without a code change
-  cannot drift behind its version label, which is the failure D18 addresses.
 
 ---
 

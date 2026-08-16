@@ -468,3 +468,200 @@ being installed at all.
 
 *Reversible* cheaply in code, though not to `force-include`: that arrangement cannot be
 tested from a checkout, which is the whole of the argument against it.
+
+---
+
+## D21 — A run checkpoints to a cassette, and the fingerprint decides what is already done
+
+**Phase 1.15.** `CheckpointProvider` wraps the live provider, serves any call the cassette
+already holds, and writes each new exchange to disk as it arrives. `dramatis analyse
+--checkpoint <path>` opts into it.
+
+The first run against the whole novel made sixty-three extraction calls, all of them
+successful, and lost every one when the stage after them raised. Nothing was wrong with
+those calls. They were simply held in a list in memory, because the pipeline has exactly
+two states — nothing written, or a finished snapshot — and an error anywhere between them
+lands on the first. On a three-chapter excerpt that is invisible. On a novel it is the
+difference between a fault costing pennies and costing the whole run, and it gets worse as
+the corpus grows.
+
+**No new keying was needed, which is the good part.** D7 built a request fingerprint over
+every field that determines a response, to stop a stale recording being served silently.
+That is the same question a checkpoint asks — *has this exact work been done?* — so the
+machinery transfers whole, and the consequence falls out for free: change a prompt, a
+schema, an effort, or a token budget and only the calls that depended on it are missing
+from the cassette. Fixing one stage re-runs that stage. D22 raises resolution's budget, and
+because `max_tokens` is in the fingerprint, the extraction calls stay valid and the re-run
+costs one call rather than sixty-four. Nothing had to be taught that; it is D7 being right.
+
+Three choices worth stating.
+
+**A separate class, not a flag on `RecordingProvider`.** Recording exists for deliberate
+re-recording and must always call live and overwrite; checkpointing must look first. One
+class doing both, switched by an argument, would eventually serve a re-record the stale
+answer it was invoked to replace — the exact failure D7 exists to prevent.
+
+**Saved per call, not at the end.** A checkpoint written when the run finishes tells the
+run that did not finish nothing. This means many small writes, so `Cassette.save()` now
+writes alongside and renames: an interrupted save costs the call in flight and never the
+calls already banked. A checkpoint that can corrupt itself is not a checkpoint.
+
+**Opt-in, and the caller names the file.** A cassette holds every prompt sent, which for a
+real project is the manuscript. Invariant 7 is about egress and this is a local file, so it
+is not a breach — but a tool that silently drops a plaintext copy of an unpublished novel
+beside the project, under a name the author did not choose, is not one that has earned the
+privacy posture the README claims. `*.checkpoint.json` is in `.gitignore` for the same
+reason.
+
+What this does **not** do is checkpoint the pipeline's own stages. Verification, resolution,
+and aggregation all re-run on a resume; they are cheap, deterministic given the same
+extraction, and local. Only the model calls are worth persisting, and only they are
+expensive to repeat.
+
+*Reversible* cheaply — the flag is opt-in and nothing else in the pipeline knows the
+provider is wrapped.
+
+---
+
+## D22 — Resolution's budget is sized from the cast, and a truncated reply says so
+
+**Phase 1.16.** `resolve()` no longer takes a fixed `max_tokens=4096`. It computes one from
+the number of surface forms actually being grouped: a base for the envelope and for
+thinking, plus a worst-case allowance per form, clamped to a ceiling. `ModelResponse.json()`
+refuses a reply whose `stop_reason` is `max_tokens` before it tries to parse it.
+
+Every other model call in the pipeline is bounded by a window, so a constant works. This one
+is not. Resolution is a single call whose reply must name every form it was given, so its
+length is set by the size of the cast, and a constant is the wrong *shape* rather than
+merely the wrong number — 4096 fit a three-chapter excerpt of twenty-three names, could not
+fit a novel, and no larger constant would be right for the work after that.
+
+The allowance is deliberately the worst case: every form its own group, which is exactly
+what the deterministic baseline produces and what a model that declines to merge anything
+would produce. Forms that *do* merge cost far less, adding a string to a group rather than a
+group. Sizing for the pessimistic case means the budget is never the reason a cautious
+grouping fails, and since `max_tokens` is a ceiling rather than a charge, being generous
+costs nothing when it is not used.
+
+**The second half is why the first half was hard to see.** Under constrained decoding a
+reply that runs out of budget is not malformed — it is a valid prefix of a valid answer. So
+the failure surfaced through the JSON parser as *expected JSON from anthropic/claude-opus-5
+but got `{"groups":[{"canonical_name":"Elizabeth Bennet"…`*, which reads as a model emitting
+nonsense and sends the reader to the prompt. The one thing that knew the answer was
+incomplete was `stop_reason`, and nothing looked at it. Checking it before parsing is a
+three-line change that turns the most expensive failure this project has had into a sentence
+naming its own remedy. It is checked *before* parsing rather than in the parser's error path
+because a truncated reply can still parse by luck, and is no less incomplete for that.
+
+**What this does not do is make the call unbounded.** The ceiling sits below the smallest
+output cap among current models, so a request is never built that a provider would refuse
+outright. Above that the honest answer is not a bigger reply but **batching the name list**,
+which is a real design question — grouping decided in two passes can contradict itself, and
+the existing ambiguity guard protects against conflicts within one pass, not across two. That
+belongs in its own bullet with the curation work, not here. Until it exists, the ceiling plus
+the truncation message is the difference between a corpus that is too large being reported
+and being mysterious.
+
+*Reversible* cheaply. The constants are three module-level numbers with tests pinning the
+properties rather than the values, and an explicit `max_tokens` still overrides them.
+
+---
+
+## D23 — Alias ambiguity is judged against characters, not against the names that proposed them
+
+**Phase 1.17.** `_resolve_aliases` moves after grouping and takes the assignments map, so
+"claimed by more than one character" is decided on resolved identities rather than on
+surface forms.
+
+D7's rule was right and its timing was wrong. Before grouping, "Elizabeth", "Elizabeth
+Bennet", and "Eliza Bennet" are three claimants; afterwards they are one character. So a
+form all three proposed was read as contested when it was in fact unanimous, and `lizzy` —
+the most common familiar form for the protagonist, seen thirty-six times — was discarded
+*because* everybody agreed on it. `mr. darcy`, `charles`, and `my aunt philips` went the
+same way. Deciding which surface forms are one character is precisely what the next step
+does, so the question could not be answered where it was being asked.
+
+Nothing about the principle changes. `my father` (four different fathers), `your sister`,
+`his sister`, and `she` are still dropped, still by conflict rather than by vocabulary, and
+still without a stop-list.
+
+**The constraint is the interesting half.** Unqualified "Miss Bennet" denotes Jane, and
+extraction proposed it as *Elizabeth's* alias in some windows — the error
+`fixtures/a/README.md` calls this fixture's chief value. Under the old ordering it was
+dropped as contested, and that accident was the only thing standing between the graph and
+being wrong throughout. It still fails closed, now for a stated reason rather than a lucky
+one: its claimants resolve to two different characters, so the conflict is real. The tests
+assert both halves together, because a change that satisfied either alone would be worse
+than no change.
+
+**Measured on the recorded run rather than argued.** Replaying the full novel through the
+new ordering — identical model output, courtesy of D21 — recovers eleven surface forms and
+loses none, leaving characters and relations untouched at 102 and 241. Fixture A's alias
+groups go from four of six to five of six. That the structure did not move is the point:
+this was only ever a defect of identity, not of the graph.
+
+**What it deliberately does not fix.** "Miss Bennet" is still its own node rather than
+Jane's alias. Resolving it needs the convention that the eldest unmarried daughter is
+"Miss ⟨surname⟩", and resolution is shown a list of names and occurrence counts, never the
+text — so the fixture's hardest case is not merely unsolved but structurally out of reach
+from where it is being asked. That belongs with the prompt and evaluation work in Phase 7.
+
+**A consequence worth stating.** The old over-firing was incidentally suppressing junk. With
+spurious contest removed, relational epithets like `my dear aunt` and `my sister` now attach
+where before they were blocked by an accident — five of the eleven recovered forms are of
+that kind. `you` and `madam` were already getting through, so this widens 1.18's surface
+rather than creating it, and is an argument for doing 1.18 rather than against having done
+this.
+
+*Reversible* cheaply: the ordering is one call site and the guard's signature.
+
+---
+
+## D24 — Deciding what counts as a name is deferred to Phase 7, and Phase 1 closes without it
+
+**Phase 1.17 / 7.7.** The bullet drafted as 1.18 — stop a form only one character ever
+claimed from becoming an alias on that basis alone — moves to **7.7**. Phase 1 is complete
+with it gone.
+
+The defect is real and unchanged: `you` and `madam` are aliases of Elizabeth Bennet, and
+D23 added `my dear aunt` and `my sister` to the list by removing the spurious contest that
+had been suppressing them. Conflict detection cannot see them, because only one character
+ever claimed them, and `she` was caught only by the accident of two characters claiming it.
+
+**Why it cannot be finished here.** Every available fix is a decision about what a name is,
+and none of them is a guard:
+
+- Filtering in resolution means a rule for which strings look like names. That is a
+  stop-list wearing a hat, and D7 rejected stop-lists for a reason that has not weakened —
+  it encodes one language's conventions into the core, and Invariant 1 argues against
+  assuming the shape of a corpus.
+- Fixing it in `extract.md` means telling the model not to offer possessives and vocatives
+  as aliases. That is the likeliest right answer, and it is a prompt change.
+- Fixing it in the resolution prompt is the same kind of change one layer along.
+
+Two of the three are prompt edits, and the third is the one D7 already argued against. A
+prompt edit cannot be justified by argument: `my sister` said by Darcy really does denote
+Georgiana, so a rule excluding it is trading a true alias for a class of false ones, and
+whether that trade is worth making is a number, not an opinion. Phase 7 exists to produce
+that number, and 7.7 depends on 7.1 for exactly this reason. Landing a guess in Phase 1
+would mean choosing between three defensible options with no way to tell which won, and
+then treating the guess as settled.
+
+**What this costs.** Phase 1's acceptance names Elizabeth and Darcy as single nodes with
+their aliases merged, and after D23 they are. Fixture A's floor is stricter than that
+acceptance and two of its checks still fail: `Miss Bennet` is its own node rather than
+Jane's alias, and the Lady Catherine / Wickham negative control has an edge. Both are the
+same shape as 7.7 — the first needs the convention that the eldest unmarried daughter is
+"Miss ⟨surname⟩", which resolution never sees the text to learn; the second is
+`extract.md`'s *"or described in relation to each other"* doing what it says. Neither is a
+defect in code that Phase 1 could close, and D5 already warned that this floor states more
+than any single phase promises.
+
+So Phase 1 closes on its own acceptance, with three known gaps recorded and homed rather
+than silently carried. The alternative — holding the phase open until the fixture floor is
+clean — would keep it open until the prompts are finished, which is Phase 7, which is the
+phase that does not finish.
+
+*Reversible* — promoting 7.7 back into Phase 1 is a bullet move, though doing so would
+re-open a phase whose acceptance is met in order to work on something its acceptance does
+not mention.

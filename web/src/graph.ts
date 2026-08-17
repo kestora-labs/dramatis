@@ -21,8 +21,12 @@ export interface SnapshotCharacter {
   name: string;
   aliases?: string[];
   kind?: string;
+  salience?: number;
+  confidence?: number;
   provenance: Provenance;
   review_status?: string;
+  notes?: string;
+  evidence?: SnapshotEvidence[];
 }
 
 export interface SnapshotEvidence {
@@ -38,7 +42,12 @@ export interface SnapshotRelation {
   weight: number;
   weight_basis: string;
   directed?: boolean;
+  types?: string[];
+  valence?: number;
+  confidence?: number;
   provenance: Provenance;
+  review_status?: string;
+  notes?: string;
   evidence?: SnapshotEvidence[];
 }
 

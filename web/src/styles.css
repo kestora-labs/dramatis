@@ -80,6 +80,86 @@ code {
   border-radius: 3px;
 }
 
+.detail {
+  margin-top: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.75rem 0.9rem 0.9rem;
+}
+
+.detail-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.detail h2 {
+  font-size: 0.95rem;
+  margin: 0;
+  line-height: 1.35;
+}
+
+.detail dl {
+  margin: 0.75rem 0 0;
+}
+
+.clear {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0 0.15rem;
+  cursor: pointer;
+}
+
+.clear:hover {
+  color: var(--ink);
+}
+
+.field-label {
+  font-size: 0.7rem;
+  font-weight: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 0.75rem 0 0.35rem;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.chips li {
+  font-size: 0.75rem;
+  background: #f7fafc;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+}
+
+.detail-notes {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 0.9rem 0 0;
+  border-top: 1px solid var(--line);
+  padding-top: 0.65rem;
+}
+
+.hint {
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 1.25rem 0 0;
+}
+
 .note {
   font-size: 0.78rem;
   color: var(--muted);

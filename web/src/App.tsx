@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import cytoscape from "cytoscape";
 
+import { describeSelection, type Detail, type Selection } from "./detail.js";
 import { buildGraph, type SnapshotDocument } from "./graph.js";
 
 interface SnapshotSummary {
@@ -40,11 +41,58 @@ const STYLE: cytoscape.StylesheetJson = [
   { selector: ":selected", style: { "background-color": "#c05621", "line-color": "#c05621" } },
 ];
 
+/**
+ * What the snapshot claims about the selected node or edge.
+ *
+ * The fields themselves are decided in `detail.ts`; this only sets them. Aliases and
+ * relation types are set apart from the rest because they are lists of short free-text
+ * terms rather than single values, and run together in a definition list they read as one
+ * run-on string.
+ */
+function DetailPanel({ detail, onClear }: { detail: Detail; onClear: () => void }) {
+  const list = detail.kind === "character" ? detail.aliases : detail.types;
+  const listLabel = detail.kind === "character" ? "Also known as" : "Types";
+
+  return (
+    <section className="detail">
+      <div className="detail-head">
+        <h2>{detail.title}</h2>
+        <button type="button" className="clear" onClick={onClear} aria-label="Clear selection">
+          ×
+        </button>
+      </div>
+
+      {list.length > 0 && (
+        <>
+          <h3 className="field-label">{listLabel}</h3>
+          <ul className="chips">
+            {list.map((term) => (
+              <li key={term}>{term}</li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      <dl>
+        {detail.fields.map((field) => (
+          <Fragment key={field.label}>
+            <dt>{field.label}</dt>
+            <dd>{field.code ? <code>{field.value}</code> : field.value}</dd>
+          </Fragment>
+        ))}
+      </dl>
+
+      {detail.notes && <p className="detail-notes">{detail.notes}</p>}
+    </section>
+  );
+}
+
 export function App() {
   const container = useRef<HTMLDivElement>(null);
   const [snapshots, setSnapshots] = useState<SnapshotSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [document_, setDocument] = useState<SnapshotDocument | null>(null);
+  const [selection, setSelection] = useState<Selection | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -59,6 +107,7 @@ export function App() {
 
   useEffect(() => {
     if (!selected) return;
+    setSelection(null);
     fetch(`/api/snapshots/${selected}`)
       .then((response) => response.json())
       .then(setDocument)
@@ -75,6 +124,19 @@ export function App() {
       style: STYLE,
       layout: { name: "cose", animate: false, nodeRepulsion: 8000 },
     });
+
+    // `tap` rather than Cytoscape's own select/unselect pair: moving from one node to
+    // another fires both, and the panel should not depend on which arrives last.
+    instance.on("tap", "node", (event) =>
+      setSelection({ kind: "character", id: event.target.id() }),
+    );
+    instance.on("tap", "edge", (event) =>
+      setSelection({ kind: "relation", id: event.target.id() }),
+    );
+    instance.on("tap", (event) => {
+      if (event.target === instance) setSelection(null);
+    });
+
     if (weightBasis === null) {
       setError("this snapshot mixes weight bases; edge widths are not comparable");
     }
@@ -82,6 +144,7 @@ export function App() {
   }, [document_]);
 
   const run = document_?.analysis_runs?.[0];
+  const detail = document_ ? describeSelection(document_, selection) : null;
 
   return (
     <div className="layout">
@@ -102,6 +165,14 @@ export function App() {
             </option>
           ))}
         </select>
+
+        {detail ? (
+          <DetailPanel detail={detail} onClear={() => setSelection(null)} />
+        ) : (
+          document_ && (
+            <p className="hint">Select a node or an edge for what the snapshot claims about it.</p>
+          )
+        )}
 
         {document_ && (
           <dl>

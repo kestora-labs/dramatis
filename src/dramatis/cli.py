@@ -4,8 +4,10 @@
 a project store. Neither requires a model or a network connection (Invariant 6), so both
 work offline and always will.
 
-``analyse`` is the exception, and the only command that calls a provider. Its imports are
-deferred so the other commands keep working when no provider SDK is installed.
+``analyse`` calls a provider, and ``structure`` does too but only when asked with
+``--ask``. Their provider imports are deferred so the other commands keep working when no
+provider SDK is installed, and ``structure`` without ``--ask`` stays offline: looking at what
+a folder holds should never cost anything.
 
 Every command locates the project file rather than assuming it (see ``dramatis.locate``),
 and only ``ingest`` may bring one into existence. ``status`` answers which project is in
@@ -22,7 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from dramatis import __version__
-from dramatis.ingest import IngestError, ingest_file, ingest_folder
+from dramatis.ingest import IngestError, ingest_file, ingest_folder, read_text
 from dramatis.locate import STORE_FILENAME, StoreNotFound, resolve_store
 from dramatis.providers import Provider, ProviderError
 from dramatis.schema import schema_version
@@ -85,39 +87,124 @@ def _run_validate(args: argparse.Namespace) -> int:
 # -- structure ------------------------------------------------------------------------
 
 
-def _run_structure(args: argparse.Namespace) -> int:
-    """Show what a folder appears to hold, without ingesting or analysing anything.
+def _corrections(pairs: list[str]) -> dict[str, str]:
+    """Parse ``--set path=role`` arguments.
 
-    Calls no model and writes nothing. A structure map is a thing somebody is asked to
-    confirm (4.2), and being able to look at it before spending anything is most of why it
-    is proposed separately from the ingest that will use it.
+    A bad pair is refused rather than ignored. Somebody correcting a map is telling the tool
+    it got something wrong, and dropping that on the floor would save the wrong answer.
     """
-    from dramatis.structure import as_json, propose_structure
+    from dramatis.structure import StructureError
 
-    try:
-        structure = propose_structure(args.path)
-    except IngestError as error:
-        print(f"error: {error}", file=sys.stderr)
-        return 1
+    corrections: dict[str, str] = {}
+    for pair in pairs:
+        path, separator, role = pair.partition("=")
+        if not separator or not path or not role:
+            raise StructureError(f"--set wants PATH=ROLE, not {pair!r}")
+        corrections[path] = role
+    return corrections
 
-    if args.as_json:
-        json.dump(as_json(structure), sys.stdout, indent=2)
-        sys.stdout.write("\n")
-        return 0
 
+def _print_structure(structure: Any) -> None:
     # ASCII only, for the reason IngestResult.summary gives: a Windows console under a
     # legacy code page renders typographic punctuation as replacement characters, and output
     # that looks corrupted is worse than output that looks plain.
     print(f"{structure.root} - {len(structure.documents)} documents")
     for plan in structure.documents:
         print()
+        settled = " (confirmed)" if plan.role.settled else ""
         print(f"  {plan.path}  ({plan.characters:,} characters)")
-        print(f"    role         {plan.role.value}")
+        print(f"    role         {plan.role.value}{settled}")
         print(f"                 {plan.role.basis}")
         print(f"    addressing   {plan.addressing.value}")
         print(f"                 {plan.addressing.basis}")
         print(f"    revision of  {plan.revision_of.value or '(none)'}")
         print(f"                 {plan.revision_of.basis}")
+        if len(plan.regions) > 1:
+            for region in plan.regions:
+                span = f"{region.starts_at:,}-{region.ends_at:,}"
+                print(f"    region       {region.label} [{span}] -> {region.role.value}")
+
+
+def _run_structure(args: argparse.Namespace) -> int:
+    """Show what a folder appears to hold, and record what somebody says it holds.
+
+    Without ``--ask`` this calls no model and reaches no network, so looking at a proposal
+    costs nothing. Without ``--confirm`` it writes nothing.
+
+    Deliberately not a conversation. An earlier version of the ingest prompt asked questions
+    on stdin and fell over with EOFError wherever stdin was not a terminal, which is most
+    places a CLI actually runs. Corrections arrive as ``--set`` arguments, which are also what
+    a person can put in a script, read back later, or paste into a bug report.
+    """
+    from dramatis.structure import (
+        StructureError,
+        as_json,
+        confirm,
+        propose_structure,
+        propose_with_model,
+        restore,
+        save,
+    )
+
+    needs_store = args.confirm or args.forget or args.store is not None
+    store_path = None
+    if needs_store:
+        try:
+            store_path = resolve_store(args.store).require()
+        except StoreNotFound as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 1
+
+    try:
+        if args.forget:
+            with Store(store_path) as store:
+                forgotten = store.forget_structure_map(str(Path(args.path).resolve()))
+            print(f"forgot {forgotten} confirmed document(s) for {args.path}")
+            return 0
+
+        structure = propose_structure(args.path)
+        texts = {plan.path: read_text(Path(args.path) / plan.path) for plan in structure.documents}
+
+        if args.ask:
+            from dramatis.providers.anthropic_provider import AnthropicProvider
+
+            structure = propose_with_model(
+                structure,
+                texts,
+                AnthropicProvider(model=args.model),
+                effort=args.effort,
+            )
+        elif store_path is not None:
+            with Store(store_path) as store:
+                structure = restore(structure, store.structure_map(structure.root), texts)
+
+        if args.confirm:
+            # Corrections apply to whatever is on screen: the model's reading if one was
+            # asked for, the saved answers otherwise. Both are things a person is agreeing to.
+            structure = confirm(structure, _corrections(args.set or []))
+            with Store(store_path) as store:
+                saved = save(structure, store)
+            print(f"confirmed and saved {saved} document(s) for {structure.root}", file=sys.stderr)
+        elif args.set:
+            print(
+                "note: --set was given without --confirm, so nothing was saved. The map "
+                "below is what confirming would record.",
+                file=sys.stderr,
+            )
+            structure = confirm(structure, _corrections(args.set))
+
+    except (IngestError, StructureError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    except ProviderError as error:
+        print(f"error: the provider failed: {error}", file=sys.stderr)
+        return 1
+
+    if args.as_json:
+        json.dump(as_json(structure), sys.stdout, indent=2)
+        sys.stdout.write("\n")
+    else:
+        _print_structure(structure)
 
     # stderr, like every other remark this CLI makes, so --json stays parseable.
     for note in structure.notes:
@@ -620,11 +707,50 @@ def _build_parser() -> argparse.ArgumentParser:
         help="show what a folder appears to hold",
         description=(
             "Propose a structure map for a folder: which documents appear to be revisions "
-            "of which, how each is addressed, and what still needs deciding. Calls no "
-            "model and writes nothing."
+            "of which, how each is addressed, and what still needs deciding. Calls no model "
+            "and writes nothing unless you ask it to with --ask or --confirm."
         ),
     )
     structure.add_argument("path", type=Path, metavar="FOLDER")
+    structure.add_argument("--store", type=Path, default=None, help=STORE_HELP)
+    structure.add_argument(
+        "--ask",
+        action="store_true",
+        help=(
+            "read the documents with a model to propose what each one is and where its "
+            "narrative begins. Needs a credential; writes nothing on its own."
+        ),
+    )
+    structure.add_argument(
+        "--set",
+        action="append",
+        metavar="PATH=ROLE",
+        help="correct one document, as PATH=narrative or PATH=reference. Repeatable.",
+    )
+    structure.add_argument(
+        "--confirm",
+        action="store_true",
+        help=(
+            "save the map, corrections included, so later ingests of this folder do not ask "
+            "again. Refuses while any document is still unknown."
+        ),
+    )
+    structure.add_argument(
+        "--forget",
+        action="store_true",
+        help="drop this folder's saved answers, so it is asked about again",
+    )
+    structure.add_argument(
+        "--model",
+        default=None,
+        help="model identifier for --ask. Without this, the provider's default is used.",
+    )
+    structure.add_argument(
+        "--effort",
+        choices=["low", "medium", "high", "xhigh", "max"],
+        default="medium",
+        help="reasoning effort for --ask",
+    )
     structure.add_argument("--json", dest="as_json", action="store_true", help="machine-readable")
     structure.set_defaults(handler=_run_structure)
 

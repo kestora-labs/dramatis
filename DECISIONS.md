@@ -1647,3 +1647,90 @@ test_cli_structure.py` covers both commands' behaviour through `main`.
 
 *Reversible.* The `structure_map` table is additive and read only by `structure_for`;
 dropping it returns the system to **D38**'s behaviour, where every role is an open question.
+
+---
+
+## D40 — A document is a path and the content that was at it, and neither half identifies it alone
+
+**Phase 3.7.** `ids.document_id` now takes the path a document is stored under as well as its
+content hash. It is the completion of **D32** rather than a reversal of it: D32's own title
+says a file's identity is its path, and then put only the filename's *stem* into the
+identifier.
+
+### The defect
+
+`dramatis ingest fixtures/b` crashed:
+
+```
+sqlite3.IntegrityError: UNIQUE constraint failed:
+  revision_documents.revision_id, revision_documents.document_id
+```
+
+`draft-1/chapter-01.md` and `draft-2/chapter-01.md` are byte-identical, so both resolved to
+`doc:chapter-01-45cd6ac24d0d`, and `ingest_folder` appended that identifier twice to one
+revision. `chapter-02` collides the same way; `chapter-03` does not, because it is the one
+the fixture rewrote between drafts.
+
+**This is not a hash collision.** It is two distinct documents that legitimately hold the
+same text, which is not a corner case but the usual shape of a drafts folder: most chapters
+are untouched between revisions. A rule that only fails on files nobody edited fails on
+almost the whole corpus.
+
+### The crash was the guard, not the fault
+
+`revision_documents` is keyed on `(revision_id, document_id)`, and that key is the only
+reason this surfaced as an error rather than as a wrong graph. Without it, `upsert_document`
+would have been called twice for one identifier and the surviving row would carry whichever
+path was written last — `draft-2/chapter-01.md`. Every consequence follows from that one
+row standing in for two files:
+
+- `revision_document_spans` returns spans in position order, so a quotation from the first
+  draft's chapter one falls in the first span — and that span names a document whose path
+  says `draft-2`. The evidence mis-attribution **D32** fixed, restaged.
+- `_previous_state` maps path to hash from the revision's documents, so the first draft's
+  chapter one would have no path at all, and per-file tracking could not report it.
+- `structure.propose_structure` proposes `draft-2/chapter-01.md` as a revision *of*
+  `draft-1/chapter-01.md` — two documents, one derived from the other. Under content-only
+  identity the store held one document that was its own revision.
+
+### What identity is now
+
+`doc:<slug(path)>-<sha12>`, where the hash covers the path as well as the content.
+
+**The path is the one the document is stored under, relative to the folder ingested.** That
+is what preserves D32's property, and it is worth being explicit because an absolute path
+would destroy it: `chapter-01.md` untouched between two drafts *ingested as separate folders*
+is the same relative path in both, keeps one identifier, and is shared between the two
+revisions. Fixture **B** still produces four document rows for two drafts of three chapters,
+and the two shared rows are still exactly the two the fixture says were untouched. Ingesting
+the parent folder instead is a different sentence — one revision of eight documents — and now
+answers it rather than raising.
+
+`ingest_file` and `ingest_folder` both derive the identifier from the same string they write
+to the `path` column, so identity and that column cannot disagree about where a document is.
+
+**The hash covers the path, and this is not belt-and-braces.** `slugify` collapses `/`, `\`,
+whitespace and `_` to a single `-` and truncates at `MAX_SLUG_LENGTH`, so two genuinely
+different paths can reduce to one token — and truncation makes that reachable rather than
+theoretical: two stub chapters deep in a long folder name, both holding `TBD`, is an ordinary
+thing to find in a drafts folder and would have raised the same IntegrityError. The slug is
+for a human tracing an evidence locator back to a file; it is not what makes the identifier
+unique.
+
+The cost is that the hash in an identifier is no longer a prefix of the document's own
+`sha256`. Nothing read it that way, and the alternative was leaving a collision class open
+that the composite key would keep turning into a crash.
+
+The optional-content-hash form of `document_id` is gone. It existed only as the pre-D32
+shape, and an identifier that omits either half is one that overwrites somebody's text.
+
+### What did not change
+
+`diff_snapshots` does not key on document identifiers, and Phase 3's acceptance is measured
+on the two drafts ingested separately, where every relative path and therefore every
+identifier is unchanged. `propose_structure` keys on relative paths and never on identifiers.
+
+*Reversible* in the same sense D32 is, and with the same caveat: identifiers minted under the
+older schemes remain valid and resolvable, stores keep whatever they already hold, and the
+first re-ingest under this one adds rows rather than destroying any. Reverting would
+reintroduce a crash on any corpus containing two copies of one file.

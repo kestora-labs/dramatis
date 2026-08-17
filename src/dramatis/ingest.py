@@ -12,11 +12,11 @@ called `cast.md` is reference material. The folder pointed at is the revision, a
 folder that is remains the user's sentence to say. Fixture **B** states its own
 directory-per-revision layout as data precisely so that no code has to know it.
 
-**A file's identity across revisions is its path, not its identifier.** Document
-identifiers carry a content hash (see `ids.document_id`), so an edited file becomes a new
-row rather than overwriting the one an older revision depends on. What makes
-`chapter-03.md` the same chapter in two drafts is that it sits at the same path, and that
-is what per-file tracking compares.
+**A document is a path and the content that was at it.** Document identifiers carry both
+(see `ids.document_id`), so an edited file becomes a new row rather than overwriting the one
+an older revision depends on, and two files that happen to hold identical bytes stay two
+documents. What makes `chapter-03.md` the same chapter in two drafts is that it sits at the
+same path relative to the folder ingested, and that is what per-file tracking compares.
 """
 
 from __future__ import annotations
@@ -172,7 +172,9 @@ def ingest_file(
     collection_id = _resolve_collection(store, work_id, collection_name, title)
 
     document_sha = content_hash(text)
-    document_id = ids.document_id(path.stem or path.name, document_sha)
+    # Identified by the same path it is stored under, so identity and the `path` column
+    # cannot disagree about where the document is.
+    document_id = ids.document_id(path.name, document_sha)
     revision_sha = revision_hash([text])
     revision_id = ids.revision_id(revision_sha)
 
@@ -401,7 +403,10 @@ def ingest_folder(
 
     for relative, text in readable:
         document_sha = content_hash(text)
-        document_id = ids.document_id(Path(relative).stem, document_sha)
+        # The relative path, not the stem: `draft-1/chapter-01.md` and `draft-2/chapter-01.md`
+        # are two documents even when they are byte-identical, which is the usual state of a
+        # chapter nobody touched between drafts. See D40.
+        document_id = ids.document_id(relative, document_sha)
         store.upsert_document(
             Document(
                 id=document_id,

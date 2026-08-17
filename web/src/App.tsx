@@ -3,6 +3,7 @@ import cytoscape from "cytoscape";
 
 import { describeSelection, type Detail, type Selection } from "./detail.js";
 import { buildGraph, type SnapshotDocument } from "./graph.js";
+import { passageUrl, splitPassage, type PassageResponse } from "./passage.js";
 
 interface SnapshotSummary {
   id: string;
@@ -49,7 +50,17 @@ const STYLE: cytoscape.StylesheetJson = [
  * terms rather than single values, and run together in a definition list they read as one
  * run-on string.
  */
-function DetailPanel({ detail, onClear }: { detail: Detail; onClear: () => void }) {
+function DetailPanel({
+  detail,
+  onClear,
+  onOpen,
+  openAt,
+}: {
+  detail: Detail;
+  onClear: () => void;
+  onOpen: (position: number) => void;
+  openAt: number | null;
+}) {
   const list = detail.kind === "character" ? detail.aliases : detail.types;
   const listLabel = detail.kind === "character" ? "Also known as" : "Types";
 
@@ -89,13 +100,23 @@ function DetailPanel({ detail, onClear }: { detail: Detail; onClear: () => void 
           <h3 className="field-label">Evidence — {detail.evidence.length} passages</h3>
           <ol className="evidence">
             {detail.evidence.map((piece, position) => (
-              // Position is the key because nothing else identifies a passage: evidence
-              // carries no required id, and the same sentence may be quoted twice.
+              // The list key is the place in this list; the server is addressed by
+              // `piece.position`, which is where the piece sits in the stored array.
+              // Evidence carries no required id, and the same sentence may be quoted twice.
               <li key={position}>
-                <p className="locator">
-                  {piece.document ? `${piece.document} · ${piece.locator}` : piece.locator}
-                </p>
-                <blockquote>{piece.quotation}</blockquote>
+                {/* A button, not a clickable div: this is reachable by keyboard and
+                    announces itself, and the passage it opens is the point of the panel. */}
+                <button
+                  type="button"
+                  className={piece.position === openAt ? "passage-link open" : "passage-link"}
+                  onClick={() => onOpen(piece.position)}
+                  aria-expanded={piece.position === openAt}
+                >
+                  <span className="locator">
+                    {piece.document ? `${piece.document} · ${piece.locator}` : piece.locator}
+                  </span>
+                  <blockquote>{piece.quotation}</blockquote>
+                </button>
                 {piece.note && <p className="evidence-note">{piece.note}</p>}
               </li>
             ))}
@@ -106,12 +127,69 @@ function DetailPanel({ detail, onClear }: { detail: Detail; onClear: () => void 
   );
 }
 
+/**
+ * The source text, opened at the passage a piece of evidence names.
+ *
+ * The quotation is marked by the offsets the server measured, never by searching the text
+ * here — see `passage.ts`. The highlight is scrolled into view on open, because a passage
+ * from the middle of a long chapter is otherwise opened somewhere above the fold, which is
+ * the same as not opening it at the position at all.
+ */
+function Reader({
+  passage,
+  locator,
+  onClose,
+}: {
+  passage: PassageResponse;
+  locator: string;
+  onClose: () => void;
+}) {
+  const highlight = useRef<HTMLElement>(null);
+  const { before, quoted, after } = splitPassage(passage.text, passage.quotation);
+
+  useEffect(() => {
+    highlight.current?.scrollIntoView({ block: "center" });
+  }, [passage]);
+
+  return (
+    <aside className="reader">
+      <div className="detail-head">
+        <h2>{locator}</h2>
+        <button type="button" className="clear" onClick={onClose} aria-label="Close the source">
+          ×
+        </button>
+      </div>
+
+      {passage.quotation === null && (
+        <p className="error">
+          This quotation is no longer in the passage it names. The passage is shown unhighlighted;
+          recovering the quotation after an edit is 2.4.
+        </p>
+      )}
+
+      {passage.widened && (
+        <p className="hint">
+          The quotation runs past the end of this passage, so the following ones are shown with it.
+        </p>
+      )}
+
+      <p className="source">
+        {before}
+        {quoted && <mark ref={highlight}>{quoted}</mark>}
+        {after}
+      </p>
+    </aside>
+  );
+}
+
 export function App() {
   const container = useRef<HTMLDivElement>(null);
   const [snapshots, setSnapshots] = useState<SnapshotSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [document_, setDocument] = useState<SnapshotDocument | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
+  const [openAt, setOpenAt] = useState<number | null>(null);
+  const [passage, setPassage] = useState<PassageResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -127,6 +205,7 @@ export function App() {
   useEffect(() => {
     if (!selected) return;
     setSelection(null);
+    closePassage();
     fetch(`/api/snapshots/${selected}`)
       .then((response) => response.json())
       .then(setDocument)
@@ -165,6 +244,43 @@ export function App() {
   const run = document_?.analysis_runs?.[0];
   const detail = document_ ? describeSelection(document_, selection) : null;
 
+  function closePassage() {
+    setOpenAt(null);
+    setPassage(null);
+  }
+
+  function openPassage(position: number) {
+    // Clicking the open passage again closes it, so the same control both opens and
+    // dismisses rather than needing the reader's own × to be found first.
+    if (position === openAt) {
+      closePassage();
+      return;
+    }
+    if (!selected || selection?.kind !== "relation") return;
+
+    setOpenAt(position);
+    setPassage(null);
+    fetch(passageUrl(selected, selection.id, position))
+      .then(async (response) => {
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body.detail ?? `the server could not open that passage`);
+        }
+        return response.json();
+      })
+      .then(setPassage)
+      .catch((reason: Error) => {
+        setError(reason.message);
+        closePassage();
+      });
+  }
+
+  // The reader is headed by the locator the panel showed, so the two name the same place.
+  const openLocator =
+    detail?.kind === "relation"
+      ? (detail.evidence.find((piece) => piece.position === openAt)?.locator ?? "")
+      : "";
+
   return (
     <div className="layout">
       <aside>
@@ -186,7 +302,15 @@ export function App() {
         </select>
 
         {detail ? (
-          <DetailPanel detail={detail} onClear={() => setSelection(null)} />
+          <DetailPanel
+            detail={detail}
+            onClear={() => {
+              setSelection(null);
+              closePassage();
+            }}
+            onOpen={openPassage}
+            openAt={openAt}
+          />
         ) : (
           document_ && (
             <p className="hint">Select a node or an edge for what the snapshot claims about it.</p>
@@ -219,7 +343,10 @@ export function App() {
         </p>
       </aside>
 
-      <main ref={container} className="graph" />
+      <main className="stage">
+        <div ref={container} className="graph" />
+        {passage && <Reader passage={passage} locator={openLocator} onClose={closePassage} />}
+      </main>
     </div>
   );
 }

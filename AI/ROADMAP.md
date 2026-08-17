@@ -336,7 +336,7 @@ wheel validates and analyses without a checkout anywhere on the machine.
       confidence.
 - [x] **2.2** — Evidence list per edge — quotation, note, locator — ordered by position in
       the work.
-- [ ] **2.3** — Click a piece of evidence to open the source text at that position,
+- [x] **2.3** — Click a piece of evidence to open the source text at that position,
       highlighted.
 - [ ] **2.4** — Quote re-anchoring by exact match, then prefix/suffix, then fuzzy, so
       evidence survives edits to the underlying text.
@@ -347,6 +347,14 @@ wheel validates and analyses without a checkout anywhere on the machine.
 **Acceptance:** From any edge in fixture **A** a user reaches the exact supporting passage
 in two clicks. Editing the source text — inserting a paragraph before a quoted passage —
 leaves the evidence correctly anchored after re-ingest.
+
+> **Blocked on phase 4 for fixture A, and met for a real run.** 2.3 reaches the passage in
+> two clicks on any snapshot whose segmentation can be reproduced, which the first
+> full-novel run is. Fixture **A** is hand-authored against *chapters*, and the work
+> declares `chapter › paragraph` while storing none of the rules that found them — so its
+> locators name positions no blank-line division can address, and the server refuses rather
+> than opening the third block of the title page and calling it chapter 3. Closing this
+> needs the structure map of **4.1**–**4.2**, not another bullet here. See **D27**.
 
 ---
 

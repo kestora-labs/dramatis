@@ -240,16 +240,28 @@ describe("listEvidence", () => {
 
     expect(list).toEqual([
       {
+        position: 1,
         locator: "chapter 3",
         quotation: "handsome enough to tempt _me_",
         note: "The refusal to dance.",
       },
       {
+        position: 0,
         locator: "chapter 34",
         quotation: "In vain have I struggled.",
         note: "The first proposal.",
       },
     ]);
+  });
+
+  it("keeps each entry's position in the stored array, not its place in the sorted list", () => {
+    // The server addresses evidence by its stored index. Sending its place in a re-ordered
+    // list would open the wrong passage — and would do so silently, since both are numbers
+    // in range.
+    const list = listEvidence(aDocument(), [at(9, "last"), at(1, "first"), at(5, "middle")]);
+
+    expect(list.map((piece) => piece.quotation)).toEqual(["first", "middle", "last"]);
+    expect(list.map((piece) => piece.position)).toEqual([1, 2, 0]);
   });
 
   it("omits a note the evidence does not carry", () => {

@@ -213,7 +213,71 @@ code {
   font-size: 0.8rem;
 }
 
+.stage {
+  position: relative;
+  overflow: hidden;
+}
+
 .graph {
   height: 100%;
   width: 100%;
+}
+
+/* The reader sits over the graph rather than beside it. A third column would resize the
+   Cytoscape container on every open and relayout the graph underneath the reader, which
+   moves the thing the reader was opened to explain. */
+.reader {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: min(38rem, 65%);
+  background: var(--paper);
+  border-left: 1px solid var(--line);
+  padding: 1.25rem;
+  overflow-y: auto;
+}
+
+.reader h2 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 0;
+}
+
+.source {
+  font-size: 0.95rem;
+  line-height: 1.7;
+  margin: 1rem 0 0;
+  white-space: pre-wrap;
+}
+
+.source mark {
+  background: #fefcbf;
+  padding: 0.05em 0;
+}
+
+.passage-link {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+
+.passage-link blockquote {
+  border-left-color: var(--line);
+}
+
+.passage-link:hover blockquote,
+.passage-link:focus-visible blockquote {
+  border-left-color: #c05621;
+}
+
+.passage-link.open blockquote {
+  border-left-color: #c05621;
+  border-left-width: 3px;
 }

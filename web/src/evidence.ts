@@ -127,6 +127,14 @@ export function formatLocator(evidence: SnapshotEvidence): string {
 
 /** One supporting passage, ready to render. */
 export interface EvidenceEntry {
+  /**
+   * Where this piece sits in the *stored* array, which is how the server addresses it.
+   *
+   * Not its place in this list. The list is sorted into reading order, so the two differ,
+   * and asking the server for "the third piece" of a re-ordered list would open the wrong
+   * passage. Carrying the stored index also keeps the quotation out of the request.
+   */
+  position: number;
   /** Structural position, e.g. "chapter 3". */
   locator: string;
   /** The document this passage came from, named only when the work has more than one. */
@@ -152,10 +160,13 @@ export function listEvidence(
   const documents = document.documents ?? [];
   const titles = new Map(documents.map((entry) => [entry.id, entry.title ?? entry.id]));
   const many = documents.length > 1;
+  // Fixed before sorting, so each entry keeps the address the server knows it by.
+  const stored = new Map(evidence.map((piece, position) => [piece, position]));
 
   return orderEvidence(document, evidence).map((piece) => {
     const from = piece.locator.document_id;
     const entry: EvidenceEntry = {
+      position: stored.get(piece) ?? 0,
       locator: formatLocator(piece),
       quotation: piece.selector.exact,
     };

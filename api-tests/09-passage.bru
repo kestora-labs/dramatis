@@ -1,0 +1,74 @@
+meta {
+  name: Open the source at a piece of evidence
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{baseUrl}}/api/snapshots/{{snapshotId}}/passage?relation={{relationId}}&evidence=0
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+tests {
+  test("the span indexes the text it was returned with", function () {
+    // Two coordinate systems in one payload would put the highlight over the wrong words.
+    const body = res.getBody();
+    expect(body.text, "text").to.be.a("string").and.not.be.empty;
+    if (body.quotation === null) return;
+    expect(body.quotation.start).to.be.at.least(0);
+    expect(body.quotation.end).to.be.at.most(body.text.length);
+    expect(body.quotation.end).to.be.above(body.quotation.start);
+  });
+
+  test("the highlighted span is the quotation the snapshot stored", function () {
+    // The whole claim of this endpoint: the offsets locate the evidence, not something
+    // near it. Whitespace is normalised on both sides, per Invariant 3.
+    const body = res.getBody();
+    if (body.quotation === null) return;
+    const marked = body.text.slice(body.quotation.start, body.quotation.end);
+    const stored = bru.getVar("quotation");
+    const collapse = (s) => s.replace(/\s+/g, " ").trim();
+    expect(collapse(marked)).to.equal(collapse(stored));
+  });
+
+  test("it echoes the locator it opened", function () {
+    const path = res.getBody().path;
+    expect(path, "path").to.be.an("array").that.is.not.empty;
+    for (const step of path) {
+      expect(step, "segment type").to.have.property("type");
+    }
+  });
+
+  test("it returns text and offsets, never markup", function () {
+    // The client decides how a highlight looks, and no manuscript passes through a
+    // string-replacement step on the way to the DOM.
+    const body = res.getBody();
+    expect(body.text).to.not.match(/<mark|<span|<em/);
+    expect(body).to.not.have.property("html");
+  });
+
+  test("the request carried no part of the quotation", function () {
+    // Evidence is addressed by its stored position precisely so that this holds: a
+    // quotation in a query string ends up in every access log that sees the request.
+    const stored = bru.getVar("quotation");
+    expect(req.getUrl()).to.not.include(stored.slice(0, 20));
+  });
+}
+
+docs {
+  Phase 2.3. The last step of "why is this edge here": the passage itself.
+
+  The offsets are computed on the server because `dramatis.text` is where Invariant 3's
+  definition of verbatim lives — whitespace-normalised on both sides, nothing else altered.
+  A browser doing its own matching would be a second copy of that rule in a second
+  language, and the copy nobody tests is the one that drifts.
+
+  Evidence is addressed by its position in the stored array. A locator and a quotation in
+  a query string would put lines of an unpublished manuscript into every access log that
+  saw the request.
+}

@@ -10,7 +10,7 @@ import {
   type FilterOptions,
   type Filters,
 } from "./filters.js";
-import { buildGraph, type SnapshotDocument } from "./graph.js";
+import { DEFAULT_SCALING, buildGraph, type Scaling, type SnapshotDocument } from "./graph.js";
 import {
   DEFAULT_LAYOUT,
   LAYOUTS,
@@ -394,15 +394,21 @@ function positionsOf(instance: cytoscape.Core): Positions {
 function LayoutControls({
   algorithm,
   pinned,
+  scaling,
+  measuredAgainst,
   onChoose,
   onPin,
   onUnpin,
+  onScaling,
 }: {
   algorithm: LayoutName;
   pinned: PinnedLayout | null;
+  scaling: Scaling;
+  measuredAgainst: number;
   onChoose: (name: LayoutName) => void;
   onPin: () => void;
   onUnpin: () => void;
+  onScaling: (scaling: Scaling) => void;
 }) {
   const chosen = LAYOUTS.find((choice) => choice.name === algorithm);
 
@@ -421,6 +427,27 @@ function LayoutControls({
         ))}
       </select>
       {chosen && <p className="tally">{chosen.note}</p>}
+
+      <h4 className="field-label">Thickness</h4>
+      <ul className="chips choices">
+        {(["absolute", "relative"] as Scaling[]).map((choice) => (
+          <li key={choice}>
+            <button
+              type="button"
+              className={scaling === choice ? "chosen" : ""}
+              aria-pressed={scaling === choice}
+              onClick={() => onScaling(choice)}
+            >
+              {choice}
+            </button>
+          </li>
+        ))}
+      </ul>
+      <p className="tally">
+        {scaling === "absolute"
+          ? `Measured against the heaviest relation in the snapshot (${measuredAgainst}), so narrowing the graph does not thicken what it leaves.`
+          : `Measured against the heaviest relation on screen (${measuredAgainst}), so this view uses its full range — and changes when the view does.`}
+      </p>
 
       {pinned ? (
         <>
@@ -645,6 +672,7 @@ export function App() {
   const [passage, setPassage] = useState<PassageResponse | null>(null);
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [algorithm, setAlgorithm] = useState<LayoutName>(DEFAULT_LAYOUT);
+  const [scaling, setScaling] = useState<Scaling>(DEFAULT_SCALING);
   const [pin, setPin] = useState<PinnedLayout | null>(null);
   const [lineage, setLineage] = useState<Lineage | null>(null);
   const [comparedWith, setComparedWith] = useState<string | null>(null);
@@ -731,13 +759,13 @@ export function App() {
   // The overlay is drawn over everything either snapshot had, so what was removed is still
   // on screen. Without a comparison this is just the snapshot.
   const shown = pair ? unionDocument(pair.before, pair.after) : document_;
-  const built = shown ? buildGraph(shown, filters) : null;
+  const built = shown ? buildGraph(shown, filters, scaling) : null;
   const options = document_ ? optionsFor(document_) : null;
 
   useEffect(() => {
     if (!container.current || !document_) return;
 
-    const { elements, weightBasis } = buildGraph(shown ?? document_, filters);
+    const { elements, weightBasis } = buildGraph(shown ?? document_, filters, scaling);
 
     // The overlay: each element carries the change that moved it, so the stylesheet can
     // mark it. Done here rather than inside buildGraph because a diff is a second reading
@@ -828,7 +856,7 @@ export function App() {
     // them the marks arrive after the graph is built and are never applied. They are state
     // rather than derived values, so their identity is stable between renders — `shown` is
     // rebuilt every render and would loop.
-  }, [document_, filters, algorithm, selected, diff, pair]);
+  }, [document_, filters, algorithm, selected, diff, pair, scaling]);
 
   // A filter can remove the thing being inspected. Leaving its panel open would describe a
   // node or edge that is no longer on screen.
@@ -941,9 +969,12 @@ export function App() {
           <LayoutControls
             algorithm={algorithm}
             pinned={pin}
+            scaling={scaling}
+            measuredAgainst={built?.maxWeight ?? 0}
             onChoose={chooseLayout}
             onPin={pinLayout}
             onUnpin={unpinLayout}
+            onScaling={setScaling}
           />
         )}
 

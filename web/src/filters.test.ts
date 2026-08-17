@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { NO_FILTERS, isNarrowed, optionsFor, passes, toggle, type Filters } from "./filters.js";
-import { buildGraph, type SnapshotDocument, type SnapshotRelation } from "./graph.js";
+import {
+  DEFAULT_SCALING,
+  buildGraph,
+  type SnapshotDocument,
+  type SnapshotRelation,
+} from "./graph.js";
 
 function aRelation(overrides: Partial<SnapshotRelation> = {}): SnapshotRelation {
   return {
@@ -249,5 +254,126 @@ describe("toggle", () => {
     const original = ["a"];
     toggle(original, "b");
     expect(original).toEqual(["a"]);
+  });
+});
+
+describe("absolute and relative scaling", () => {
+  /** Three edges, so filtering the heaviest away still leaves something to compare. */
+  function aSpread() {
+    return aDocument({
+      characters: [
+        { id: "char:a", name: "Ada", provenance: "observed" },
+        { id: "char:b", name: "Bram", provenance: "observed" },
+        { id: "char:c", name: "Cai", provenance: "observed" },
+        { id: "char:d", name: "Dov", provenance: "observed" },
+      ],
+      relations: [
+        // Typed so the heaviest can be filtered away: the weight filter is a floor, so it
+        // can only ever remove the light end.
+        aRelation({
+          id: "rel:heavy",
+          source: "char:a",
+          target: "char:b",
+          weight: 100,
+          types: ["duel"],
+        }),
+        aRelation({
+          id: "rel:middle",
+          source: "char:a",
+          target: "char:c",
+          weight: 25,
+          types: ["kinship"],
+        }),
+        aRelation({
+          id: "rel:light",
+          source: "char:a",
+          target: "char:d",
+          weight: 4,
+          types: ["kinship"],
+        }),
+      ],
+    });
+  }
+
+  function widthOf(built: ReturnType<typeof buildGraph>, id: string) {
+    return built.elements.find((element) => element.data.id === id)?.data.width;
+  }
+
+  it("keeps a surviving edge the same width when the heaviest is filtered away", () => {
+    // The property the default exists for. Nothing about the work changed, so nothing about
+    // the picture should.
+    const whole = buildGraph(aSpread(), NO_FILTERS, "absolute");
+    const narrowed = buildGraph(aSpread(), withFilters({ types: ["kinship"] }), "absolute");
+
+    expect(widthOf(narrowed, "rel:middle")).toBe(widthOf(whole, "rel:middle"));
+  });
+
+  it("thickens the survivors under relative scaling, which is the failure", () => {
+    // Documented as a test rather than as a claim: the relative view really does say the
+    // survivors are more central than it said a moment ago.
+    const whole = buildGraph(aSpread(), NO_FILTERS, "relative");
+    const narrowed = buildGraph(aSpread(), withFilters({ types: ["kinship"] }), "relative");
+
+    expect(widthOf(narrowed, "rel:middle")).toBeGreaterThan(widthOf(whole, "rel:middle") as number);
+  });
+
+  it("measures against the whole snapshot when absolute", () => {
+    const narrowed = buildGraph(aSpread(), withFilters({ types: ["kinship"] }), "absolute");
+
+    expect(narrowed.maxWeight).toBe(100);
+    expect(narrowed.scaling).toBe("absolute");
+  });
+
+  it("measures against what is drawn when relative", () => {
+    const narrowed = buildGraph(aSpread(), withFilters({ types: ["kinship"] }), "relative");
+
+    expect(narrowed.maxWeight).toBe(25);
+    expect(narrowed.scaling).toBe("relative");
+  });
+
+  it("gives the heaviest drawn edge the full width under relative scaling", () => {
+    // Which is the reason to offer it: a narrowed view uses its whole range.
+    const narrowed = buildGraph(aSpread(), withFilters({ types: ["kinship"] }), "relative");
+    expect(widthOf(narrowed, "rel:middle")).toBe(14);
+  });
+
+  it("holds node sizes still as well, so the two encodings agree", () => {
+    // graph.ts requires the two to read consistently, so the same reference governs both.
+    // Cai is the test: the filter does not touch Cai's one relation, so Cai's degree is
+    // unchanged and Cai's dot should be too. Ada's dot legitimately shrinks, because Ada
+    // really does have fewer relations in this view — that is the data, not the scale.
+    const size = (built: ReturnType<typeof buildGraph>, id: string) =>
+      built.elements.find((element) => element.data.id === id)?.data.size;
+
+    const whole = buildGraph(aSpread(), NO_FILTERS, "absolute");
+    const narrowed = buildGraph(aSpread(), withFilters({ types: ["kinship"] }), "absolute");
+
+    expect(size(narrowed, "char:c")).toBe(size(whole, "char:c"));
+    expect(narrowed.maxDegree).toBe(whole.maxDegree);
+  });
+
+  it("resizes an untouched character under relative scaling", () => {
+    // The same failure as the edges, on the other encoding: Cai gained nothing and lost
+    // nothing, and the picture says Cai is more connected than it did a moment ago.
+    const size = (built: ReturnType<typeof buildGraph>, id: string) =>
+      built.elements.find((element) => element.data.id === id)?.data.size;
+
+    const whole = buildGraph(aSpread(), NO_FILTERS, "relative");
+    const narrowed = buildGraph(aSpread(), withFilters({ types: ["kinship"] }), "relative");
+
+    expect(size(narrowed, "char:c")).toBeGreaterThan(size(whole, "char:c") as number);
+  });
+
+  it("is unchanged by the choice when nothing is filtered", () => {
+    const absolute = buildGraph(aSpread(), NO_FILTERS, "absolute");
+    const relative = buildGraph(aSpread(), NO_FILTERS, "relative");
+
+    expect(absolute.maxWeight).toBe(relative.maxWeight);
+    expect(widthOf(absolute, "rel:light")).toBe(widthOf(relative, "rel:light"));
+  });
+
+  it("defaults to absolute", () => {
+    expect(buildGraph(aSpread()).scaling).toBe(DEFAULT_SCALING);
+    expect(DEFAULT_SCALING).toBe("absolute");
   });
 });

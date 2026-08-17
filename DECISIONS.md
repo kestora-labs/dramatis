@@ -881,3 +881,65 @@ this project keeps arguing against. No behaviour changed; `verification`'s tests
 
 *Reversible* cheaply. The rungs are three branches in one function, and the thresholds are
 module-level constants with tests pinning the properties rather than the values.
+
+---
+
+## D29 — A filter is offered only when the snapshot gives it something to distinguish
+
+**Phase 2.5.** The graph can be narrowed by minimum weight, by relation type, and by
+provenance. Each control appears only when the snapshot in view can actually be divided by
+it, and where none of the three can, the section is absent rather than present and inert.
+
+**This is not a tidiness preference; it is the same rule as D25.** The first full-novel run
+records *no relation types at all* across its 241 relations, and exactly one provenance. A
+type control there would be an empty list, and a provenance control a single choice that
+changes nothing. Both would tell a reader the graph can be narrowed in ways it cannot,
+which is the failure this project keeps meeting in different clothes: a control that looks
+like information and is not. The hand-authored fixture carries eight types, and there the
+same control is worth having.
+
+**The weight filter is withheld when weights are not comparable.** A snapshot mixing two
+weight bases has no single scale for "at least twenty" to be measured against, so no floor
+can be set on it — the same reason 2.1 never prints a weight without its basis. It is
+withheld again when every weight is identical, where a floor either keeps everything or
+removes everything.
+
+**An untyped relation is kept by an empty type filter and dropped by any other.** Asked for
+the kinship edges, a reader is not asking for the edges nobody typed. Since the real run
+types nothing, the type filter is all-or-nothing there — which is why the control does not
+appear there at all.
+
+### Which characters disappear, and which do not
+
+A filter applies to relations. A character is in the picture if any of its relations is. So
+a character the filter empties is **hidden and counted**, while a character the *snapshot*
+left with no relations is **still drawn, dimmed**.
+
+The distinction is the whole of it. Having no relations at all is a fact about the analysis
+— eighteen characters in the full-novel run are in that position, Coleridge and Fielding and
+the rest of the critical preface's cast, and they are exactly the finding D-notes have been
+circling since the first run. Hiding them because a slider moved would delete evidence about
+the analysis. Losing your relations to a filter is a fact about the filter, and drawing
+eighty-one dimmed dots would bury the structure the filter was applied to reveal. The tally
+underneath says how many went, so neither disappears silently.
+
+### The slider commits on release, and why it has to
+
+Applying the weight on every input event rebuilds the graph and re-runs the force layout.
+That layout is **775 ms on the full-novel graph**, measured, and it blocks the main thread;
+a single drag produces dozens of input events. So the slider holds its own value, the label
+follows the thumb, and the filter is applied once when the thumb is let go.
+
+The alternative — updating the graph continuously — is not merely slower but wrong for this
+layout: `cose` is a force simulation with no memory between runs, so every intermediate
+value would fling the whole graph into a different arrangement. Keeping positions across a
+filter change is **2.6**, and until it exists a filter is a deliberate act rather than
+something a reader scrubs through.
+
+*Reversible* cheaply. The filters are one predicate and a shape of three fields; the
+controls read their options from the snapshot rather than from a list anybody maintains.
+
+**Not covered by any corpus the project holds.** Neither store has more than one provenance
+among its relations, so the provenance control has never been drawn outside a unit test.
+It will first appear for real in **phase 4**, where reference documents yield `asserted`
+relations alongside `observed` ones — which is precisely the corpus that motivates it.

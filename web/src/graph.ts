@@ -14,6 +14,8 @@
  * encodings read consistently rather than one compressing while the other does not.
  */
 
+import { NO_FILTERS, passes, type Filters } from "./filters.js";
+
 export type Provenance = "observed" | "asserted" | "human";
 
 export interface SnapshotCharacter {
@@ -121,6 +123,17 @@ export interface BuiltGraph {
   maxWeight: number;
   maxDegree: number;
   weightBasis: string | null;
+  /** How many relations are drawn, and how many the snapshot holds. */
+  relationsShown: number;
+  relationsTotal: number;
+  /**
+   * Characters left out because every relation they took part in was filtered away.
+   *
+   * Counted rather than silently dropped. A character with no relations *at all* is not in
+   * this number — it is still drawn, dimmed, because having none is a fact about the
+   * snapshot rather than a consequence of the filter.
+   */
+  charactersHidden: number;
 }
 
 /**
@@ -131,11 +144,12 @@ export interface BuiltGraph {
  * something upstream is wrong — dropping the edge keeps the view honest instead of
  * inventing a node to hang it on.
  */
-export function buildGraph(document: SnapshotDocument): BuiltGraph {
+export function buildGraph(document: SnapshotDocument, filters: Filters = NO_FILTERS): BuiltGraph {
   const known = new Set(document.characters.map((character) => character.id));
-  const relations = document.relations.filter(
+  const drawable = document.relations.filter(
     (relation) => known.has(relation.source) && known.has(relation.target),
   );
+  const relations = drawable.filter((relation) => passes(relation, filters));
 
   const bases = new Set(relations.map((relation) => relation.weight_basis));
   // Weights are comparable only within a shared basis. A view mixing two would be a chart
@@ -143,13 +157,26 @@ export function buildGraph(document: SnapshotDocument): BuiltGraph {
   const weightBasis = bases.size === 1 ? [...bases][0] : null;
 
   const counts = degrees({ ...document, relations });
+  // Degrees in the unfiltered graph, to tell a character the filter emptied from one that
+  // the snapshot itself left with nobody.
+  const unfiltered = degrees({ ...document, relations: drawable });
   const maxWeight = relations.reduce((most, relation) => Math.max(most, relation.weight), 0);
   const maxDegree = [...counts.values()].reduce((most, count) => Math.max(most, count), 0);
 
   const elements: GraphElement[] = [];
+  let charactersHidden = 0;
 
   for (const character of document.characters) {
     const degree = counts.get(character.id) ?? 0;
+
+    // A character whose every relation was filtered away is not part of the picture being
+    // asked for, and drawing a hundred dimmed dots hides the structure the filter was
+    // applied to reveal. It is counted so the sidebar can say how many went.
+    if (degree === 0 && (unfiltered.get(character.id) ?? 0) > 0) {
+      charactersHidden += 1;
+      continue;
+    }
+
     elements.push({
       data: {
         id: character.id,
@@ -179,5 +206,13 @@ export function buildGraph(document: SnapshotDocument): BuiltGraph {
     });
   }
 
-  return { elements, maxWeight, maxDegree, weightBasis };
+  return {
+    elements,
+    maxWeight,
+    maxDegree,
+    weightBasis,
+    relationsShown: relations.length,
+    relationsTotal: drawable.length,
+    charactersHidden,
+  };
 }

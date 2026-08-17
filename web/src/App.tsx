@@ -2,6 +2,14 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import cytoscape from "cytoscape";
 
 import { describeSelection, type Detail, type Selection } from "./detail.js";
+import {
+  NO_FILTERS,
+  isNarrowed,
+  optionsFor,
+  toggle,
+  type FilterOptions,
+  type Filters,
+} from "./filters.js";
 import { buildGraph, type SnapshotDocument } from "./graph.js";
 import { formatPath } from "./evidence.js";
 import { describeAnchor, passageUrl, splitPassage, type PassageResponse } from "./passage.js";
@@ -129,6 +137,130 @@ function DetailPanel({
 }
 
 /**
+ * Controls for narrowing the graph.
+ *
+ * Each control appears only when the snapshot gives it something to distinguish — see
+ * `filters.ts`. A snapshot with no relation types gets no type control rather than an empty
+ * one, and where nothing at all can be filtered the whole section is absent instead of
+ * standing there inert.
+ */
+function FilterControls({
+  options,
+  filters,
+  onChange,
+  shown,
+  total,
+  hidden,
+}: {
+  options: FilterOptions;
+  filters: Filters;
+  onChange: (filters: Filters) => void;
+  shown: number;
+  total: number;
+  hidden: number;
+}) {
+  // The slider's own value, which moves with the thumb. Applying the filter on every input
+  // event rebuilds the graph and re-runs the force layout on each one — on a 102-character
+  // novel a single drag queues dozens of those and the page stops responding. So the label
+  // follows the thumb and the graph is rebuilt once, when the thumb is let go.
+  const [draft, setDraft] = useState(filters.minimumWeight);
+  useEffect(() => setDraft(filters.minimumWeight), [filters.minimumWeight]);
+
+  const anything =
+    options.weightUsable || options.types.length > 0 || options.provenance.length > 0;
+  if (!anything) return null;
+
+  const applyWeight = () => {
+    if (draft !== filters.minimumWeight) onChange({ ...filters, minimumWeight: draft });
+  };
+
+  return (
+    <section className="filters">
+      <div className="detail-head">
+        <h3 className="field-label">Filters</h3>
+        {isNarrowed(filters) && (
+          <button type="button" className="clear" onClick={() => onChange(NO_FILTERS)}>
+            reset
+          </button>
+        )}
+      </div>
+
+      {options.weightUsable && (
+        <>
+          <label htmlFor="minimum-weight">
+            Minimum weight — {draft} <code>{options.weightBasis}</code>
+          </label>
+          <input
+            id="minimum-weight"
+            type="range"
+            min={0}
+            max={options.maxWeight}
+            value={draft}
+            onChange={(event) => setDraft(Number(event.target.value))}
+            onPointerUp={applyWeight}
+            onKeyUp={applyWeight}
+            onBlur={applyWeight}
+          />
+        </>
+      )}
+
+      {options.types.length > 0 && (
+        <>
+          <h4 className="field-label">Relation type</h4>
+          <ul className="chips choices">
+            {options.types.map((type) => (
+              <li key={type}>
+                <button
+                  type="button"
+                  className={filters.types.includes(type) ? "chosen" : ""}
+                  aria-pressed={filters.types.includes(type)}
+                  onClick={() => onChange({ ...filters, types: toggle(filters.types, type) })}
+                >
+                  {type}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {options.provenance.length > 0 && (
+        <>
+          <h4 className="field-label">Provenance</h4>
+          <ul className="chips choices">
+            {options.provenance.map((value) => (
+              <li key={value}>
+                <button
+                  type="button"
+                  className={filters.provenance.includes(value) ? "chosen" : ""}
+                  aria-pressed={filters.provenance.includes(value)}
+                  onClick={() =>
+                    onChange({ ...filters, provenance: toggle(filters.provenance, value) })
+                  }
+                >
+                  {value}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {isNarrowed(filters) && (
+        <p className="tally">
+          Showing {shown} of {total} relations
+          {hidden > 0 &&
+            (hidden === 1
+              ? ", and 1 character has none left"
+              : `, and ${hidden} characters have none left`)}
+          .
+        </p>
+      )}
+    </section>
+  );
+}
+
+/**
  * The source text, opened at the passage a piece of evidence names.
  *
  * The quotation is marked by the offsets the server measured, never by searching the text
@@ -201,6 +333,7 @@ export function App() {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [openAt, setOpenAt] = useState<number | null>(null);
   const [passage, setPassage] = useState<PassageResponse | null>(null);
+  const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -217,16 +350,22 @@ export function App() {
     if (!selected) return;
     setSelection(null);
     closePassage();
+    // Filters describe one snapshot's vocabulary. Carrying "kinship" across to a snapshot
+    // that has never heard of it would silently empty the graph.
+    setFilters(NO_FILTERS);
     fetch(`/api/snapshots/${selected}`)
       .then((response) => response.json())
       .then(setDocument)
       .catch(() => setError(`could not load snapshot ${selected}`));
   }, [selected]);
 
+  const built = document_ ? buildGraph(document_, filters) : null;
+  const options = document_ ? optionsFor(document_) : null;
+
   useEffect(() => {
     if (!container.current || !document_) return;
 
-    const { elements, weightBasis } = buildGraph(document_);
+    const { elements, weightBasis } = buildGraph(document_, filters);
     const instance = cytoscape({
       container: container.current,
       elements,
@@ -250,7 +389,18 @@ export function App() {
       setError("this snapshot mixes weight bases; edge widths are not comparable");
     }
     return () => instance.destroy();
-  }, [document_]);
+  }, [document_, filters]);
+
+  // A filter can remove the thing being inspected. Leaving its panel open would describe a
+  // node or edge that is no longer on screen.
+  useEffect(() => {
+    if (!selection || !built) return;
+    const drawn = built.elements.some((element) => element.data.id === selection.id);
+    if (!drawn) {
+      setSelection(null);
+      closePassage();
+    }
+  }, [built, selection]);
 
   const run = document_?.analysis_runs?.[0];
   const detail = document_ ? describeSelection(document_, selection) : null;
@@ -311,6 +461,17 @@ export function App() {
             </option>
           ))}
         </select>
+
+        {options && built && (
+          <FilterControls
+            options={options}
+            filters={filters}
+            onChange={setFilters}
+            shown={built.relationsShown}
+            total={built.relationsTotal}
+            hidden={built.charactersHidden}
+          />
+        )}
 
         {detail ? (
           <DetailPanel

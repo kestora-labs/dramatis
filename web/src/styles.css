@@ -144,6 +144,36 @@ code {
   padding: 0.1rem 0.5rem;
 }
 
+.layout-controls {
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.75rem;
+}
+
+.pin {
+  width: 100%;
+  margin-top: 0.75rem;
+  padding: 0.35rem;
+  font: inherit;
+  font-size: 0.8rem;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.pin:hover {
+  border-color: #c05621;
+  color: #c05621;
+}
+
+.pin.pinned {
+  background: #fffaf0;
+  border-color: #c05621;
+  color: #c05621;
+}
+
 .filters {
   margin-top: 1.5rem;
   border-top: 1px solid var(--line);

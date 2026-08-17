@@ -943,3 +943,69 @@ controls read their options from the snapshot rather than from a list anybody ma
 among its relations, so the provenance control has never been drawn outside a unit test.
 It will first appear for real in **phase 4**, where reference documents yield `asserted`
 relations alongside `observed` ones — which is precisely the corpus that motivates it.
+
+---
+
+## D30 — A pinned layout lives in the browser, because `serve` does not write
+
+**Phase 2.6.** The graph offers five layouts and a pin. Pinning records where every drawn
+character sits; from then on the snapshot reopens in that arrangement, dragging a character
+updates it, and choosing a different layout releases it.
+
+**Why a pin is needed at all.** A force layout is a simulation with no memory. Run it twice
+on the same graph and the same characters land somewhere else. A reader who has spent a
+minute working out where the Bennets are loses that the moment anything is redrawn — a
+filter moved, the page reloaded — and the picture they were reading is gone for no reason
+they caused. Measured on the full-novel graph, that recomputation also costs **775 ms** of
+blocked main thread each time.
+
+**Where it is kept was the real question, and the answer is: not in the project file.**
+`dramatis serve` reads and never writes. That is stated in its own help text and is a
+property people rely on when the file in question is an unpublished manuscript: a loopback
+server that can only read is a much smaller thing to reason about than one that can also
+modify the store. Adding the first write endpoint to that server, so a graph can remember
+where it put Mr Collins, is not a trade this bullet is entitled to make.
+
+So a pin lives in `localStorage`, keyed by snapshot id. The cost is real and worth stating
+plainly: **a pin does not travel with the project file.** Copy the file to another machine
+and the arrangement does not come with it, which sits awkwardly beside D15's "copy it and
+you have copied the project". That is the right thing to revisit in **phase 6**, where a
+figure somebody else can reproduce is the actual requirement and a written-through layout
+would be earning its keep rather than buying convenience.
+
+**A pin is per snapshot.** Two snapshots of one work are two different graphs, and sharing
+an arrangement would place characters at coordinates belonging to a different analysis.
+
+### The half that took two attempts
+
+**Nodes with no pinned position are placed by locking the pinned ones, not by leaving them
+out of the layout.** A pin taken while the graph is filtered knows nothing about the
+characters that were hidden, so loosening the filter presents nodes the pin cannot place.
+The first attempt ran the layout over just those loose nodes. That is wrong in a way worth
+recording: a collection of nodes without their edges gives a force simulation nothing to
+pull against, so it scattered them as though the graph had no structure — and in the
+unpinned case, where *every* node is loose, it laid the whole graph out with no edges at
+all and put every character in a tidy meaningless grid.
+
+Locking is the correct mechanism. The pinned nodes stay exactly where they are and act as
+the fixed points the newcomers are arranged around, with all the edges present to do the
+arranging. Verified on the real graph: pinned while filtered to 25 characters, then
+unfiltered to 102 — the 25 moved **0 px** and the other 77 arranged themselves around them.
+
+**Newcomers are arranged by the layout the pin was taken under**, not by whatever the
+control is showing, or they would be placed on a different principle from their neighbours.
+
+**An unreadable pin is treated as absent rather than repaired.** Stored JSON can be left
+behind by an older client, a half-finished write, or a person with the developer tools open.
+Ignoring it costs one relayout; trusting it puts characters on top of each other at
+coordinates that mean nothing. Storage that refuses to answer at all — a private window, a
+quota policy — is likewise just "no pin", and never an error the reader has to see.
+
+### What this fixes from 2.5
+
+D29 accepted that a filter change re-runs the layout and moves everyone, and said holding
+positions across one was 2.6's job. It is now done: with a pin in place, narrowing the graph
+moves nothing and runs no layout at all. Without one, the behaviour is unchanged.
+
+*Reversible* cheaply. The catalogue is one array, the storage is three functions behind an
+interface a test can replace, and nothing else in the client knows where a pin is kept.

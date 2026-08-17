@@ -11,6 +11,17 @@ import {
   type Filters,
 } from "./filters.js";
 import { buildGraph, type SnapshotDocument } from "./graph.js";
+import {
+  DEFAULT_LAYOUT,
+  LAYOUTS,
+  clearPin,
+  loadPin,
+  planLayout,
+  savePin,
+  type LayoutName,
+  type PinnedLayout,
+  type Positions,
+} from "./layout.js";
 import { formatPath } from "./evidence.js";
 import { describeAnchor, passageUrl, splitPassage, type PassageResponse } from "./passage.js";
 
@@ -130,6 +141,77 @@ function DetailPanel({
               </li>
             ))}
           </ol>
+        </>
+      )}
+    </section>
+  );
+}
+
+/** Every node's position, as the graph currently has them. */
+function positionsOf(instance: cytoscape.Core): Positions {
+  const positions: Positions = {};
+  instance.nodes().forEach((node) => {
+    const point = node.position();
+    positions[node.id()] = { x: point.x, y: point.y };
+  });
+  return positions;
+}
+
+/**
+ * Choosing how the graph is arranged, and keeping an arrangement worth keeping.
+ *
+ * The pin is the point of this control. A force layout has no memory, so without one every
+ * redraw scatters the characters a reader has just finished learning the shape of.
+ */
+function LayoutControls({
+  algorithm,
+  pinned,
+  onChoose,
+  onPin,
+  onUnpin,
+}: {
+  algorithm: LayoutName;
+  pinned: PinnedLayout | null;
+  onChoose: (name: LayoutName) => void;
+  onPin: () => void;
+  onUnpin: () => void;
+}) {
+  const chosen = LAYOUTS.find((choice) => choice.name === algorithm);
+
+  return (
+    <section className="layout-controls">
+      <label htmlFor="layout">Layout</label>
+      <select
+        id="layout"
+        value={algorithm}
+        onChange={(event) => onChoose(event.target.value as LayoutName)}
+      >
+        {LAYOUTS.map((choice) => (
+          <option key={choice.name} value={choice.name}>
+            {choice.label}
+          </option>
+        ))}
+      </select>
+      {chosen && <p className="tally">{chosen.note}</p>}
+
+      {pinned ? (
+        <>
+          <button type="button" className="pin pinned" onClick={onUnpin}>
+            Pinned — release
+          </button>
+          <p className="tally">
+            This arrangement is kept, and the graph reopens in it. Drag a character and the new
+            position is kept too.
+          </p>
+        </>
+      ) : (
+        <>
+          <button type="button" className="pin" onClick={onPin}>
+            Pin this arrangement
+          </button>
+          <p className="tally">
+            Unpinned, the layout is recomputed on every redraw and everyone moves.
+          </p>
         </>
       )}
     </section>
@@ -334,7 +416,12 @@ export function App() {
   const [openAt, setOpenAt] = useState<number | null>(null);
   const [passage, setPassage] = useState<PassageResponse | null>(null);
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
+  const [algorithm, setAlgorithm] = useState<LayoutName>(DEFAULT_LAYOUT);
+  const [pin, setPin] = useState<PinnedLayout | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Held in a ref as well as in state: the pin button and the drag handler need the live
+  // instance, and they are not part of what makes the graph rebuild.
+  const graph = useRef<cytoscape.Core | null>(null);
 
   useEffect(() => {
     fetch("/api/snapshots")
@@ -353,6 +440,10 @@ export function App() {
     // Filters describe one snapshot's vocabulary. Carrying "kinship" across to a snapshot
     // that has never heard of it would silently empty the graph.
     setFilters(NO_FILTERS);
+    // A pin belongs to one snapshot, so this is where it is picked up.
+    const found = loadPin(window.localStorage, selected);
+    setPin(found);
+    setAlgorithm(found?.layout ?? DEFAULT_LAYOUT);
     fetch(`/api/snapshots/${selected}`)
       .then((response) => response.json())
       .then(setDocument)
@@ -366,12 +457,38 @@ export function App() {
     if (!container.current || !document_) return;
 
     const { elements, weightBasis } = buildGraph(document_, filters);
+    const plan = planLayout(
+      pin,
+      elements
+        .filter((element) => !("source" in element.data))
+        .map((element) => String(element.data.id)),
+      algorithm,
+    );
+
     const instance = cytoscape({
       container: container.current,
       elements,
       style: STYLE,
-      layout: { name: "cose", animate: false, nodeRepulsion: 8000 },
+      // Nothing is laid out at construction. What runs depends on how much the pin covers,
+      // and deciding that here rather than passing an algorithm blindly is the difference
+      // between a filter change costing nothing and costing a full force simulation.
+      layout: { name: "preset", positions: plan.preset, fit: true },
     });
+
+    if (!plan.complete) {
+      // Pinned nodes are locked rather than left out of the layout. A layout run over the
+      // loose nodes alone would carry none of the edges joining them to the rest, so a
+      // force simulation would have nothing to pull against and would scatter the
+      // newcomers as though the graph had no structure. Locked, they act as the fixed
+      // points the new characters are arranged around, and they do not move.
+      const anchored = instance.nodes().filter((node) => plan.preset[node.id()] !== undefined);
+      anchored.lock();
+      instance.layout({ name: plan.algorithm, animate: false, nodeRepulsion: 8000 }).run();
+      anchored.unlock();
+      instance.fit(undefined, 30);
+    }
+
+    graph.current = instance;
 
     // `tap` rather than Cytoscape's own select/unselect pair: moving from one node to
     // another fires both, and the panel should not depend on which arrives last.
@@ -385,11 +502,33 @@ export function App() {
       if (event.target === instance) setSelection(null);
     });
 
+    // Moving a character by hand is an edit to a pinned arrangement, so it is kept. Without
+    // this the drag survives until the next redraw and then silently reverts.
+    instance.on("dragfree", "node", () => {
+      if (!selected) return;
+      setPin((current) => {
+        if (!current) return current;
+        const updated = {
+          ...current,
+          positions: { ...current.positions, ...positionsOf(instance) },
+          savedAt: new Date().toISOString(),
+        };
+        savePin(window.localStorage, selected, updated);
+        return updated;
+      });
+    });
+
     if (weightBasis === null) {
       setError("this snapshot mixes weight bases; edge widths are not comparable");
     }
-    return () => instance.destroy();
-  }, [document_, filters]);
+    return () => {
+      instance.destroy();
+      graph.current = null;
+    };
+    // `pin` is deliberately absent: pinning captures where the graph already is, so
+    // rebuilding on it would throw away the arrangement being captured.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [document_, filters, algorithm, selected]);
 
   // A filter can remove the thing being inspected. Leaving its panel open would describe a
   // node or edge that is no longer on screen.
@@ -401,6 +540,32 @@ export function App() {
       closePassage();
     }
   }, [built, selection]);
+
+  function pinLayout() {
+    const instance = graph.current;
+    if (!instance || !selected) return;
+
+    const pinned: PinnedLayout = {
+      layout: algorithm,
+      positions: positionsOf(instance),
+      savedAt: new Date().toISOString(),
+    };
+    savePin(window.localStorage, selected, pinned);
+    setPin(pinned);
+  }
+
+  function unpinLayout() {
+    if (!selected) return;
+    clearPin(window.localStorage, selected);
+    setPin(null);
+  }
+
+  function chooseLayout(name: LayoutName) {
+    // Choosing a layout while pinned means asking for a different arrangement, which is a
+    // request to drop the pinned one rather than to pin it under a new name.
+    if (pin) unpinLayout();
+    setAlgorithm(name);
+  }
 
   const run = document_?.analysis_runs?.[0];
   const detail = document_ ? describeSelection(document_, selection) : null;
@@ -461,6 +626,16 @@ export function App() {
             </option>
           ))}
         </select>
+
+        {document_ && (
+          <LayoutControls
+            algorithm={algorithm}
+            pinned={pin}
+            onChoose={chooseLayout}
+            onPin={pinLayout}
+            onUnpin={unpinLayout}
+          />
+        )}
 
         {options && built && (
           <FilterControls

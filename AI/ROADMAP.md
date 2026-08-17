@@ -341,7 +341,7 @@ wheel validates and analyses without a checkout anywhere on the machine.
 - [x] **2.4** — Quote re-anchoring by exact match, then prefix/suffix, then fuzzy, so
       evidence survives edits to the underlying text.
 - [x] **2.5** — Filters: minimum weight, relation type, provenance.
-- [ ] **2.6** — Layout controls and a pinnable layout so a graph looks the same on
+- [x] **2.6** — Layout controls and a pinnable layout so a graph looks the same on
       reopening.
 
 **Acceptance:** From any edge in fixture **A** a user reaches the exact supporting passage

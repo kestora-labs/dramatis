@@ -18,6 +18,7 @@ project keeps working without it (Invariant 6).
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,7 @@ from dramatis.passage import (
 )
 from dramatis.schema import DOCUMENT_VERSION
 from dramatis.segmentation import segment_text
+from dramatis.snapshot import canonical_json
 from dramatis.store import Store
 
 DEFAULT_HOST = "127.0.0.1"
@@ -82,6 +84,31 @@ def ensure_available() -> None:
     """
     _load_framework()
     _load_server()
+
+
+def configuration_of(run: dict[str, Any]) -> str:
+    """A digest of everything that makes a run the same *reading* as another.
+
+    A run identifier includes when it ran, deliberately: two executions of one configuration
+    are two runs, because models are not deterministic. That is right for identity and wrong
+    for comparison — asked whether two snapshots differ by text or by analysis, an identifier
+    that is unique per execution answers "both" every time, which is precisely the answer
+    Invariant 4 exists to prevent.
+
+    So comparison uses the configuration: the model, the prompt actually sent, the pipeline,
+    and the parameters the run was given. Everything except when somebody pressed go.
+    """
+    material = canonical_json(
+        {
+            "model": run.get("model"),
+            "provider": run.get("provider"),
+            "prompt_version": run.get("prompt_version"),
+            "prompt_sha256": run.get("prompt_sha256"),
+            "pipeline_version": run.get("pipeline_version"),
+            "parameters": run.get("parameters", {}),
+        }
+    )
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:12]
 
 
 def _snapshot_summary(snapshot: Any) -> dict[str, Any]:
@@ -164,6 +191,69 @@ def create_app(store_path: Path | str):
             # The stored document, byte for byte. Anything else would be a second
             # representation of the same graph.
             return JSONResponse(found.document)
+        finally:
+            store.close()
+
+    @app.get("/api/works/{work_id}/lineage")
+    def lineage(work_id: str) -> JSONResponse:
+        """A work's snapshots, with its two time axes kept apart.
+
+        Invariant 4: a snapshot binds a *text revision* to an *analysis run*, and the two
+        must never be collapsed, because the user has to be able to tell whether a graph
+        changed because the work changed or because the analysis did. A flat list of
+        snapshots collapses them — it can say a graph moved but not which axis moved it.
+
+        So the axes are returned as two ordered lists and the snapshots reference both,
+        rather than as snapshot rows with the lineage folded in. Which arrangement the
+        client draws is its business; what the API refuses to do is hand back a shape that
+        has already thrown the distinction away.
+        """
+        store = open_store()
+        try:
+            work = store.get_work(work_id)
+            if work is None:
+                raise HTTPException(status_code=404, detail=f"no work {work_id!r}")
+
+            revisions = store.list_text_revisions(work_id)
+            snapshots = store.list_snapshots(work_id)
+
+            return JSONResponse(
+                {
+                    "work": {
+                        "id": work["id"],
+                        "title": work["title"],
+                        "creator": work.get("creator"),
+                        "collection_id": work["collection_id"],
+                    },
+                    "text_revisions": [
+                        {
+                            "id": revision.id,
+                            "label": revision.label,
+                            "created_at": revision.created_at,
+                            "sha256": revision.sha256,
+                            "documents": len(revision.document_ids),
+                        }
+                        for revision in revisions
+                    ],
+                    "analysis_runs": [
+                        {
+                            "id": run["id"],
+                            "model": run["model"],
+                            "provider": run.get("provider"),
+                            "prompt_version": run["prompt_version"],
+                            "started_at": run.get("started_at"),
+                            # What makes this run the same *reading* as another, as opposed
+                            # to the same execution. A run identifier deliberately includes
+                            # when it ran, so no two are ever equal and comparing by it
+                            # would report every pair of snapshots as differing on both
+                            # axes — which is the one answer Invariant 4 exists to avoid.
+                            "configuration": configuration_of(run),
+                        }
+                        for run in store.list_analysis_runs(work_id)
+                    ],
+                    "snapshots": [_snapshot_summary(snapshot) for snapshot in snapshots],
+                }
+            )
         finally:
             store.close()
 

@@ -515,8 +515,16 @@ class Store:
         return work
 
     def list_text_revisions(self, work_id: str) -> list[TextRevision]:
+        """Every revision of a work, oldest first.
+
+        Ties on ``created_at`` are broken by insertion order rather than by identifier. Two
+        revisions ingested in the same second are common — a folder of drafts read one after
+        another — and a revision identifier is a content hash, so ordering by it puts the
+        drafts in an order decided by hashing. "Second draft" listed above "First draft" is
+        not a cosmetic complaint once the list is what a reader uses to follow the work.
+        """
         rows = self.connection.execute(
-            "SELECT id FROM text_revisions WHERE work_id = ? ORDER BY created_at, id",
+            "SELECT id FROM text_revisions WHERE work_id = ? ORDER BY created_at, rowid",
             (work_id,),
         ).fetchall()
         revisions = [self.get_text_revision(row["id"]) for row in rows]
@@ -638,6 +646,24 @@ class Store:
         run = dict(row)
         run["parameters"] = json.loads(run["parameters"])
         return run
+
+    def list_analysis_runs(self, work_id: str) -> list[dict[str, Any]]:
+        """Every analysis run that produced a snapshot of this work, oldest first.
+
+        A run is not owned by a work — the same run configuration could be applied to
+        several — so this asks the snapshots which runs a work has actually been through.
+        Ordered by when the run started rather than when its snapshot was written, because
+        the question this answers is how the *analysis* moved, and two snapshots recorded
+        minutes apart may come from runs a month apart.
+        """
+        rows = self.connection.execute(
+            "SELECT r.id FROM snapshots s "
+            "JOIN analysis_runs r ON r.id = s.analysis_run_id "
+            "WHERE s.work_id = ? GROUP BY r.id ORDER BY r.started_at, r.rowid",
+            (work_id,),
+        ).fetchall()
+        found = [self.get_analysis_run(row["id"]) for row in rows]
+        return [run for run in found if run is not None]
 
     def insert_snapshot(self, snapshot: StoredSnapshot) -> str:
         """Write a snapshot. Snapshots are immutable (Invariant 4).

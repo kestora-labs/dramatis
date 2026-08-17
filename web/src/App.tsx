@@ -23,10 +23,19 @@ import {
   type Positions,
 } from "./layout.js";
 import { formatPath } from "./evidence.js";
+import {
+  buildGrid,
+  hasHistory,
+  readingLabels,
+  revisionName,
+  runName,
+  type Lineage,
+} from "./lineage.js";
 import { describeAnchor, passageUrl, splitPassage, type PassageResponse } from "./passage.js";
 
 interface SnapshotSummary {
   id: string;
+  work_id: string;
   label: string | null;
   created_at: string;
   characters: number;
@@ -142,6 +151,122 @@ function DetailPanel({
             ))}
           </ol>
         </>
+      )}
+    </section>
+  );
+}
+
+/**
+ * A work's snapshots on the grid its two time axes describe.
+ *
+ * A row per text revision, a column per analysis run. Reading across a row holds the text
+ * still and varies the analysis; reading down a column does the reverse. That is what
+ * Invariant 4 asks for — the reader must be able to tell whether a graph changed because
+ * the work changed or because the analysis did — and a list down the side of the screen
+ * cannot answer it.
+ *
+ * An empty cell is drawn as such rather than skipped: a pairing nobody has analysed is a
+ * different fact from one that produced nothing new.
+ */
+function LineagePanel({
+  lineage,
+  selected,
+  onSelect,
+}: {
+  lineage: Lineage;
+  selected: string | null;
+  onSelect: (snapshotId: string) => void;
+}) {
+  const grid = buildGrid(lineage);
+  const labels = readingLabels(grid.readings);
+  const chosen = lineage.snapshots.find((snapshot) => snapshot.id === selected) ?? null;
+
+  if (grid.revisions.length === 0) return null;
+
+  return (
+    <section className="lineage">
+      <h3 className="field-label">
+        {grid.revisions.length} text {grid.revisions.length === 1 ? "revision" : "revisions"} ·{" "}
+        {grid.readings.length} {grid.readings.length === 1 ? "reading" : "readings"}
+      </h3>
+
+      {grid.readings.length === 0 ? (
+        <p className="tally">This work has been ingested but never analysed.</p>
+      ) : (
+        <table className="grid">
+          <thead>
+            <tr>
+              <th />
+              {grid.readings.map((reading) => (
+                <th
+                  key={reading.configuration}
+                  scope="col"
+                  title={reading.runs.map((run) => run.id).join(", ")}
+                >
+                  {labels.get(reading.configuration)}
+                  {reading.runs.length > 1 && (
+                    <span className="documents">{reading.runs.length} runs</span>
+                  )}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {grid.rows.map((row, index) => (
+              <tr key={grid.revisions[index].id}>
+                <th scope="row" title={grid.revisions[index].id}>
+                  {revisionName(grid.revisions[index])}
+                  <span className="documents">
+                    {grid.revisions[index].documents}{" "}
+                    {grid.revisions[index].documents === 1 ? "file" : "files"}
+                  </span>
+                </th>
+                {row.map((cell) => (
+                  <td key={cell.reading.configuration}>
+                    {cell.snapshots.length === 0 ? (
+                      // Not analysed, which is not the same as analysed and unchanged.
+                      <span className="never" aria-label="not analysed">
+                        ·
+                      </span>
+                    ) : (
+                      cell.snapshots.map((snapshot) => (
+                        <button
+                          key={snapshot.id}
+                          type="button"
+                          className={snapshot.id === selected ? "cell chosen" : "cell"}
+                          aria-pressed={snapshot.id === selected}
+                          onClick={() => onSelect(snapshot.id)}
+                        >
+                          {snapshot.characters}c · {snapshot.relations}r
+                        </button>
+                      ))
+                    )}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {chosen && hasHistory(grid) && (
+        <p className="tally">
+          Showing {revisionName(grid.revisions.find((r) => r.id === chosen.text_revision_id)!)} read
+          by{" "}
+          {runName(
+            grid.readings
+              .flatMap((reading) => reading.runs)
+              .find((run) => run.id === chosen.analysis_run_id)!,
+          )}
+          .
+        </p>
+      )}
+
+      {grid.orphaned.length > 0 && (
+        <p className="error">
+          {grid.orphaned.length} snapshot{grid.orphaned.length === 1 ? "" : "s"} name a revision or
+          run this work does not list, and cannot be placed.
+        </p>
       )}
     </section>
   );
@@ -418,6 +543,7 @@ export function App() {
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [algorithm, setAlgorithm] = useState<LayoutName>(DEFAULT_LAYOUT);
   const [pin, setPin] = useState<PinnedLayout | null>(null);
+  const [lineage, setLineage] = useState<Lineage | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Held in a ref as well as in state: the pin button and the drag handler need the live
   // instance, and they are not part of what makes the graph rebuild.
@@ -432,6 +558,18 @@ export function App() {
       })
       .catch(() => setError("could not reach the Dramatis server"));
   }, []);
+
+  // The lineage follows the work, not the snapshot: switching between two snapshots of one
+  // work must not re-fetch the history they share.
+  const work = snapshots.find((snapshot) => snapshot.id === selected)?.work_id ?? null;
+
+  useEffect(() => {
+    if (!work) return;
+    fetch(`/api/works/${encodeURIComponent(work)}/lineage`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then(setLineage)
+      .catch(() => setLineage(null));
+  }, [work]);
 
   useEffect(() => {
     if (!selected) return;
@@ -626,6 +764,8 @@ export function App() {
             </option>
           ))}
         </select>
+
+        {lineage && <LineagePanel lineage={lineage} selected={selected} onSelect={setSelected} />}
 
         {document_ && (
           <LayoutControls

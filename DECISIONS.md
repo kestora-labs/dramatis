@@ -1169,3 +1169,66 @@ An offset no document covers is left unattributed rather than given to the neare
 remain valid and are still resolvable; reverting would reintroduce the overwrite. Stores
 written before this change keep whatever they already hold, and the first re-ingest of an
 edited file under the new scheme adds a row rather than destroying one.
+
+---
+
+## D33 — Snapshots are compared by analysis *configuration*, not by run identifier
+
+**Phase 3.2.** A work's snapshots are served with its two time axes as separate lists, and
+drawn as a grid: a row per text revision, a column per analysis *reading*. Reading across a
+row holds the text still and varies the analysis; reading down a column does the reverse.
+That is Invariant 4 drawn rather than described.
+
+### Why a column is not a run
+
+A run identifier includes when it ran. That is deliberate and documented — *"two executions
+of the same configuration are two runs, not one: models are not deterministic"* — and it is
+right for identity. It is wrong for comparison. Since no two runs are ever equal, asking
+whether two snapshots differ by text or by analysis and answering from run identifiers
+returns **both, every time**, which is precisely the answer the invariant exists to prevent.
+
+So a column is a *configuration*: the model, the prompt actually sent, the pipeline, and the
+parameters the run was given. Everything except when somebody pressed go. Two executions of
+one configuration share a column, which is what lets a reader hold the analysis still.
+
+### What that exposed, and why 3.6 is now marked blocked
+
+On real data the grouping does not group. Fixture **B** analysed twice under identical
+settings produces two configurations, because `parameters.resolution_prompt_version` is
+`resolve-v1` for the first analysis and `null` for the second — the registry was already
+populated, so resolution never called a model.
+
+That field records what the run **did**, not what it was **asked to do**. As a component of
+run identity it means an analysis cannot be held constant across two revisions, which is
+exactly what **3.6** requires and what the phase acceptance depends on: *"the diff attributes
+every change to the text revision"* cannot be satisfied while the second analysis is, by
+record, a different analysis.
+
+The fix belongs in 3.6 and is not attempted here — it is a change to what a run records
+about itself, and doing it inside a bullet about listing snapshots would be deciding the
+shape of run identity as a side effect of building a table. 3.6 carries the note.
+
+### Two smaller things this bullet found
+
+**Revisions were listed in an order decided by hashing.** `list_text_revisions` broke ties on
+`created_at` with the identifier, and a revision identifier is a content hash. Two drafts
+ingested in the same second — a folder read after another, which is the ordinary case — came
+back with "Second draft" above "First draft". Ties now fall back to insertion order. It was
+harmless while nothing displayed the order; 3.2 is the first thing that does.
+
+**Two readings could render under the same caption.** A caption is the model and the prompt
+version, and two readings can share both while differing in effort or window size. Two
+columns captioned identically read as a duplicate rather than as a distinction, so where a
+caption would repeat, the configuration digest is appended. It does not say *what* differs —
+that needs the parameters, and belongs with 3.6 — but it is honest that the two are not the
+same, which a repeated caption is not.
+
+### An empty cell is drawn
+
+Not every revision has been read by every configuration. A gap says so, and it is a
+different fact from a pairing that was analysed and produced nothing new — a distinction a
+list of what exists cannot express at all.
+
+*Reversible* cheaply. The endpoint is additive, the grid is one pure function, and the
+configuration digest is computed on read rather than stored, so nothing in the store depends
+on it.

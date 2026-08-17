@@ -424,3 +424,42 @@ class TestRevisionDocumentSpans:
     def test_a_revision_that_does_not_exist_has_no_spans(self, tmp_path: Path) -> None:
         with Store(tmp_path / "p.sqlite") as store:
             assert store.revision_document_spans("rev:absent") == []
+
+
+class TestRevisionsAreListedInTheOrderTheyWereMade:
+    """Two revisions ingested in the same second are ordinary — a folder of drafts read one
+    after another. A revision identifier is a content hash, so breaking the tie with it
+    orders the drafts by hashing, and 3.2's lineage is the first thing that shows the order
+    to a reader."""
+
+    def test_two_drafts_ingested_together_keep_their_order(self, tmp_path: Path) -> None:
+        with Store(tmp_path / "p.sqlite") as store:
+            first = ingest_folder(
+                store,
+                FIXTURE_B / "draft-1",
+                work_title="L",
+                collection_name="S",
+                now="2026-01-01T00:00:00Z",
+            )
+            second = ingest_folder(
+                store, FIXTURE_B / "draft-2", work_title="L", now="2026-01-01T00:00:00Z"
+            )
+            listed = [revision.id for revision in store.list_text_revisions(first.work_id)]
+
+        assert listed == [first.revision_id, second.revision_id]
+
+    def test_the_later_timestamp_still_wins_when_they_differ(self, tmp_path: Path) -> None:
+        with Store(tmp_path / "p.sqlite") as store:
+            later = ingest_folder(
+                store,
+                FIXTURE_B / "draft-2",
+                work_title="L",
+                collection_name="S",
+                now="2026-06-01T00:00:00Z",
+            )
+            earlier = ingest_folder(
+                store, FIXTURE_B / "draft-1", work_title="L", now="2026-01-01T00:00:00Z"
+            )
+            listed = [revision.id for revision in store.list_text_revisions(later.work_id)]
+
+        assert listed == [earlier.revision_id, later.revision_id]

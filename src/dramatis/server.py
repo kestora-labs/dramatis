@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from dramatis import __version__
+from dramatis.diff import DiffError, diff_snapshots
 from dramatis.passage import (
     PassageNotFound,
     StructureNotReproducible,
@@ -252,6 +253,64 @@ def create_app(store_path: Path | str):
                         for run in store.list_analysis_runs(work_id)
                     ],
                     "snapshots": [_snapshot_summary(snapshot) for snapshot in snapshots],
+                }
+            )
+        finally:
+            store.close()
+
+    @app.get("/api/diff")
+    def diff(before: str, after: str) -> JSONResponse:
+        """What changed between two snapshots, and which axis it can be laid at.
+
+        Attribution comes first in the payload because it decides what the rest is worth: a
+        change is only evidence about the work if the analysis was held still, and only
+        evidence about the analysis if the text was.
+        """
+        store = open_store()
+        try:
+            first = store.get_snapshot(before)
+            if first is None:
+                raise HTTPException(status_code=404, detail=f"no snapshot {before!r}")
+            second = store.get_snapshot(after)
+            if second is None:
+                raise HTTPException(status_code=404, detail=f"no snapshot {after!r}")
+
+            try:
+                result = diff_snapshots(first.document, second.document)
+            except DiffError as error:
+                raise HTTPException(status_code=409, detail=str(error)) from error
+
+            return JSONResponse(
+                {
+                    "before": result.before,
+                    "after": result.after,
+                    "attribution": result.attribution,
+                    "weights_comparable": result.weights_comparable,
+                    "weight_basis": result.weight_basis,
+                    "warnings": list(result.warnings),
+                    "characters": [
+                        {
+                            "id": change.id,
+                            "name": change.name,
+                            "kind": change.kind,
+                            "counterparts": list(change.counterparts),
+                        }
+                        for change in result.characters
+                    ],
+                    "relations": [
+                        {
+                            "id": change.id,
+                            "source": change.source,
+                            "target": change.target,
+                            "kinds": list(change.kinds),
+                            "weight_before": change.weight_before,
+                            "weight_after": change.weight_after,
+                            "delta": change.delta,
+                            "types_before": list(change.types_before),
+                            "types_after": list(change.types_after),
+                        }
+                        for change in result.relations
+                    ],
                 }
             )
         finally:

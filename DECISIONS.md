@@ -1232,3 +1232,154 @@ list of what exists cannot express at all.
 *Reversible* cheaply. The endpoint is additive, the grid is one pure function, and the
 configuration digest is computed on read rather than stored, so nothing in the store depends
 on it.
+
+---
+
+## D34 — A diff reports attribution first, and refuses the comparisons it cannot make
+
+**Phase 3.3.** `diff_snapshots` compares two snapshot documents and returns characters
+added, removed, merged or split, and relations added, removed, strengthened, weakened or
+retyped. Ahead of any of that it returns **attribution**: which of the two axes the change
+can be laid at.
+
+The order is the point. Fixture **B** says so before it says anything about the changes
+themselves — *"The attribution matters as much as the change. Both drafts must be analysed
+by the same run configuration, or the diff cannot distinguish a rewrite from a better
+prompt."* A list of edges that moved is not a finding until something says what moved them.
+
+### Four refusals
+
+**Different works cannot be diffed.** Two novels share no characters by construction, so
+every node and edge would be reported as added or removed. The result would be a list of
+everything, wearing the shape of a diff.
+
+**Weights are compared only within a shared basis.** A weight is a number on a named scale.
+Where two snapshots disagree about the scale, nothing is reported as strengthened or
+weakened and the reason is given — the same refusal 2.1 makes when printing a weight and
+2.5 makes when offering to filter on one. Retypings are still reported, because a type does
+not live on the weight scale.
+
+**Both axes moving credits neither.** Picking whichever moved more would be inventing an
+attribution the evidence does not support.
+
+**Identity is claimed from the record, not guessed.** A merge is recognised because the
+surviving character now lists the absorbed one's name among its own surface forms, which is
+what the registry writes down when it merges two. Absent that record the change is reported
+as a plain removal and addition, because *these two are the same person* is a claim, and an
+unevidenced one is worse than an unexplained pair. A split is only a split if the character
+it came out of is still present; otherwise the pair is a rename, and calling it a split
+would invent a second person.
+
+### Relations are compared through a merge
+
+Two characters becoming one would otherwise report every relation touching the absorbed
+character as removed, and a matching one as added — dozens of spurious changes describing a
+single act of curation. So a relation's identity for comparison is its pair of endpoints
+seen *through* the merge map, not its stored identifier, which was derived from the names
+the endpoints had at the time. A real weight change across a merge is still seen.
+
+**One relation, one entry.** An edge that strengthens *and* is retyped is reported once
+carrying both, since two entries would double-count a single change.
+
+### The analysis axis is compared by configuration
+
+Consistent with **D33**: a run identifier includes when it ran, so comparing identifiers
+would call two executions of one configuration two different analyses and then credit every
+change to nothing at all. Where the document carries its run — the schema does not require
+it — the comparison uses model, prompt, prompt hash, pipeline and parameters. Where it does
+not, the identifier is the fallback, on the ground that an attribution too strict is better
+than one too generous.
+
+### What this confirmed about 3.6
+
+The diff works. Run against fixture **B**'s two drafts analysed under identical settings, it
+reports exactly what `corpus.json` predicts: the Auber/Idris edge weakened, the Neve/Idris
+and Auber/Neve edges strengthened, no character changes, nothing else.
+
+And it answers **both**, because the two runs differ in exactly one recorded field:
+
+```
+param differs: resolution_prompt_version -> resolve-v1 | None
+```
+
+Every other part of the configuration matches. The second analysis found the registry
+already populated, so resolution never called a model, and the field records what the run
+*did* rather than what it was *asked to do*. One field, recording an outcome rather than an
+instruction, is the whole distance between phase 3's acceptance sentence and where it stands.
+
+That is not a defect in the diff, and it is not fixed here: it is a change to what a run
+records about itself, which is **3.6**'s subject. The roadmap's acceptance now carries the
+status rather than reading as though it were met.
+
+*Reversible* cheaply. The module is pure over two documents and holds no state; the endpoint
+is additive.
+
+---
+
+## D35 — A run records what it was asked to do, not what happened to it
+
+**Phase 3.6**, taken out of order because it blocked the acceptance for 3.2 and 3.3.
+
+`parameters["resolution_prompt_version"]` recorded `Resolution.prompt_version`, which is
+null whenever resolution answered from the character registry without consulting a model.
+That happens on every analysis after the first. It now records the version the run was
+*configured* to use, which it was configured to use whether or not it turned out to need it.
+
+### Why one field mattered this much
+
+`parameters` is the material a run's identity is hashed from. An outcome recorded there
+makes two analyses of one configuration into two configurations — and then a diff between
+them can credit nothing to either axis, because both appear to have moved.
+
+That is not a cosmetic defect. Phase 3's acceptance is *"the diff attributes every change to
+the text revision"*, and fixture **B** says the same thing in its own words before it lists
+a single expected change: *"Both drafts must be analysed by the same run configuration, or
+the diff cannot distinguish a rewrite from a better prompt."* Holding the analysis still
+across two revisions was not expressible, so the sentence could not be satisfied by any
+amount of work in 3.2 or 3.3. Both bullets recorded it and moved on; this is where it is
+paid.
+
+Measured before and after, on fixture **B**'s two drafts analysed under identical settings:
+
+```
+before   attribution: both   (param differs: resolution_prompt_version -> resolve-v1 | None)
+after    attribution: text   (no warnings)
+```
+
+Both directions now hold. Two revisions a month apart under one configuration attribute to
+the **text**; one revision under two different settings attributes to the **analysis**.
+
+### The prior position, and why it is changed rather than overruled
+
+A test asserted the old behaviour deliberately, with reasons: *"Not a flaw — the second run
+genuinely does less work, and says so. The graph it produces is the same; the run that
+produced it is not, and both facts belong in the record."*
+
+The first half of that is right and is kept. The second confuses two claims. *This run did
+less work* is an outcome, and it remains observable — `Resolution.prompt_version` is still
+null when no model was consulted, and the test still asserts it. *This run was a different
+analysis* is a claim about configuration, and it was not true: nothing about the analysis
+differed, only the state of the registry it happened to meet. Both facts do belong in the
+record; they do not both belong in the identity.
+
+What is lost is the archived note that a particular run skipped the resolution call. That is
+a real loss, accepted deliberately: an outcome sitting inside identity material is what
+broke comparability, and phase 5's review work is a better home for execution detail than
+the field a run is hashed from.
+
+### `--like`, so the guarantee is reachable
+
+`dramatis analyse REVISION --like SNAPSHOT` reads that snapshot's recorded settings and uses
+them. *I passed the same flags* is not the same claim as *the run recorded the same
+configuration*, and only the second is what a diff needs.
+
+Settings given explicitly still win — the point is to make holding the analysis still the
+easy path, not to make changing it impossible — and an override is announced, because a
+re-run that quietly ignored half of what it was told to copy would be worse than one that
+never offered. `--effort` therefore no longer defaults to `medium` in the parser: it
+defaults to nothing, so an instruction can be told from an absence.
+
+*Reversible* cheaply in code, and not in effect: snapshots written before this change carry
+the old parameters and will not compare with ones written after. That is the same class of
+break D19 warned about for the collectives setting, and for the same reason — the record of
+what a run was is what makes two of them comparable.

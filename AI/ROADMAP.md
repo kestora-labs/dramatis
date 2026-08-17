@@ -372,23 +372,27 @@ leaves the evidence correctly anchored after re-ingest.
 - [x] **3.1** — Multi-file ingest for shape **B**, with per-file revision tracking.
 - [x] **3.2** — Snapshot list per work, with text-revision and analysis-run lineage shown
       separately.
-- [ ] **3.3** — Diff two snapshots: added, removed, strengthened, weakened, retyped edges;
+- [x] **3.3** — Diff two snapshots: added, removed, strengthened, weakened, retyped edges;
       added, removed, merged, split characters.
 - [ ] **3.4** — Diff rendered both as a graph overlay and as a readable change list.
 - [ ] **3.5** — Absolute vs. relative edge-width scaling, toggleable, defaulting to
       absolute so the picture does not appear to change when only totals move.
-- [ ] **3.6** — Re-run an analysis against a new text revision while holding the prompt
-      constant, and against a new prompt while holding the text constant. **Blocked until a
-      run records what it was asked for.** 3.2 found that two analyses under identical
-      settings record different configurations, because `resolution_prompt_version` reports
-      what the run *did* — null when the registry was already populated and no resolution
-      call was needed — rather than what it was configured to do. Holding the analysis
-      constant is not currently expressible. See **D33**.
+- [x] **3.6** — Re-run an analysis against a new text revision while holding the prompt
+      constant, and against a new prompt while holding the text constant. *(Taken out of
+      order: it blocked the acceptance for 3.2 and 3.3. See **D35**.)*
 
 **Acceptance:** Given two revisions of fixture **B** differing by one rewritten chapter,
 the diff attributes every change to the text revision and reports no spurious changes
 elsewhere. Re-running the identical analysis on identical text produces an identical
 graph.
+
+> **Met, once 3.6 was taken out of order.** The diff of the two drafts reports exactly
+> what `corpus.json` predicts — the Auber/Idris edge weakened, the Neve/Idris and
+> Auber/Neve edges strengthened, no character changes — and now attributes all of it to the
+> text revision, with no warnings, including when the two analyses ran a month apart. The
+> other direction holds too: the same revision under a different setting attributes to the
+> analysis. What stood in the way was one field recording an outcome inside identity
+> material; see **D35**.
 
 ---
 

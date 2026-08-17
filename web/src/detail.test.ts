@@ -245,15 +245,29 @@ describe("describeRelation", () => {
     expect(valueOf(detail, "Weight")).toBe("12 interaction_passages");
   });
 
-  it("counts evidence without listing it, which is 2.2", () => {
+  it("carries the supporting passages, in the order they occur in the work", () => {
     const document = aSparseDocument();
     document.relations[0].evidence = [
-      { selector: { exact: "one" }, locator: { path: [{ type: "section", index: 1 }] } },
       { selector: { exact: "two" }, locator: { path: [{ type: "section", index: 2 }] } },
+      { selector: { exact: "one" }, locator: { path: [{ type: "section", index: 1 }] } },
     ];
 
     const detail = describeRelation(document, document.relations[0]);
-    expect(valueOf(detail, "Evidence")).toBe("2 passages");
+    expect(detail.evidence.map((piece) => piece.quotation)).toEqual(["one", "two"]);
+    expect(detail.evidence.map((piece) => piece.locator)).toEqual(["section 1", "section 2"]);
+  });
+
+  it("does not also state the evidence count as a field", () => {
+    // The list is printed directly below and carries its own count; a field would be the
+    // same fact twice.
+    const document = aSparseDocument();
+    document.relations[0].evidence = [
+      { selector: { exact: "one" }, locator: { path: [{ type: "section", index: 1 }] } },
+    ];
+
+    expect(labels(describeRelation(document, document.relations[0]).fields)).not.toContain(
+      "Evidence",
+    );
   });
 
   it("falls back to the raw id for an endpoint the document does not contain", () => {

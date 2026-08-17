@@ -83,6 +83,25 @@ function DetailPanel({ detail, onClear }: { detail: Detail; onClear: () => void 
       </dl>
 
       {detail.notes && <p className="detail-notes">{detail.notes}</p>}
+
+      {detail.kind === "relation" && detail.evidence.length > 0 && (
+        <>
+          <h3 className="field-label">Evidence — {detail.evidence.length} passages</h3>
+          <ol className="evidence">
+            {detail.evidence.map((piece, position) => (
+              // Position is the key because nothing else identifies a passage: evidence
+              // carries no required id, and the same sentence may be quoted twice.
+              <li key={position}>
+                <p className="locator">
+                  {piece.document ? `${piece.document} · ${piece.locator}` : piece.locator}
+                </p>
+                <blockquote>{piece.quotation}</blockquote>
+                {piece.note && <p className="evidence-note">{piece.note}</p>}
+              </li>
+            ))}
+          </ol>
+        </>
+      )}
     </section>
   );
 }

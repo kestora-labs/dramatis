@@ -25,6 +25,7 @@
  * inventing a display convention the project has declined to fix.
  */
 
+import { listEvidence, type EvidenceEntry } from "./evidence.js";
 import type { SnapshotCharacter, SnapshotDocument, SnapshotRelation } from "./graph.js";
 
 /** Which list a selected element came from. */
@@ -66,6 +67,8 @@ export interface RelationDetail extends DetailBase {
   kind: "relation";
   /** Free-text relation types as stored, e.g. "kinship", "antagonism". */
   types: string[];
+  /** The supporting passages, in the order they occur in the work. */
+  evidence: EvidenceEntry[];
 }
 
 export type Detail = CharacterDetail | RelationDetail;
@@ -174,11 +177,8 @@ export function describeRelation(
   push(fields, "Confidence", optional(relation.confidence, unitInterval));
   push(fields, "Provenance", relation.provenance, true);
   push(fields, "Review", relation.review_status, true);
-  push(
-    fields,
-    "Evidence",
-    optional(relation.evidence?.length, (count) => `${count} passages`),
-  );
+  // No "Evidence — n passages" row: the list below carries its own count, and a field
+  // stating the length of a list printed underneath it is the same fact twice.
   push(fields, "Id", relation.id, true);
 
   return {
@@ -187,6 +187,7 @@ export function describeRelation(
     // undirected edge, which is most of them.
     title: relation.directed ? `${source} → ${target}` : `${source} — ${target}`,
     types: relation.types ?? [],
+    evidence: listEvidence(document, relation.evidence),
     fields,
     notes: relation.notes,
   };

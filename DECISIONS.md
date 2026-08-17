@@ -701,3 +701,49 @@ number.
 
 *Reversible* cheaply — the omission is one guard in `push`, and the field list is a single
 array per kind.
+
+---
+
+## D26 — The evidence list sorts what it is given, and ties keep the order they arrived in
+
+**Phase 2.2.** The edge panel orders supporting passages by document, then by structural
+path outermost segment first, then by the selector's offset hint. Where two passages cannot
+be separated, the comparison returns a tie and a stable sort leaves them as the snapshot
+stored them.
+
+**The sort currently changes nothing, and is required anyway.** All 1,022 pieces of evidence
+in the first full-novel run are already in position order, because extraction is a
+map-reduce over segments taken in order. That is a property of this pipeline rather than of
+the format. The schema imposes no ordering on an `evidence` array; aggregation may merge a
+relation from windows processed separately; and **2.4** re-anchors quotations against an
+edited text, which is exactly an operation that moves them. A view that inherited its order
+from the producer would be correct today and quietly wrong the first time any of those
+changed, with no test able to say when.
+
+**What it refuses to do is more of the decision than what it does.** Three kinds of passage
+cannot be placed: one whose segment carries no `index`, one naming no document in a work
+that has several, and two sitting in the same segment with no offsets. Each could be given
+a confident position — alphabetise the segment `type`, sort on the quotation, fall back to
+length. Each of those produces a sequence that looks like narrative order and is not, which
+is worse than an admitted tie, because a reader uses this list to follow how a relationship
+went. Unplaceable passages sort after placeable ones rather than being interleaved among
+them, and passages that tie keep their stored order.
+
+Segment `type` is never compared for the reason the schema gives for leaving it free text:
+types are declared per work and are data. Alphabetising them would impose an order across a
+corpus that the project has never claimed exists.
+
+**The offset is consulted last, and only as a tie-break.** `selector.start` is documented as
+a hint and never the authority, which is precisely the weight a final tie-break carries. It
+is reached only once structure has run out, and never used to override a path.
+
+**A consequence worth noting:** the "Evidence — n passages" field D25 added to the edge panel
+is gone, replaced by the heading over the list. A field stating the length of a list printed
+directly beneath it is the same fact twice. The count remains on the character panel, which
+has no list.
+
+*Reversible* cheaply — one comparator, and the fallbacks are the cases where it returns 0.
+
+**Not addressed here.** Characters may carry evidence too, and the panel still reports only
+a count for them. The bullet says per edge, the phase acceptance is about reaching a passage
+from an edge, and no snapshot the project has yet produced puts evidence on a character.

@@ -334,7 +334,7 @@ wheel validates and analyses without a checkout anywhere on the machine.
 
 - [x] **2.1** — Node and edge detail panels: aliases, relation types, weight basis,
       confidence.
-- [ ] **2.2** — Evidence list per edge — quotation, note, locator — ordered by position in
+- [x] **2.2** — Evidence list per edge — quotation, note, locator — ordered by position in
       the work.
 - [ ] **2.3** — Click a piece of evidence to open the source text at that position,
       highlighted.

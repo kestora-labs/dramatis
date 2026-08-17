@@ -144,6 +144,44 @@ code {
   padding: 0.1rem 0.5rem;
 }
 
+.evidence {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.evidence li {
+  border-top: 1px solid var(--line);
+  padding: 0.6rem 0;
+}
+
+.evidence li:last-child {
+  padding-bottom: 0;
+}
+
+.locator {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 0 0 0.3rem;
+}
+
+.evidence blockquote {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  border-left: 2px solid var(--line);
+  padding-left: 0.6rem;
+}
+
+.evidence-note {
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--muted);
+  margin: 0.35rem 0 0;
+}
+
 .detail-notes {
   font-size: 0.8rem;
   line-height: 1.5;

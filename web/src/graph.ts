@@ -29,10 +29,18 @@ export interface SnapshotCharacter {
   evidence?: SnapshotEvidence[];
 }
 
+export interface SnapshotSegment {
+  type: string;
+  index?: number;
+  label?: string;
+}
+
 export interface SnapshotEvidence {
-  selector: { exact: string; prefix?: string; suffix?: string };
-  locator: { document_id?: string; path: { type: string; index?: number; label?: string }[] };
+  /** `start` and `end` are offsets into the normalised text: a hint, never the authority. */
+  selector: { exact: string; prefix?: string; suffix?: string; start?: number; end?: number };
+  locator: { document_id?: string; path: SnapshotSegment[] };
   note?: string;
+  kind?: string;
 }
 
 export interface SnapshotRelation {
@@ -55,6 +63,8 @@ export interface SnapshotDocument {
   schema_version: string;
   collection: { id: string; name: string };
   works: { id: string; title: string; creator?: string }[];
+  /** In corpus order, which is the order evidence from different documents reads in. */
+  documents?: { id: string; work_id: string; title?: string; role: string }[];
   analysis_runs: { id: string; model: string; prompt_version: string }[];
   snapshot: { id: string; text_revision_id: string; analysis_run_id: string; label?: string };
   characters: SnapshotCharacter[];

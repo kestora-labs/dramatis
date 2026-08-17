@@ -99,15 +99,22 @@ def character_id(name: str, *, disambiguator: str | None = None) -> str:
     return f"char:{slug}"
 
 
-def relation_id(first: str, second: str) -> str:
+def relation_id(first: str, second: str, provenance: str = "observed") -> str:
     """Derive an identifier for the relation between two characters.
 
     The endpoints are sorted, so the same pair yields the same identifier whichever way
     round it was observed. An undirected edge that changed identity depending on which
     character the model happened to name first would defeat diffing entirely.
+
+    **Provenance is part of the identity**, and only ``observed`` is unsuffixed. A pair the
+    reference material declares and the narrative never enacts is the finding fixture **C**
+    exists for — *"a pipeline that merges the two provenance classes into one graph loses
+    both findings"* — and one identifier for both would be exactly that merge. ``observed``
+    keeps the bare form so identifiers already written down do not move (**4.3**).
     """
     left, right = sorted((first, second))
-    return f"rel:{left.removeprefix('char:')}--{right.removeprefix('char:')}"
+    stem = f"rel:{left.removeprefix('char:')}--{right.removeprefix('char:')}"
+    return stem if provenance == "observed" else f"{stem}@{provenance}"
 
 
 def revision_id(content_hash: str) -> str:

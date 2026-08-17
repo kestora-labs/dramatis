@@ -26,6 +26,7 @@ reviewed after the fact, so it stays a human act (phase 5.3).
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -161,7 +162,7 @@ class Resolution:
 
 
 def _gather(
-    extraction: Extraction,
+    mentions: Iterable[MentionedCharacter],
 ) -> tuple[dict[str, Candidate], dict[str, set[str]], dict[str, str], list[str]]:
     """Collect surface forms, the primary names each alias was claimed by, and how each
     alias was written."""
@@ -169,10 +170,6 @@ def _gather(
     alias_claims: dict[str, set[str]] = defaultdict(set)
     alias_forms: dict[str, str] = {}
     warnings: list[str] = []
-
-    mentions: list[MentionedCharacter] = [
-        character for finding in extraction.findings for character in finding.characters
-    ]
 
     for mention in mentions:
         key = form_key(mention.name)
@@ -334,7 +331,34 @@ def resolve(
     ``max_tokens`` defaults to a budget derived from how many forms are actually being
     grouped (``budget_for``); pass a number to override it.
     """
-    primaries, alias_claims, alias_forms, warnings = _gather(extraction)
+    return resolve_mentions(
+        extraction.characters,
+        store,
+        collection_id,
+        provider=provider,
+        max_tokens=max_tokens,
+        effort=effort,
+    )
+
+
+def resolve_mentions(
+    mentions: Iterable[MentionedCharacter],
+    store: Store,
+    collection_id: str,
+    *,
+    provider: Provider | None = None,
+    max_tokens: int | None = None,
+    effort: str | None = "medium",
+) -> Resolution:
+    """Resolve surface forms from any number of reading passes into one registry.
+
+    Separate from ``resolve`` because **4.3** reads narrative and reference material with
+    different prompts and must resolve *both together*. "Ada" in the bible and "Ada" on the
+    page have to become the same character, or the overlay 4.4 builds would compare a
+    declaration against an enactment that never meets it — and every relation would look
+    both undeclared and unenacted.
+    """
+    primaries, alias_claims, alias_forms, warnings = _gather(mentions)
     if not primaries:
         return Resolution(prompt_version=None, warnings=tuple(warnings))
 

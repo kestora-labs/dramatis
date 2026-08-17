@@ -625,6 +625,14 @@ def _run_analyse(args: argparse.Namespace) -> int:
     print(f"  model     {document['analysis_runs'][0]['model']}")
     print(f"  characters {len(document['characters'])}")
     print(f"  relations  {len(document['relations'])}")
+    # Broken out whenever reference material was read. One total would hide the split, and
+    # the split is the finding: what a corpus declares and what it enacts are different
+    # claims on different scales, and a reader who sees only a sum cannot tell them apart.
+    if result.asserted.relations:
+        print(
+            f"    observed {len(result.aggregation.relations)}  ({result.aggregation.weight_basis})"
+        )
+        print(f"    asserted {len(result.asserted.relations)}  ({result.asserted.weight_basis})")
 
     verification = result.verification
     if verification.rejected:

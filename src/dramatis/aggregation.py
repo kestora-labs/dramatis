@@ -80,6 +80,14 @@ class Relation:
     evidence: tuple[Evidence, ...] = ()
     provenance: str = "observed"
     directed: bool = False
+    types: tuple[str, ...] = ()
+    """Free-text relation types, e.g. "kinship", "estrangement".
+
+    Empty for observed relations, which count contact rather than naming it. An asserted
+    relation is a *typed claim* — the bible does not say two characters interacted, it says
+    they are estranged siblings — and dropping the type would leave 4.4's overlay comparing
+    a declaration against an enactment with the content of the declaration thrown away.
+    """
 
     @property
     def endpoints(self) -> frozenset[str]:
@@ -95,6 +103,7 @@ class Relation:
             "weight_basis": self.weight_basis,
             "provenance": self.provenance,
             "evidence": [piece.as_schema() for piece in self.evidence],
+            **({"types": list(self.types)} if self.types else {}),
         }
 
 
@@ -271,11 +280,48 @@ def aggregate(
     filter unverifiable ones out *before* aggregation. Filtering afterwards would leave
     weights counting evidence that had since been rejected.
     """
+    return aggregate_claims(
+        interactions,
+        resolution,
+        segmentation,
+        document_id=document_id,
+        document_spans=document_spans,
+        weight_basis=weight_basis,
+        provenance="observed",
+        noun="an interaction",
+    )
+
+
+def aggregate_claims(
+    claims: Iterable[Any],
+    resolution: Resolution,
+    segmentation: Segmentation,
+    *,
+    document_id: str | None = None,
+    document_spans: Sequence[tuple[int, int, str]] | None = None,
+    weight_basis: str = INTERACTION_PASSAGES,
+    provenance: str = "observed",
+    noun: str = "an interaction",
+) -> Aggregation:
+    """The grouping both reading passes share: claims about pairs into one edge per pair.
+
+    A claim is anything carrying ``participants``, ``quotation``, ``note`` and
+    ``segment_position``; **4.3**'s asserted relationships add ``types``, which are unioned
+    onto the edge. One implementation rather than two because the parts that must not drift
+    are the fiddly ones — how a passage is keyed when its quotation could not be located, how
+    context is captured, which document an offset falls in — and a second copy of those is a
+    second place for evidence to be attributed to the wrong document.
+
+    What genuinely differs between the passes is passed in: ``provenance`` (which becomes
+    part of the relation's identity, so a declared pair and an enacted pair are two edges),
+    ``weight_basis`` (statements are not passages of contact), and ``noun`` for the warnings
+    a person reads.
+    """
     grouped: dict[frozenset[str], dict[str, Any]] = {}
     warnings: list[str] = []
     dropped = 0
 
-    for interaction in interactions:
+    for interaction in claims:
         first, second = interaction.participants
         source = resolution.character_for(first)
         target = resolution.character_for(second)
@@ -283,9 +329,7 @@ def aggregate(
         if source is None or target is None:
             unresolved = first if source is None else second
             dropped += 1
-            warnings.append(
-                f"dropped an interaction: the name {unresolved!r} resolved to no character"
-            )
+            warnings.append(f"dropped {noun}: the name {unresolved!r} resolved to no character")
             continue
 
         if source == target:
@@ -293,13 +337,18 @@ def aggregate(
             # relation; there is nobody on the other end of it.
             dropped += 1
             warnings.append(
-                f"dropped an interaction between {first!r} and {second!r}: both resolved "
+                f"dropped {noun} between {first!r} and {second!r}: both resolved "
                 f"to {source}, so there is no pair"
             )
             continue
 
         key = frozenset((source, target))
-        bucket = grouped.setdefault(key, {"passages": {}, "endpoints": (source, target)})
+        bucket = grouped.setdefault(
+            key, {"passages": {}, "endpoints": (source, target), "types": []}
+        )
+        for kind in getattr(interaction, "types", ()):
+            if kind not in bucket["types"]:
+                bucket["types"].append(kind)
 
         # Keyed by passage where known, else by the quotation itself: an unlocated
         # interaction is still a distinct reported instance.
@@ -339,12 +388,14 @@ def aggregate(
         )
         relations.append(
             Relation(
-                id=ids.relation_id(left, right),
+                id=ids.relation_id(left, right, provenance),
                 source=left,
                 target=right,
                 weight=len(evidence),
                 weight_basis=weight_basis,
                 evidence=evidence,
+                provenance=provenance,
+                types=tuple(sorted(bucket["types"])),
             )
         )
 

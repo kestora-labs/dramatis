@@ -1734,3 +1734,92 @@ identifier is unchanged. `propose_structure` keys on relative paths and never on
 older schemes remain valid and resolvable, stores keep whatever they already hold, and the
 first re-ingest under this one adds rows rather than destroying any. Reverting would
 reintroduce a crash on any corpus containing two copies of one file.
+
+## D41 — Declared and enacted are two edges, on two scales, from two readings
+
+**Phase 4.3.** Reference material states relationships; narrative shows them. Both produce
+edges between the same characters, and fixture **C** exists because what a corpus declares and
+what it enacts disagree. Its README sets the requirement:
+
+> A pipeline that merges the two provenance classes into one graph loses both findings.
+
+The findings are a relationship the bible gives a whole section to and the transmissions never
+show, and a pair carrying more page time than anyone while the bible does not mention them.
+Four things keep the two apart, and each of them is a place the merge could have happened.
+
+### The text is split before it is read, not after
+
+`revision_text` and `revision_document_spans` take a `roles` argument, and the pipeline reads
+narrative and reference material as two separate runs of text. Concatenating them and reading
+the whole under the narrative prompt would mark a bible's claims `observed` — asserting that
+the story enacted something the author only wrote down. Both queries go through one
+`_revision_rows`, because offsets from one must never be applied to the other's text.
+
+The roles themselves moved to `store.py`, beside the CHECK constraint that is their authority.
+Three modules spelling `"narrative"` was three places for one to drift from what the database
+accepts.
+
+### Provenance is part of a relation's identity
+
+`ids.relation_id` suffixes anything that is not `observed`. A pair both declared and enacted is
+two edges — that is the merge the fixture forbids — and `observed` stays unsuffixed so
+identifiers already written down do not move.
+
+### The weights are different quantities and say so
+
+An observed weight counts passages of contact: more contact is more of the same thing. An
+assertion is not a quantity. A bible stating a relationship twice has repeated itself, not
+doubled the relationship. The basis is `asserted_statements`, and `require_comparable` refuses
+to rank or diff it against an observed weight, which is correct rather than inconvenient.
+
+This reached the client, where it was a real defect waiting: `buildGraph` scaled every edge
+against one maximum. Before this bullet no snapshot could mix bases, so nothing had ever
+exercised it. A pair stated once beside a pair sharing a hundred scenes would have rendered at
+a hundredth the width — a claim nobody made. Widths are now measured against the heaviest edge
+*sharing a basis*. The existing controls needed no change: **2.5** already withholds the
+weight filter when bases disagree, and **2.1** already refuses to print a weight without one.
+
+### The type is the content of the claim
+
+The bible does not say two characters interacted; it says they are estranged siblings.
+`Relation` gained `types`, unioned across every statement supporting the edge, because **4.4**
+compares a declaration against an enactment and would otherwise be comparing a declaration
+with its content discarded. Observed relations carry no types — counting contact is not naming
+it, and an empty list would imply the question had been asked.
+
+### What is deliberately *not* separate
+
+**Characters resolve once, across both passes.** "Ada" in the bible and "Ada" on the page must
+become one character or every relation reads as both undeclared and unenacted, and the overlay
+compares nothing. `resolve` was split into `resolve_mentions`, which takes surface forms from
+any number of readings; `_gather` never needed a whole `Extraction`.
+
+**The grouping is one implementation.** `aggregate_claims` serves both passes. What differs is
+passed in — provenance, weight basis, the noun in a warning — while the parts that must not
+drift are the fiddly ones: how a passage is keyed when its quotation could not be located, how
+context is captured, which document an offset falls in. A second copy of those is a second
+place for evidence to be attributed to the wrong document.
+
+**The verification gate is one gate.** Invariant 3 does not soften because a relation was
+declared rather than enacted: a bible quotation the bible does not contain is exactly as
+unusable as an invented line of dialogue. `verify` already worked on anything carrying a
+quotation; only its type hints said otherwise, and they now name a `Claim` protocol.
+
+### Nothing is hardcoded about what reference material looks like
+
+`prompts/assert.md` describes what a document *does*, never what one is called. It refuses
+relations with things rather than people, refuses names the document declines to commit to —
+fixture C names Berthold and says outright it is unresolved whether Berthold is a person, a
+station, or a ruling — and states that an invented relationship is worse than a missed one,
+because an invention appears on the graph as something the author declared.
+
+### Run parameters record the second reading only when there was one
+
+`assertion_prompt_version` and `asserted_weight_basis` are added to a run's parameters only
+when reference material was actually read. A run's identity is hashed from these, so adding
+them unconditionally would give every narrative-only corpus a new run identifier for a
+question it was never asked.
+
+*Reversible.* Removing the reference pass leaves observed analysis byte-identical: a corpus
+with no reference documents makes the same model calls, records the same parameters, and
+produces the same run identifier as before this bullet.

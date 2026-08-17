@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -40,6 +40,17 @@ DEFAULT_COLLECTIVES_ARE_ACTORS = False
 A group reported beside its own members stands as their equal and counts their contacts a
 second time, which is what the first live run produced. Corpora where a faction really is
 an actor turn it on, and every run records which question was asked.
+"""
+
+NARRATIVE = "narrative"
+REFERENCE = "reference"
+DOCUMENT_ROLES = (NARRATIVE, REFERENCE)
+"""What a document can be, matching the CHECK constraint on ``documents.role``.
+
+Defined here because the column is the authority: a role is a fact the store enforces, and
+three modules spelling the same two strings is three places for one of them to drift from
+what the database will accept. `structure` proposes these values, `ingest` records them, and
+`pipeline` reads by them (**4.3**).
 """
 
 SETTING_PREFIX = "setting:"
@@ -775,30 +786,45 @@ class Store:
         found = [self.get_snapshot(row["id"]) for row in rows]
         return [snapshot for snapshot in found if snapshot is not None]
 
-    def revision_text(self, revision_id: str) -> str:
-        """Return the full text of a revision, documents concatenated in order."""
-        rows = self.connection.execute(
-            "SELECT d.content FROM revision_documents rd "
-            "JOIN documents d ON d.id = rd.document_id "
-            "WHERE rd.revision_id = ? ORDER BY rd.position",
-            (revision_id,),
-        ).fetchall()
-        return "".join(row["content"] for row in rows)
+    def revision_text(self, revision_id: str, *, roles: Sequence[str] | None = None) -> str:
+        """Return the text of a revision, documents concatenated in order.
 
-    def revision_document_spans(self, revision_id: str) -> list[tuple[int, int, str]]:
+        ``roles`` narrows it to documents of those roles. Narrative and reference material
+        are read by different prompts and yield relations of different provenance (**4.3**),
+        so the two are never handed to one analysis as a single run of text.
+        """
+        return "".join(row["content"] for row in self._revision_rows(revision_id, roles))
+
+    def _revision_rows(self, revision_id: str, roles: Sequence[str] | None) -> list[sqlite3.Row]:
+        """Documents of a revision in position order, optionally narrowed by role.
+
+        One query behind both ``revision_text`` and ``revision_document_spans``, because the
+        two must agree about which documents are in and in what order. A second
+        implementation of "documents, in order, end to end" is a second place to get that
+        wrong, and the symptom would be evidence attributed to the wrong document.
+        """
+        query = (
+            "SELECT d.id, d.content FROM revision_documents rd "
+            "JOIN documents d ON d.id = rd.document_id "
+            "WHERE rd.revision_id = ?"
+        )
+        parameters: list[str] = [revision_id]
+        if roles is not None:
+            query += f" AND d.role IN ({', '.join('?' for _ in roles)})"
+            parameters.extend(roles)
+        return self.connection.execute(query + " ORDER BY rd.position", parameters).fetchall()
+
+    def revision_document_spans(
+        self, revision_id: str, *, roles: Sequence[str] | None = None
+    ) -> list[tuple[int, int, str]]:
         """Where each document sits inside the text ``revision_text`` returns.
 
         Kept next to the concatenation rather than derived by a caller, because the two have
-        to agree about the joining and a second implementation of "documents, in order, end
-        to end" is a second place for that to be got wrong. Returns ``(start, end, id)`` with
-        ``end`` exclusive, in position order.
+        to agree about the joining. Returns ``(start, end, id)`` with ``end`` exclusive, in
+        position order. ``roles`` must match whatever was passed to ``revision_text``, or the
+        offsets will index a different string than the one they are used against.
         """
-        rows = self.connection.execute(
-            "SELECT d.id, d.content FROM revision_documents rd "
-            "JOIN documents d ON d.id = rd.document_id "
-            "WHERE rd.revision_id = ? ORDER BY rd.position",
-            (revision_id,),
-        ).fetchall()
+        rows = self._revision_rows(revision_id, roles)
 
         spans: list[tuple[int, int, str]] = []
         cursor = 0

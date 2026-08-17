@@ -31,8 +31,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
+from typing import Protocol
 
-from dramatis.extraction import Extraction, ObservedInteraction
+from dramatis.extraction import Extraction
 from dramatis.segmentation import AddressableText, Segmentation
 from dramatis.text import normalise_whitespace
 
@@ -54,11 +55,24 @@ class VerificationError(Exception):
     """Too large a share of quotations could not be verified."""
 
 
+class Claim(Protocol):
+    """What this gate needs of anything it checks.
+
+    A protocol rather than a base class because the two reading passes produce unrelated
+    frozen dataclasses — `ObservedInteraction` and `AssertedRelation` — and neither should
+    have to know about the other to be verifiable.
+    """
+
+    participants: tuple[str, str]
+    quotation: str
+    segment_position: int | None
+
+
 @dataclass(frozen=True)
 class Rejection:
-    """One interaction removed, and why."""
+    """One claim removed, and why."""
 
-    interaction: ObservedInteraction
+    interaction: Claim
     reason: str
 
     def __str__(self) -> str:
@@ -70,7 +84,7 @@ class Rejection:
 class Verification:
     """What survived the gate, and what did not."""
 
-    verified: tuple[ObservedInteraction, ...] = ()
+    verified: tuple[Claim, ...] = ()
     rejections: tuple[Rejection, ...] = field(default_factory=tuple)
     relocated: int = 0
     checked: int = 0
@@ -104,7 +118,7 @@ def _segment_contains(segmentation: Segmentation, position: int, needle: str) ->
 
 
 def verify(
-    interactions: Iterable[ObservedInteraction] | Extraction,
+    interactions: Iterable[Claim] | Extraction,
     segmentation: Segmentation,
     *,
     max_rejection_rate: float = DEFAULT_MAX_REJECTION_RATE,
@@ -114,6 +128,12 @@ def verify(
 
     Raises VerificationError if the share of unverifiable quotations exceeds
     ``max_rejection_rate`` over at least ``min_checked_for_rate`` quotations.
+
+    Any claim carrying a quotation goes through here, not only an observed interaction:
+    **4.3**'s asserted relationships are checked by this same gate and against the reference
+    text they were read from. Invariant 3 does not soften because a relation was declared
+    rather than enacted — a bible quotation the bible does not contain is exactly as
+    unusable as an invented line of dialogue.
     """
     if isinstance(interactions, Extraction):
         interactions = interactions.interactions
@@ -121,7 +141,7 @@ def verify(
     addressable = AddressableText.of(segmentation)
     whole = normalise_whitespace(segmentation.text)
 
-    verified: list[ObservedInteraction] = []
+    verified: list[Claim] = []
     rejections: list[Rejection] = []
     relocated = 0
     checked = 0

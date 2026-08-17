@@ -702,3 +702,26 @@ class Store:
             (revision_id,),
         ).fetchall()
         return "".join(row["content"] for row in rows)
+
+    def revision_document_spans(self, revision_id: str) -> list[tuple[int, int, str]]:
+        """Where each document sits inside the text ``revision_text`` returns.
+
+        Kept next to the concatenation rather than derived by a caller, because the two have
+        to agree about the joining and a second implementation of "documents, in order, end
+        to end" is a second place for that to be got wrong. Returns ``(start, end, id)`` with
+        ``end`` exclusive, in position order.
+        """
+        rows = self.connection.execute(
+            "SELECT d.id, d.content FROM revision_documents rd "
+            "JOIN documents d ON d.id = rd.document_id "
+            "WHERE rd.revision_id = ? ORDER BY rd.position",
+            (revision_id,),
+        ).fetchall()
+
+        spans: list[tuple[int, int, str]] = []
+        cursor = 0
+        for row in rows:
+            length = len(row["content"])
+            spans.append((cursor, cursor + length, row["id"]))
+            cursor += length
+        return spans

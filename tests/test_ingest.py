@@ -54,7 +54,9 @@ class TestReadText:
             read_text(tmp_path / "absent.txt")
 
     def test_directory_is_a_clean_error(self, tmp_path: Path) -> None:
-        with pytest.raises(IngestError, match="phase 4"):
+        # Folders arrive in 3.1, so the message now names the function that takes one
+        # rather than a phase that has been and gone.
+        with pytest.raises(IngestError, match="ingest_folder"):
             read_text(tmp_path)
 
     def test_empty_file_is_rejected(self, tmp_path: Path) -> None:

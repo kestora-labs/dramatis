@@ -21,7 +21,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from dramatis import __version__
-from dramatis.ingest import IngestError, ingest_file
+from dramatis.ingest import IngestError, ingest_file, ingest_folder
 from dramatis.locate import STORE_FILENAME, StoreNotFound, resolve_store
 from dramatis.providers import Provider, ProviderError
 from dramatis.schema import schema_version
@@ -174,14 +174,71 @@ def _collectives_setting(args: argparse.Namespace, location) -> bool | None:
     return answer
 
 
+def _report_folder_ingest(args: argparse.Namespace, location, result) -> int:
+    """Print what a folder ingest did, including what it declined to read."""
+    if args.as_json:
+        json.dump(
+            {
+                "store": str(location.path),
+                "store_created": not location.exists,
+                "collection_id": result.collection_id,
+                "work_id": result.work_id,
+                "revision_id": result.revision_id,
+                "sha256": result.sha256,
+                "characters": result.characters,
+                "already_present": result.already_present,
+                "compared_with": result.compared_with,
+                "documents": [
+                    {
+                        "path": entry.path,
+                        "document_id": entry.document_id,
+                        "sha256": entry.sha256,
+                        "characters": entry.characters,
+                        "state": entry.state,
+                    }
+                    for entry in result.documents
+                ],
+                "skipped": [{"path": path, "why": why} for path, why in result.skipped],
+            },
+            sys.stdout,
+            indent=2,
+        )
+        sys.stdout.write("\n")
+        return 0
+
+    print(result.summary)
+    created = "" if location.exists else "  (new project)"
+    print(f"  store       {location.path}{created}")
+    print(f"  collection  {result.collection_id}")
+    print(f"  work        {result.work_id}")
+    print(f"  revision    {result.revision_id}")
+    if result.compared_with:
+        print(f"  against     {result.compared_with}")
+
+    print()
+    for entry in result.documents:
+        print(f"  {entry.state:<9} {entry.path}")
+
+    # On stderr, so a skipped file is visible when the output is being read and does not
+    # contaminate a pipeline reading stdout.
+    for path, why in result.skipped:
+        print(f"note: skipped {path}: {why}", file=sys.stderr)
+
+    return 0
+
+
 def _run_ingest(args: argparse.Namespace) -> int:
     location = resolve_store(args.store)
     collectives = _collectives_setting(args, location)
+    # A folder and a file are one command, because which one a draft is kept in is a fact
+    # about the writer's habits rather than a decision the user should have to spell out.
+    folder = Path(args.path).is_dir()
     try:
         with Store(location.path) as store:
             if collectives is not None and location.exists:
                 _warn_if_changing_collectives(store, collectives)
-            result = ingest_file(
+            ingest = ingest_folder if folder else ingest_file
+            result = ingest(
                 store,
                 args.path,
                 work_title=args.work,
@@ -195,6 +252,9 @@ def _run_ingest(args: argparse.Namespace) -> int:
     except IngestError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
+
+    if folder:
+        return _report_folder_ingest(args, location, result)
 
     if args.as_json:
         json.dump(
@@ -464,7 +524,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "content hash, so identical text always yields the same revision."
         ),
     )
-    ingest.add_argument("path", type=Path, metavar="FILE")
+    ingest.add_argument("path", type=Path, metavar="FILE|FOLDER")
     ingest.add_argument("--store", type=Path, default=None, help=STORE_HELP)
     ingest.add_argument("--work", help="work title (default: derived from the filename)")
     ingest.add_argument("--collection", help="collection name (default: the work title)")

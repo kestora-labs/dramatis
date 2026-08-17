@@ -665,3 +665,39 @@ phase that does not finish.
 *Reversible* — promoting 7.7 back into Phase 1 is a bullet move, though doing so would
 re-open a phase whose acceptance is met in order to work on something its acceptance does
 not mention.
+
+---
+
+## D25 — A detail panel reports what the snapshot says, and stays silent where it says nothing
+
+**Phase 2.1.** The node and edge panels render only the fields the selected element
+actually carries. An absent `confidence`, `salience`, `valence`, `types` or `notes` produces
+no row at all, rather than a row reading `—`, `0`, or `none`.
+
+The roadmap names four things the panel must show, and on the corpus the project has, two of
+them are usually missing. Fixture **A** is hand-authored and complete: every relation has
+types, valence, confidence and a review status. The first full-novel run has none of them —
+241 relations, every one carrying only the six required fields. Both are valid documents,
+because the schema makes those properties optional.
+
+So the panel had to choose what missing means, and the two readings are not close. A row
+reading `Confidence —` says the run considered the question and declined to answer. An
+omitted row says the run was never asked. The second is true and the first is a claim the
+document does not make, which is the same failure as showing a weight without its basis:
+a display that looks like information and is not. Rendering `0` would be worse still, since
+zero confidence is a value the schema permits and a real extraction could legitimately
+report.
+
+**Degree is the exception, and it is not one.** A character with no relations gets
+`Relations 0` rather than nothing, because that zero is not an absence in the document —
+it is computed from the relations that are there, and the graph already states it visibly
+by drawing the node isolated. The panel is not free to omit something the picture asserts.
+
+**What this costs** is that the panel's shape varies between snapshots, and a user comparing
+a fixture against a real run sees a shorter list without being told why. That is the correct
+discomfort: the run really did produce less, and a uniform panel would hide a gap between
+what the prompts are asked for and what they return. Phase 7 is where that gap becomes a
+number.
+
+*Reversible* cheaply — the omission is one guard in `push`, and the field list is a single
+array per kind.

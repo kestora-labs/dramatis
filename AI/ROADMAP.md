@@ -332,7 +332,7 @@ wheel validates and analyses without a checkout anywhere on the machine.
 
 *Make the graph answerable. "Why is this edge here?"*
 
-- [ ] **2.1** — Node and edge detail panels: aliases, relation types, weight basis,
+- [x] **2.1** — Node and edge detail panels: aliases, relation types, weight basis,
       confidence.
 - [ ] **2.2** — Evidence list per edge — quotation, note, locator — ordered by position in
       the work.

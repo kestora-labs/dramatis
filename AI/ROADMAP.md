@@ -393,9 +393,15 @@ graph.
 
 - [ ] **4.1** — Folder ingest producing a proposed **structure map**: for each document,
       is this narrative or reference material, what is its addressing scheme, does it
-      appear to be a revision of another document.
+      appear to be a revision of another document. **A document may be divided into
+      regions**, so that front matter, a critical preface, or an appendix bound into the
+      same file is classified separately from the narrative it surrounds.
 - [ ] **4.2** — The structure map is proposed by the model and confirmed or corrected by
-      the user, then saved and reused on subsequent ingests. No convention is hardcoded.
+      the user, then saved and reused on subsequent ingests. No convention is hardcoded —
+      in particular, nothing anywhere defines what a preface *is*. The model proposes where
+      the narrative begins and ends, the user corrects it, and the answer is stored as a
+      property of that document rather than as a rule about documents in general.
+      *(Regions added by **D31**.)*
 - [ ] **4.3** — Extraction of `asserted` relations from reference documents, distinct in
       provenance from `observed` relations extracted from narrative.
 - [ ] **4.4** — Overlay view comparing asserted against observed, surfacing relations
@@ -404,11 +410,25 @@ graph.
       works.
 - [ ] **4.6** — Ollama provider adapter for fully local analysis.
 - [ ] **4.7** — Docker image; Postgres as an alternative store.
+- [ ] **4.8** — The server's first **mutating endpoints**, and the guard they need. Writes
+      are confined to project metadata — settings, the structure map, and creating a store —
+      and every one of them refuses a request whose `Origin` is not the server's own. A
+      browser can post across origins to `127.0.0.1` from any page the user has open, and
+      the side effect lands even though the reply cannot be read. Decided once here rather
+      than retrofitted after **5.1** has added a dozen more. `serve --help` stops claiming
+      it only reads. *(**D31**.)*
+- [ ] **4.9** — **Project creation in the browser**: choose a single file, a folder, or a
+      folder tree; name the store; set whether collectives are actors; confirm the regions
+      **4.2** proposed, so a critical preface can be excluded from analysis before a token
+      is spent on it. Creation ingests and records settings; it never calls a model, which
+      remains `analyse`'s job alone. Prompt selection is deliberately absent — it belongs to
+      **7.4**–**7.5**, where prompts become versioned artefacts. *(**D31**.)*
 
 **Acceptance:** Fixture **C** ingests without any code specific to its filing conventions.
 The structure map is editable and persists. A relation asserted in reference material and
 absent from the narrative is surfaced as such. A full analysis completes against a local
-model with the machine offline.
+model with the machine offline. A project is created from the browser without touching the
+command line, and a preface excluded there produces a cast free of the people it discusses.
 
 ---
 

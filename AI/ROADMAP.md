@@ -405,12 +405,12 @@ graph.
       appear to be a revision of another document. **A document may be divided into
       regions**, so that front matter, a critical preface, or an appendix bound into the
       same file is classified separately from the narrative it surrounds.
-- [ ] **4.2** — The structure map is proposed by the model and confirmed or corrected by
+- [x] **4.2** — The structure map is proposed by the model and confirmed or corrected by
       the user, then saved and reused on subsequent ingests. No convention is hardcoded —
       in particular, nothing anywhere defines what a preface *is*. The model proposes where
       the narrative begins and ends, the user corrects it, and the answer is stored as a
       property of that document rather than as a rule about documents in general.
-      *(Regions added by **D31**.)*
+      *(Regions added by **D31**. See **D39**.)*
 - [ ] **4.3** — Extraction of `asserted` relations from reference documents, distinct in
       provenance from `observed` relations extracted from narrative.
 - [ ] **4.4** — Overlay view comparing asserted against observed, surfacing relations

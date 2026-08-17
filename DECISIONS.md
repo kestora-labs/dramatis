@@ -1555,3 +1555,95 @@ step from the ingest that will use it. Its output is ASCII, per the convention
 `IngestResult.summary` states, with a test.
 
 *Reversible* cheaply. Nothing is persisted; 4.2 is what stores a confirmed map.
+
+## D39 — A structure map is confirmed by a person, and a boundary is stored as a quotation
+
+**Phase 4.2.** **D38** left two questions open because a folder cannot evidence them: what
+each document *is*, and where inside it the narrative begins. Both need the text read. This
+bullet has a model read it, a person confirm or correct the answer, and the answer saved so
+the next ingest of that folder does not ask again.
+
+### Nothing defines a preface, including the prompt
+
+The constraint is the bullet's own: *no convention is hardcoded — in particular, nothing
+anywhere defines what a preface is*. The obvious way to break that is not a special case in
+the code but a list in the prompt: `PREFACE`, `FOREWORD`, `INTRODUCTION`, `*** START OF THE
+PROJECT GUTENBERG EBOOK`. That is a hardcoded convention wearing a prompt's clothes, and it
+would work beautifully on the two corpora anybody tests it against.
+
+So `prompts/structure.md` names no heading and describes no document type by title. It asks
+what the document *does* — are relationships shown happening, or stated about — and says
+outright that the question is about this document, not about documents. A test walks the
+module's syntax tree and fails on any string literal outside a docstring containing
+`preface`, `foreword`, `prologue`, `introduction` or `appendix`: the prose may discuss them,
+the code may not match on them.
+
+`unsure` is in the response schema for the same family of reasons. Constrained decoding
+returns whichever values it is offered, so a two-value enum does not produce honest answers —
+it produces a coin flip recorded as a classification, on exactly the documents a person most
+needs to look at. `unsure` comes back as `unknown`, unsettled, and cannot be saved.
+
+### The boundary is a quotation; the offset is a hint
+
+A model that proposes a division returns the text the narrative begins and ends with, not a
+character offset, and the region stores those quotations. They are found with `reanchor` —
+the same ladder that finds an evidence quotation after the text has moved (**2.4**).
+
+This is what makes *saved and reused* mean anything. The map is confirmed once and applied to
+later ingests, by which time the author has edited the document and moved every offset in it.
+The quotation still finds the boundary; the number does not. The test that matters adds a
+paragraph to a preface and checks the narrative still starts in the right place.
+
+A boundary that cannot be found is refused and reported, never guessed. The failure it
+prevents is silent: a boundary in the wrong place removes a chapter from the analysis and
+nothing on screen would say why. So the document falls back to one region, the role stays
+confirmed, and a note says which half lapsed.
+
+Region offsets index the **whitespace-normalised** text, because that is the only text a
+quotation is ever anchored in. `DocumentPlan.characters` moved to match. Measuring a boundary
+against one text and applying it to the other lands it wrong by however much the source was
+hard-wrapped.
+
+### A confirmed `unknown` would never be asked about again
+
+`confirm` refuses to settle a document whose role is still unknown, and `save` refuses a map
+that is not confirmed. Both refusals protect the same thing: a saved answer is not asked
+about again, so storing a guess promotes it to a fact by the act of storing it — silently,
+and permanently.
+
+Corrections are validated before the map is inspected. A mistyped role is the user's most
+recent action and the thing they can fix; complaining first about some other document's
+missing answer sends them looking for a fault that is not there.
+
+### Not a conversation
+
+`dramatis structure FOLDER` gains `--ask`, `--set PATH=ROLE`, `--confirm` and `--forget`. It
+is deliberately not interactive. The ingest command once asked questions on stdin and raised
+`EOFError` wherever stdin was not a terminal, which is most places a CLI runs. `--set`
+arguments can also be scripted, read back, and pasted into a bug report.
+
+`--set` alone is a complete path: somebody who already knows what their folder holds should
+not have to pay a model to be asked. Without `--ask` the command reaches no network; without
+`--confirm` it writes nothing. Both are tested, because neither is visible in the output.
+
+The saved map is keyed by the **resolved** folder path. `corpus` and `./corpus` and the same
+folder reached from a parent directory are one folder, and a user who moved between them
+would otherwise be asked the same questions twice.
+
+### Where a saved map is actually spent
+
+`ingest_folder` took one `role` for a whole folder, which cannot describe fixture **C**: its
+reference material and its narrative sit side by side, and no single flag separates them. It
+now gives each document the role somebody confirmed for it, falling back to the flag for
+files nobody has answered for — a file added since the map was confirmed, most often. That is
+what *reused on subsequent ingests* buys, and the result reports the count, because otherwise
+nothing distinguishes a folder somebody classified from one that took a default.
+
+Ingest reads the map through the store rather than by importing `structure`, which imports
+`ingest`. The JSON shape is the coupling, and it is noted where it is read.
+
+**4.1 shipped its subcommand with no CLI test**, which this bullet closes: `tests/
+test_cli_structure.py` covers both commands' behaviour through `main`.
+
+*Reversible.* The `structure_map` table is additive and read only by `structure_for`;
+dropping it returns the system to **D38**'s behaviour, where every role is an open question.

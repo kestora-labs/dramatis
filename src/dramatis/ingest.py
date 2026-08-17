@@ -245,6 +245,12 @@ class FolderIngestResult:
     already_present: bool
     compared_with: str | None
     """The revision this one was measured against, or None if it is the first."""
+    confirmed: tuple[str, ...] = ()
+    """Documents whose role came from a confirmed structure map rather than from ``role``.
+
+    Reported because it is the difference between a folder somebody has classified and one
+    that took a flag's default, and nothing else on screen distinguishes them.
+    """
 
     @property
     def characters(self) -> int:
@@ -261,10 +267,16 @@ class FolderIngestResult:
             for name in ("added", "changed", "unchanged")
             if self.of_state(name)
         )
+        confirmed = (
+            f"\n  {len(self.confirmed)} took the role you confirmed for this folder"
+            if self.confirmed
+            else ""
+        )
         return (
             f"{state}: {self.revision_id} ({len(self.documents)} documents, "
             f"{self.characters:,} characters, sha256 {self.sha256[:12]}...)"
             + (f"\n  {counts}" if counts else "")
+            + confirmed
         )
 
 
@@ -317,6 +329,11 @@ def ingest_folder(
     Each file is reported as ``added``, ``changed`` or ``unchanged`` against the newest
     existing revision of the work — which is what makes a later diff able to say that a
     graph moved because one chapter was rewritten and not because the analysis changed.
+
+    ``role`` applies to files this folder has no confirmed answer for. Where a structure map
+    has been confirmed (**4.2**), each document takes the role somebody gave it, because a
+    single role for a whole folder cannot describe fixture **C**, which keeps its reference
+    material and its narrative side by side.
     """
     if role not in {"narrative", "reference"}:
         raise IngestError(f"unknown document role {role!r}; expected 'narrative' or 'reference'")
@@ -356,6 +373,14 @@ def ingest_folder(
             f"{', '.join(sorted(TEXT_SUFFIXES))}."
         )
 
+    # The shape read here is what `structure.as_json` writes. Read through the store rather
+    # than by importing that module, which imports this one.
+    confirmed = {
+        relative: entry.get("role", {}).get("value")
+        for relative, entry in store.structure_map(str(path.resolve())).items()
+    }
+    roles = {relative: confirmed.get(relative) or role for relative, _ in readable}
+
     previous_id, previous = _previous_state(store, work_id)
 
     revision_sha = revision_hash([text for _, text in readable])
@@ -383,7 +408,7 @@ def ingest_folder(
                 work_id=work_id,
                 title=Path(relative).stem.replace("_", " ").replace("-", " "),
                 path=relative,
-                role=role,
+                role=roles[relative],
                 media_type="text/markdown"
                 if relative.endswith((".md", ".markdown"))
                 else "text/plain",
@@ -424,4 +449,5 @@ def ingest_folder(
         skipped=tuple(skipped),
         already_present=already_present,
         compared_with=previous_id,
+        confirmed=tuple(sorted(relative for relative in roles if relative in confirmed)),
     )

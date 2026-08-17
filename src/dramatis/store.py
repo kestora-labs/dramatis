@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -149,6 +149,18 @@ CREATE TABLE IF NOT EXISTS snapshots (
     sha256           TEXT NOT NULL,
     created_at       TEXT NOT NULL,
     document         TEXT NOT NULL
+);
+
+-- A confirmed structure map: what somebody said each document of a folder is (4.2).
+-- Keyed by folder and relative path because that pair is a document's identity before it
+-- has been ingested, and the point of saving is to be asked once rather than every run.
+-- Region boundaries live inside the plan as quotations, so an edited document re-anchors.
+CREATE TABLE IF NOT EXISTS structure_map (
+    root         TEXT NOT NULL,
+    path         TEXT NOT NULL,
+    confirmed_at TEXT NOT NULL,
+    plan         TEXT NOT NULL,
+    PRIMARY KEY (root, path)
 );
 
 CREATE INDEX IF NOT EXISTS ix_snapshots_work ON snapshots(work_id);
@@ -349,6 +361,42 @@ class Store:
             (SETTING_PREFIX + "%",),
         ).fetchall()
         return {row["key"][len(SETTING_PREFIX) :]: json.loads(row["value"]) for row in rows}
+
+    # -- the structure map --------------------------------------------------------------
+
+    def save_structure_map(self, root: str, plans: Mapping[str, Any], confirmed_at: str) -> None:
+        """Record what somebody confirmed a folder's documents are.
+
+        Overwrites per document rather than replacing the folder wholesale, so correcting one
+        answer does not silently discard the others, and a document dropped from the folder
+        keeps its answer for when it comes back.
+        """
+        with self.transaction() as connection:
+            connection.executemany(
+                "INSERT INTO structure_map (root, path, confirmed_at, plan) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(root, path) DO UPDATE SET "
+                "confirmed_at = excluded.confirmed_at, plan = excluded.plan",
+                [
+                    (root, path, confirmed_at, json.dumps(plan, ensure_ascii=False))
+                    for path, plan in plans.items()
+                ],
+            )
+
+    def structure_map(self, root: str) -> dict[str, Any]:
+        """Every confirmed answer for a folder, by relative path.
+
+        Empty is a real answer and the common one: nobody has been asked yet.
+        """
+        rows = self.connection.execute(
+            "SELECT path, plan FROM structure_map WHERE root = ? ORDER BY path", (root,)
+        ).fetchall()
+        return {row["path"]: json.loads(row["plan"]) for row in rows}
+
+    def forget_structure_map(self, root: str) -> int:
+        """Drop a folder's confirmed answers, so it is asked about again. Returns the count."""
+        with self.transaction() as connection:
+            cursor = connection.execute("DELETE FROM structure_map WHERE root = ?", (root,))
+            return cursor.rowcount
 
     # -- writes -------------------------------------------------------------------------
 

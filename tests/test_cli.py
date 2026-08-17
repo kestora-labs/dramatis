@@ -98,6 +98,15 @@ def _text_file(tmp_path: Path, name: str = "pride.txt", body: str = "Ada met Bra
     return path
 
 
+def _raise(error: type[BaseException]):
+    """An `input` that answers the way a closed or interrupted stdin does."""
+
+    def refuse(*_args, **_kwargs):
+        raise error()
+
+    return refuse
+
+
 def test_ingest_reports_what_it_stored(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
     store = tmp_path / "project.sqlite"
 
@@ -346,3 +355,106 @@ def test_analyse_accepts_a_checkpoint_path(tmp_path: Path) -> None:
     parsed = _build_parser().parse_args(["analyse", "rev:abc", "--checkpoint", str(checkpoint)])
 
     assert parsed.checkpoint == checkpoint
+
+
+class TestTheCollectivesQuestionWhenNobodyCanAnswer:
+    """`isatty` is not enough to know a person is there.
+
+    A CI runner, an agent harness, an editor's terminal, or a redirect under a pty all
+    report a tty and then answer EOF. Before this, that raised out of `input()` as a
+    traceback in the middle of creating a project.
+    """
+
+    @staticmethod
+    def _project(tmp_path: Path) -> Path:
+        return tmp_path / "new.sqlite"
+
+    def test_eof_takes_the_default_instead_of_raising(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    ) -> None:
+        store = self._project(tmp_path)
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", _raise(EOFError))
+
+        assert main(["ingest", str(_text_file(tmp_path)), "--store", str(store)]) == 0
+
+        with Store(store) as opened:
+            assert opened.get_setting(COLLECTIVES_ARE_ACTORS) is None
+
+    def test_eof_says_which_default_it_took(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    ) -> None:
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", _raise(EOFError))
+
+        main(["ingest", str(_text_file(tmp_path)), "--store", str(self._project(tmp_path))])
+
+        assert "collectives are not counted as actors" in capsys.readouterr().err
+
+    def test_the_note_is_the_same_sentence_either_way(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    ) -> None:
+        # One fact, one phrasing. Two would drift the moment either was edited.
+        from dramatis.cli import COLLECTIVES_DEFAULT_NOTE
+
+        main(["ingest", str(_text_file(tmp_path)), "--store", str(tmp_path / "a.sqlite")])
+        piped = capsys.readouterr().err
+
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", _raise(EOFError))
+        main(["ingest", str(_text_file(tmp_path)), "--store", str(tmp_path / "b.sqlite")])
+        at_a_dead_terminal = capsys.readouterr().err
+
+        assert COLLECTIVES_DEFAULT_NOTE in piped
+        assert COLLECTIVES_DEFAULT_NOTE in at_a_dead_terminal
+
+    def test_eof_keeps_json_on_stdout_parseable(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    ) -> None:
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", _raise(EOFError))
+
+        main(
+            [
+                "ingest",
+                str(_text_file(tmp_path)),
+                "--store",
+                str(self._project(tmp_path)),
+                "--json",
+            ]
+        )
+
+        captured = capsys.readouterr()
+        json.loads(captured.out)
+        assert "collectives" in captured.err
+
+    def test_an_interrupt_aborts_rather_than_recording_a_decision(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Somebody *is* there, and they interrupted the question.
+
+        Reading that as "no" would record an answer they declined to give, on a setting
+        that makes snapshots either side of it incomparable.
+        """
+        store = self._project(tmp_path)
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", _raise(KeyboardInterrupt))
+
+        with pytest.raises(SystemExit) as exit_code:
+            main(["ingest", str(_text_file(tmp_path)), "--store", str(store)])
+
+        assert exit_code.value.code == 130
+        assert "aborted" in capsys.readouterr().err
+        assert not store.exists(), "an aborted answer must not leave a project behind"
+
+    def test_a_real_answer_is_still_honoured(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        store = self._project(tmp_path)
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", lambda: "y")
+
+        assert main(["ingest", str(_text_file(tmp_path)), "--store", str(store)]) == 0
+
+        with Store(store) as opened:
+            assert opened.get_setting(COLLECTIVES_ARE_ACTORS) is True

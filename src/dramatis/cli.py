@@ -108,12 +108,28 @@ def _warn_if_changing_collectives(store: Store, wanted: bool) -> None:
         )
 
 
-def _ask_collectives_are_actors() -> bool:
+COLLECTIVES_DEFAULT_NOTE = (
+    "note: collectives are not counted as actors (the default; set it with --collectives-as-actors)"
+)
+"""Said whenever the question could not be put to anybody.
+
+One definition rather than one per path: a user who meets this in a pipeline and again in a
+terminal that could not be read should be told the same thing, and two phrasings of one
+fact drift the moment either is edited.
+"""
+
+
+def _ask_collectives_are_actors() -> bool | None:
     """Ask once, when a project is being created (D19).
 
-    Only asked at a terminal. A non-interactive run takes the default and says so rather
-    than blocking on a prompt nobody is there to answer — a pipeline that hangs waiting for
-    input it will never receive is worse than one that states its assumption.
+    Returns None when the question could not be asked at all, which the caller treats
+    exactly as it treats a non-interactive run: take the default and say so.
+
+    Only asked at a terminal, and `isatty` is not sufficient to know there is one. A CI
+    runner, an agent harness, an editor's terminal, or `dramatis ingest ... < /dev/null`
+    under a pty all report a tty and then answer EOF. Before this returned None, that raised
+    out of `input()` as a traceback in the middle of creating a project — the least helpful
+    possible response to a question nobody was there to answer.
 
     On stderr, like the notes, so that piping a `--json` ingest somewhere never mixes a
     question into the document.
@@ -127,7 +143,19 @@ def _ask_collectives_are_actors() -> bool:
         print(line, file=sys.stderr)
 
     print("Count collectives as actors? [y/N] ", end="", file=sys.stderr, flush=True)
-    return input().strip().lower() in {"y", "yes"}
+    try:
+        return input().strip().lower() in {"y", "yes"}
+    except EOFError:
+        # Nobody there. The default is the same one a pipeline gets, and it is announced.
+        print(file=sys.stderr)
+        return None
+    except KeyboardInterrupt:
+        # Deliberately not the default. Somebody *is* there, and they interrupted a question
+        # about how their project will be studied — reading that as "no" would record a
+        # decision they declined to make, on a setting that makes snapshots either side of
+        # it incomparable. 130 is the conventional exit for an interrupt.
+        print("\naborted; nothing was written.", file=sys.stderr)
+        raise SystemExit(130) from None
 
 
 def _collectives_setting(args: argparse.Namespace, location) -> bool | None:
@@ -138,14 +166,12 @@ def _collectives_setting(args: argparse.Namespace, location) -> bool | None:
     creating = not location.exists
     if not creating:
         return None
-    if not sys.stdin.isatty():
-        print(
-            "note: collectives are not counted as actors "
-            "(the default; set it with --collectives-as-actors)",
-            file=sys.stderr,
-        )
+
+    answer = _ask_collectives_are_actors() if sys.stdin.isatty() else None
+    if answer is None:
+        print(COLLECTIVES_DEFAULT_NOTE, file=sys.stderr)
         return None
-    return _ask_collectives_are_actors()
+    return answer
 
 
 def _run_ingest(args: argparse.Namespace) -> int:

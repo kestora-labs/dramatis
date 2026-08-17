@@ -1009,3 +1009,87 @@ moves nothing and runs no layout at all. Without one, the behaviour is unchanged
 
 *Reversible* cheaply. The catalogue is one array, the storage is three functions behind an
 interface a test can replace, and nothing else in the client knows where a pin is kept.
+
+---
+
+## D31 — A preface is a region somebody confirmed, not a rule; and the server learns to write
+
+**Amends 4.1 and 4.2, adds 4.8 and 4.9.** Prompted by the first full-novel run, where a
+third of the cast turned out to be people the 1894 edition's critical preface discusses
+rather than anyone in the novel.
+
+### The measurement that started it
+
+Of 102 characters in `snap:9204c78ca953`, **38** are evidenced only before the novel begins:
+Coleridge, Whitman, Scott, Smollett, Fielding, Mary Wollstonecraft, Maupassant, the painters
+Memling, Meissonier and Cosway, and a scattering of characters from Austen's *other* novels —
+Miss Bates, Mrs Norris, John Thorpe, Mrs Musgrove, Edmund. Eighteen of them have no relations
+at all. They account for 23 of 241 relations. Remove them and the cast is 64, against the
+fixture README's estimate of "roughly sixty named characters".
+
+The preface is 34,287 characters, **4.7%** of the file, three of sixty-one extraction windows,
+about **$0.22** of the run's $4.49. So the case for excluding it is not the tokens. It is that
+5% of the spend produces 37% of the cast, and that **D22** sizes the resolution budget from the
+number of surface forms — 150 in that run. Cutting 38 characters shrinks the one call in this
+pipeline that has already failed once on size.
+
+### Where the exclusion lives
+
+**In the structure map, as a region — not as a project setting, and not as a definition.**
+
+The tempting version is a switch: *analyse the preface, yes or no*, with a rule saying what a
+preface is. This project has twice refused that shape. **D7** rejected stop-lists because they
+encode one language's conventions into the core. **D24** deferred 7.7 because deciding what
+counts as a name is a question that needs measuring, not guessing. A front-matter rule is the
+same object: Project Gutenberg alone yields `PREFACE`, `INTRODUCTION`, transcriber's notes,
+frontispiece lists and publisher's advertisements, in one language, from one source.
+
+**4.2 already contained the answer** and only needed widening. The model proposes where the
+narrative begins, the user confirms or corrects it, and the answer persists as a property of
+*that document*. Nothing is written down about documents in general. The single amendment is
+that a structure map addresses **regions within a document**, not only whole documents —
+without which the mechanism cannot reach a preface bound into the same file as the novel,
+which is the commonest shape a public-domain text arrives in.
+
+### The server acquires writes, and this is not an invariant question
+
+Recorded because it was got wrong in discussion first. The concern raised was that a project
+UI would compromise `serve`'s guarantees. Checked against the actual code, it does not:
+
+- **No model is involved.** `ingest.py` imports `ids`, `store` and `text`, and no provider.
+  Creating a project is a filename, three settings and a hash. Only `analyse` calls a model,
+  and it stays a separate act.
+- **Invariant 6** says *reading* never requires a model, which is untouched. **Invariant 7**
+  forbids egress except to the user's chosen provider, and there is no egress at all here.
+- The operations are not new. `ingest` already creates a store file; `set_setting` already
+  writes settings. What is new is an HTTP caller for them.
+
+What is actually true is narrower: `serve --help` says *"Reads only: it never calls a model"*,
+and the first clause stops being true. That is a promise one command makes about itself, in a
+help string, and it is revised rather than defended. The read-only property was never enforced
+in any case — `Store.open()` is a plain read-write `sqlite3.connect`, and the guarantee held by
+absence of write endpoints, not by mechanism.
+
+It was also always going to end: **5.1** puts review status on every node and edge and **5.2**
+requires corrections to persist. A correctable graph in a browser is a server that writes.
+
+### The guard that does matter
+
+A browser will send a cross-origin POST to `127.0.0.1` from any page the user happens to have
+open. The attacker cannot read the reply, but the side effect lands. Today that is harmless
+because nothing mutates; from **4.8** it would not be. So every mutating endpoint checks the
+request's `Origin` against the server's own, and that is settled at the first write rather than
+retrofitted once there are a dozen.
+
+This is the one real technical consequence of the change, and it is a few lines rather than a
+redesign.
+
+### Scope
+
+**4.9** covers a source, a store name, the collectives setting, and confirming the regions from
+**4.2**. Prompt selection is deliberately left out: choosing or authoring a prompt version means
+prompts are versioned artefacts under file-and-hash discipline, which is **7.4** and **7.5**,
+and offering the choice earlier would let a project record a prompt nothing can compare against.
+
+*Reversible.* 4.8 and 4.9 are unbuilt bullets; the amendment to 4.1 and 4.2 is a widening that
+costs nothing if the region case never arises.

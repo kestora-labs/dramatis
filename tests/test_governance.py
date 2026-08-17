@@ -125,3 +125,44 @@ def test_nothing_excludes_the_prompt_from_the_build() -> None:
         f"the wheel target grew {sorted(set(wheel) - {'packages'})}; confirm the prompt and "
         "any other non-Python package data are still included"
     )
+
+
+class TestTheDecisionLogAndTheRoadmapAgree:
+    """The roadmap cites decisions by number and the decision log cites bullets by number.
+
+    Neither reference is checked by anything else, and both are the kind that rots quietly:
+    a renumbered decision or a deleted entry leaves a citation pointing at nothing, and the
+    reader who follows it is the one who finds out. This is the automated gate for changes
+    that are documentation only.
+    """
+
+    def _decision_numbers(self) -> list[int]:
+        return [int(found) for found in re.findall(r"^## D(\d+) — ", _read("DECISIONS.md"), re.M)]
+
+    def test_every_decision_the_roadmap_cites_exists(self) -> None:
+        cited = {int(found) for found in re.findall(r"\bD(\d+)\b", _prose("AI/ROADMAP.md"))}
+        recorded = set(self._decision_numbers())
+
+        missing = sorted(cited - recorded)
+        assert not missing, f"the roadmap cites decisions that are not in DECISIONS.md: {missing}"
+
+    def test_decision_numbers_are_unique(self) -> None:
+        numbers = self._decision_numbers()
+        duplicated = sorted({n for n in numbers if numbers.count(n) > 1})
+
+        assert not duplicated, f"two entries share a number: {duplicated}"
+
+    def test_decision_numbers_run_consecutively_from_one(self) -> None:
+        # A gap means an entry was deleted rather than superseded, and superseding is the
+        # only honest way to withdraw a decision somebody may have read.
+        numbers = self._decision_numbers()
+
+        assert numbers == list(range(1, len(numbers) + 1)), f"not consecutive: {numbers}"
+
+    def test_every_phase_bullet_the_log_cites_exists_in_the_roadmap(self) -> None:
+        roadmap = _prose("AI/ROADMAP.md")
+        declared = {found for found in re.findall(r"\*\*(\d+\.\d+)\*\*", roadmap)}
+        cited = {found for found in re.findall(r"\*\*(\d+\.\d+)\*\*", _prose("DECISIONS.md"))}
+
+        missing = sorted(cited - declared, key=lambda item: [int(p) for p in item.split(".")])
+        assert not missing, f"the log cites bullets the roadmap does not declare: {missing}"

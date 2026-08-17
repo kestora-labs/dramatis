@@ -148,6 +148,62 @@ code {
   margin-top: 1.25rem;
 }
 
+/* The comparison target. Distinct from the selected cell rather than a second shade of it:
+   they are two different roles, not two degrees of one. */
+.cell.compared {
+  background: #ebf8ff;
+  border-color: #2b6cb0;
+  color: #2b6cb0;
+}
+
+.changes {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  font-size: 0.78rem;
+}
+
+.changes li {
+  border-top: 1px solid var(--line);
+  padding: 0.4rem 0;
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  gap: 0.15rem 0.5rem;
+  line-height: 1.4;
+}
+
+.change-kind {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  align-self: start;
+  padding-top: 0.1rem;
+}
+
+.changes li.added .change-kind {
+  color: #2f855a;
+}
+
+.changes li.removed .change-kind {
+  color: #c53030;
+}
+
+.changes li.strengthened .change-kind,
+.changes li.split .change-kind {
+  color: #2b6cb0;
+}
+
+.changes li.weakened .change-kind,
+.changes li.merged .change-kind {
+  color: #b7791f;
+}
+
+.change-detail {
+  grid-column: 2;
+  color: var(--muted);
+}
+
 .grid {
   border-collapse: collapse;
   font-size: 0.72rem;

@@ -1383,3 +1383,51 @@ defaults to nothing, so an instruction can be told from an absence.
 the old parameters and will not compare with ones written after. That is the same class of
 break D19 warned about for the collectives setting, and for the same reason — the record of
 what a run was is what makes two of them comparable.
+
+---
+
+## D36 — The overlay is drawn over the union of both snapshots, and the two renderings answer different questions
+
+**Phase 3.4.** A diff is shown twice: as marks on the graph, and as a list. Both carry the
+attribution sentence D34 put first.
+
+**Two renderings, because they answer different questions.** The overlay answers *where* —
+which part of the cast moved, and whether the movement is central or at the edges. The list
+answers *what*, in an order somebody can go down and check. Neither substitutes for the
+other: a graph cannot say "25 to 4", and a list cannot show that both edges that moved meet
+at the same character.
+
+**The overlay is drawn over the union of both graphs, not over the later one.** A relation
+that was removed does not exist in the newer snapshot, so drawing only what is there would
+omit exactly the half of the diff a reader is least able to reconstruct. Demonstrated: two
+snapshots where a minor character disappears, the later graph holding two characters, the
+overlay drawing three and marking the third and its edge as removed.
+
+**One class per element, by a stated rule.** An edge that both strengthened and was retyped
+is drawn as the change that moved it, in the order removed, added, weakened, strengthened,
+retyped. A picture cannot say two things about one line at once, and choosing silently would
+be worse than choosing by a rule somebody can read. The list says both.
+
+**The union is a document, so the existing graph machinery scales it.** The overlay reads as
+the same picture with marks on it rather than as a second kind of diagram with its own
+conventions — sizes, widths and the square-root scaling all come from `buildGraph` unchanged.
+
+**Comparison is a second choice about a graph already on screen**, so it is shift-click on
+the lineage grid rather than a mode with its own controls. The earlier snapshot is always
+the one compared *from*, whichever cell was shift-clicked, so the diff reads forwards.
+
+### A defect this bullet exposed
+
+`list_snapshots` broke `created_at` ties with the identifier, and a snapshot identifier is a
+content hash. Two snapshots written in the same second therefore came back in an order
+decided by hashing — and 3.4 reads that order to decide which snapshot a diff runs *from*.
+
+The first live run of the overlay showed every strengthening as a weakening and every
+weakening as a strengthening, because the two snapshots were being compared backwards.
+
+This is the same defect D33 fixed for text revisions and analysis runs in 3.2, left in place
+for snapshots because nothing then depended on their order. Ties now break on insertion
+order, as the other two do.
+
+*Reversible* cheaply. The overlay is a pure function over two documents and a diff, and the
+marks are classes on elements the graph would draw anyway.

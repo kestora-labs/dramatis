@@ -463,3 +463,59 @@ class TestRevisionsAreListedInTheOrderTheyWereMade:
             listed = [revision.id for revision in store.list_text_revisions(later.work_id)]
 
         assert listed == [earlier.revision_id, later.revision_id]
+
+
+class TestSnapshotsAreListedInTheOrderTheyWereMade:
+    """3.4 reads this order to decide which of two snapshots a diff runs *from*.
+
+    A snapshot identifier is a content hash, so breaking a `created_at` tie with it orders
+    two snapshots written in the same second by hashing — and a diff run backwards reports
+    every strengthening as a weakening.
+    """
+
+    def test_two_snapshots_written_together_keep_their_order(self, tmp_path: Path) -> None:
+        import json as _json
+
+        from dramatis.pipeline import analyse
+        from dramatis.providers.scripted import ScriptedProvider
+
+        def script(store, revision):
+            text = store.revision_text(revision)
+            line = max((piece.strip() for piece in text.split("\n")), key=len)[:70]
+            names = ("Auber Vance", "Idris Kell")
+            reply = _json.dumps(
+                {
+                    "characters": [{"name": n, "aliases": [], "kind": "person"} for n in names],
+                    "interactions": [{"participants": list(names), "quotation": line, "note": ""}],
+                }
+            )
+            grouping = _json.dumps(
+                {
+                    "groups": [
+                        {
+                            "canonical_name": n,
+                            "forms": [n],
+                            "kind": "person",
+                            "same_as_registered": "",
+                        }
+                        for n in names
+                    ]
+                }
+            )
+            return [reply, grouping]
+
+        at = "2026-01-01T00:00:00+00:00"
+        with Store(tmp_path / "p.sqlite") as store:
+            one = ingest_folder(store, FIXTURE_B / "draft-1", work_title="L", collection_name="S")
+            two = ingest_folder(store, FIXTURE_B / "draft-2", work_title="L")
+
+            first = analyse(
+                store, one.revision_id, ScriptedProvider(script(store, one.revision_id)), now=at
+            )
+            second = analyse(
+                store, two.revision_id, ScriptedProvider(script(store, two.revision_id)), now=at
+            )
+
+            listed = [snapshot.id for snapshot in store.list_snapshots(one.work_id)]
+
+        assert listed == [first.snapshot.id, second.snapshot.id]

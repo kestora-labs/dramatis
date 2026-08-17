@@ -22,7 +22,14 @@ from pathlib import Path
 from typing import Any
 
 from dramatis import __version__
+from dramatis.passage import (
+    PassageNotFound,
+    StructureNotReproducible,
+    find_passage,
+    spec_for_types,
+)
 from dramatis.schema import DOCUMENT_VERSION
+from dramatis.segmentation import segment_text
 from dramatis.store import Store
 
 DEFAULT_HOST = "127.0.0.1"
@@ -157,6 +164,74 @@ def create_app(store_path: Path | str):
             # The stored document, byte for byte. Anything else would be a second
             # representation of the same graph.
             return JSONResponse(found.document)
+        finally:
+            store.close()
+
+    @app.get("/api/snapshots/{snapshot_id}/passage")
+    def passage(snapshot_id: str, relation: str, evidence: int = 0) -> JSONResponse:
+        """The source text a piece of evidence points at, with the quotation located.
+
+        Evidence is addressed by its position in the stored array rather than by sending
+        the quotation back as a query parameter. A locator and a quotation in a URL would
+        put lines of an unpublished manuscript into every access log that sees the request,
+        and the server already holds the document they would be quoting from.
+        """
+        store = open_store()
+        try:
+            found = store.get_snapshot(snapshot_id)
+            if found is None:
+                raise HTTPException(status_code=404, detail=f"no snapshot {snapshot_id!r}")
+
+            relations = found.document.get("relations", [])
+            match = next((r for r in relations if r.get("id") == relation), None)
+            if match is None:
+                raise HTTPException(
+                    status_code=404, detail=f"snapshot {snapshot_id!r} has no relation {relation!r}"
+                )
+
+            pieces = match.get("evidence", [])
+            if not 0 <= evidence < len(pieces):
+                raise HTTPException(
+                    status_code=404,
+                    detail=(
+                        f"relation {relation!r} has {len(pieces)} pieces of evidence, "
+                        f"so there is no piece {evidence}"
+                    ),
+                )
+
+            piece = pieces[evidence]
+            locator = piece.get("locator", {})
+            text = store.revision_text(found.text_revision_id)
+            work = store.get_work(found.work_id) or {}
+            try:
+                spec = spec_for_types(work.get("segment_types"))
+            except StructureNotReproducible as error:
+                raise HTTPException(status_code=501, detail=str(error)) from error
+            segmentation = segment_text(text, spec)
+
+            try:
+                opened = find_passage(
+                    segmentation,
+                    locator.get("path", []),
+                    piece.get("selector", {}).get("exact", ""),
+                    document_id=locator.get("document_id"),
+                )
+            except PassageNotFound as error:
+                raise HTTPException(status_code=404, detail=str(error)) from error
+
+            return JSONResponse(
+                {
+                    "document_id": opened.document_id,
+                    "path": opened.path,
+                    "text": opened.text,
+                    # Offsets rather than marked-up text: the client decides how a highlight
+                    # looks, and no manuscript ever passes through a markup step here.
+                    "quotation": (
+                        None if not opened.located else {"start": opened.start, "end": opened.end}
+                    ),
+                    "widened": opened.widened,
+                }
+            )
         finally:
             store.close()
 

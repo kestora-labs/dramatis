@@ -14,6 +14,11 @@ assert {
   res.status: eq 200
 }
 
+vars:post-response {
+  relationId: res.body.relations[0].id
+  quotation: res.body.relations[0].evidence[0].selector.exact
+}
+
 tests {
   test("returns a whole schema-shaped document", function () {
     const body = res.getBody();

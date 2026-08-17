@@ -747,3 +747,70 @@ has no list.
 **Not addressed here.** Characters may carry evidence too, and the panel still reports only
 a count for them. The bullet says per edge, the phase acceptance is about reaching a passage
 from an edge, and no snapshot the project has yet produced puts evidence on a character.
+
+---
+
+## D27 — The passage is opened where the verbatim rule lives, and refused where the structure cannot be reproduced
+
+**Phase 2.3.** `GET /api/snapshots/{id}/passage` returns the source text a piece of evidence
+names, together with the offsets of the quotation inside it. The client cuts the text into
+three at those offsets and marks the middle. It never searches for the quotation itself.
+
+**Why the server finds it.** Invariant 3 defines "verbatim" against whitespace-normalised
+text — runs of whitespace collapse to one space, nothing else is altered — and
+`dramatis.text` is where that definition lives. A browser searching the passage for the
+stored quotation would fail on nearly every quotation in a plain-text novel, because the
+source is hard-wrapped and the stored string carries the line breaks: `he looked for a
+moment at\nElizabeth` is not found in text where that newline is a space. The fix is not to
+normalise in TypeScript as well. That would put a second copy of Invariant 3 in a second
+language, and the copy nobody tests is the one that drifts.
+
+The response carries text and a span rather than marked-up text, so the client decides how a
+highlight looks and no manuscript passes through a string-replacement step on its way to the
+DOM.
+
+**Evidence is addressed by its stored position, not by its quotation.** A locator and a
+quotation in a query string would put lines of an unpublished manuscript into every access
+log that saw the request. The server already holds the document; the client sends an index.
+The index is the piece's place in the *stored* array and not in the reading-ordered list
+D26 produces, since those differ and both are numbers in range.
+
+**A quotation that runs past its passage widens the window.** `verification` attributes a
+quotation to the passage it *begins* in and accepts one that crosses a paragraph break, so a
+quotation is not always contained by the passage its locator names. The window grows forward
+one passage at a time and stops as soon as enough text has been added that the quotation
+would have been found if it were there. One of the 1,022 quotations in the first full-novel
+run needs this: a title page whose lines are separate blocks.
+
+### The refusal, which is the substantive half
+
+**A structure that cannot be reproduced is refused, and refused more widely than strictly
+necessary.** A work stores the *names* of its segment types and never the rules that found
+them. Only one name identifies its rule: the blank-line default, which a work either never
+overrode or overrode with the default's own type. Everything else raises, and the endpoint
+answers 501 with a sentence naming the division it could not reproduce.
+
+The tempting alternative was to treat a single declared type as "flat, therefore
+reproducible", and divide on blank lines under that name. That is the worst answer
+available. A work divided into chapters would have its blank-line blocks *called* chapters,
+and opening "chapter 3" would show the third paragraph of the title page with every
+appearance of having worked. A refusal costs a feature. A confident wrong passage costs the
+reader their trust in every other passage the tool ever shows them, and leaves no trace that
+would let them find out.
+
+**This is why fixture A cannot be opened, and why that is correct.** Fixture **A** is
+hand-authored against chapters — "chapter 3" is the Meryton assembly, "chapter 34" the
+Hunsford proposal — and its work declares `chapter › paragraph`. The only division the
+project can currently derive from that store is 2,509 blank-line blocks, in which block 3 is
+part of the title page. So phase 2's acceptance sentence, *from any edge in fixture A a user
+reaches the exact supporting passage in two clicks*, is not met by this bullet and cannot be
+met by any bullet in phase 2. It needs segmentation rules to have somewhere to live, which
+is the structure map of **4.1**–**4.2**.
+
+What *is* met is the same sentence against a real analysis: the first full-novel run
+declares no segment types, so its blank-line division is exactly reproducible, and every one
+of its 1,022 quotations opens at the right passage highlighted. The acceptance is recorded
+as blocked rather than quietly reinterpreted, in the same way D24 recorded phase 1's.
+
+*Reversible* cheaply. The refusal is one comparison in `spec_for_types`, and it widens the
+moment a stored structure map gives it something better to consult.

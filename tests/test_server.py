@@ -242,3 +242,125 @@ class TestOptionalDependency:
         monkeypatch.setattr(builtins, "__import__", refuse)
 
         assert create_app(tmp_path / "project.sqlite") is not None
+
+
+class TestPassage:
+    """Opening the source text at the position a piece of evidence names.
+
+    The offsets come from the server because `dramatis.text` is where Invariant 3's
+    definition of "verbatim" lives. A browser doing its own matching would be a second copy
+    of that rule, and the copy nobody tests is the one that drifts.
+    """
+
+    def _first_relation(self, document):
+        return document["relations"][0]
+
+    def test_it_returns_the_passage_and_where_the_quotation_sits(self, analysed, client) -> None:
+        _, snapshot_id, document = analysed
+        relation = self._first_relation(document)
+
+        payload = client.get(
+            f"/api/snapshots/{snapshot_id}/passage",
+            params={"relation": relation["id"], "evidence": 0},
+        ).json()
+
+        quoted = relation["evidence"][0]["selector"]["exact"]
+        span = payload["quotation"]
+        assert span is not None
+        assert payload["text"][span["start"] : span["end"]] == quoted
+
+    def test_the_span_indexes_the_text_it_is_returned_with(self, analysed, client) -> None:
+        # Two coordinate systems in one payload would be a highlight in the wrong place.
+        _, snapshot_id, document = analysed
+        relation = self._first_relation(document)
+
+        payload = client.get(
+            f"/api/snapshots/{snapshot_id}/passage",
+            params={"relation": relation["id"], "evidence": 0},
+        ).json()
+
+        assert 0 <= payload["quotation"]["start"] < payload["quotation"]["end"]
+        assert payload["quotation"]["end"] <= len(payload["text"])
+
+    def test_it_echoes_the_locator_it_opened(self, analysed, client) -> None:
+        _, snapshot_id, document = analysed
+        relation = self._first_relation(document)
+
+        payload = client.get(
+            f"/api/snapshots/{snapshot_id}/passage",
+            params={"relation": relation["id"], "evidence": 0},
+        ).json()
+
+        assert payload["path"] == relation["evidence"][0]["locator"]["path"]
+
+    def test_it_returns_no_markup(self, analysed, client) -> None:
+        """Offsets, not marked-up text: no manuscript passes through a markup step here."""
+        _, snapshot_id, document = analysed
+        relation = self._first_relation(document)
+
+        payload = client.get(
+            f"/api/snapshots/{snapshot_id}/passage",
+            params={"relation": relation["id"], "evidence": 0},
+        ).json()
+
+        assert "<" not in payload["text"]
+        assert "mark" not in payload
+
+    def test_an_unknown_snapshot_is_a_404(self, client) -> None:
+        response = client.get(
+            "/api/snapshots/snap:nope/passage", params={"relation": "rel:x", "evidence": 0}
+        )
+        assert response.status_code == 404
+
+    def test_an_unknown_relation_is_a_404(self, analysed, client) -> None:
+        _, snapshot_id, _ = analysed
+        response = client.get(
+            f"/api/snapshots/{snapshot_id}/passage",
+            params={"relation": "rel:not-here", "evidence": 0},
+        )
+
+        assert response.status_code == 404
+        assert "no relation" in response.json()["detail"]
+
+    def test_an_evidence_index_past_the_end_is_a_404_that_says_how_many(
+        self, analysed, client
+    ) -> None:
+        _, snapshot_id, document = analysed
+        relation = self._first_relation(document)
+
+        response = client.get(
+            f"/api/snapshots/{snapshot_id}/passage",
+            params={"relation": relation["id"], "evidence": 99},
+        )
+
+        assert response.status_code == 404
+        assert "pieces of evidence" in response.json()["detail"]
+
+    def test_a_negative_evidence_index_is_refused(self, analysed, client) -> None:
+        # Python would happily index from the end and return a passage for the wrong piece.
+        _, snapshot_id, document = analysed
+        relation = self._first_relation(document)
+
+        response = client.get(
+            f"/api/snapshots/{snapshot_id}/passage",
+            params={"relation": relation["id"], "evidence": -1},
+        )
+        assert response.status_code == 404
+
+    def test_the_quotation_never_appears_in_the_url(self, analysed, client) -> None:
+        """A locator and a quotation in a query string put a manuscript in every access log.
+
+        Evidence is addressed by its position in the stored array instead, which the client
+        already has and which says nothing about the text.
+        """
+        _, snapshot_id, document = analysed
+        relation = self._first_relation(document)
+        quoted = relation["evidence"][0]["selector"]["exact"]
+
+        response = client.get(
+            f"/api/snapshots/{snapshot_id}/passage",
+            params={"relation": relation["id"], "evidence": 0},
+        )
+
+        assert quoted not in str(response.url)
+        assert response.status_code == 200

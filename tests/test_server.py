@@ -487,3 +487,90 @@ class TestPassageAfterAnEdit:
 
         assert response.status_code == 404
         assert "text revision" in response.json()["detail"]
+
+
+class TestLineage:
+    """A work's snapshots with its two time axes kept apart (Invariant 4).
+
+    A flat list of snapshots can say a graph moved. It cannot say whether the work changed
+    or the analysis did, and those are not comparable kinds of change.
+    """
+
+    def test_it_returns_both_axes_as_separate_lists(self, analysed, client) -> None:
+        _, _, document = analysed
+        work_id = document["works"][0]["id"]
+
+        payload = client.get(f"/api/works/{work_id}/lineage").json()
+
+        assert payload["work"]["id"] == work_id
+        assert [entry["id"] for entry in payload["text_revisions"]] == [
+            document["snapshot"]["text_revision_id"]
+        ]
+        assert [entry["id"] for entry in payload["analysis_runs"]] == [
+            document["snapshot"]["analysis_run_id"]
+        ]
+
+    def test_each_snapshot_names_the_point_on_both_axes(self, analysed, client) -> None:
+        _, snapshot_id, document = analysed
+        work_id = document["works"][0]["id"]
+
+        payload = client.get(f"/api/works/{work_id}/lineage").json()
+        snapshot = next(entry for entry in payload["snapshots"] if entry["id"] == snapshot_id)
+
+        assert snapshot["text_revision_id"] == document["snapshot"]["text_revision_id"]
+        assert snapshot["analysis_run_id"] == document["snapshot"]["analysis_run_id"]
+
+    def test_a_revision_reports_how_many_documents_it_holds(self, analysed, client) -> None:
+        # Shape B is a folder of chapters, so "one revision" is not "one file".
+        _, _, document = analysed
+        work_id = document["works"][0]["id"]
+
+        payload = client.get(f"/api/works/{work_id}/lineage").json()
+        assert payload["text_revisions"][0]["documents"] >= 1
+
+    def test_a_run_reports_what_makes_one_reading_differ_from_another(
+        self, analysed, client
+    ) -> None:
+        _, _, document = analysed
+        work_id = document["works"][0]["id"]
+
+        run = client.get(f"/api/works/{work_id}/lineage").json()["analysis_runs"][0]
+
+        assert run["model"]
+        assert run["prompt_version"]
+
+    def test_a_revision_that_was_never_analysed_still_appears(
+        self, analysed, tmp_path: Path, client
+    ) -> None:
+        """The gap is the information. A revision with no snapshot is a piece of the work
+        nobody has read yet, which a list of snapshots cannot express."""
+        store_path, _, document = analysed
+        work_id = document["works"][0]["id"]
+
+        edited = tmp_path / "edited.txt"
+        edited.write_text(PASSAGE + "\nCai left before dawn.\n", encoding="utf-8", newline="")
+        with Store(store_path) as store:
+            second = ingest_file(store, edited, work_title="A Work", collection_name="A Collection")
+
+        payload = client.get(f"/api/works/{work_id}/lineage").json()
+
+        assert second.revision_id in [entry["id"] for entry in payload["text_revisions"]]
+        assert second.revision_id not in [
+            entry["text_revision_id"] for entry in payload["snapshots"]
+        ]
+
+    def test_an_unknown_work_is_a_404(self, client) -> None:
+        response = client.get("/api/works/work:nope/lineage")
+
+        assert response.status_code == 404
+        assert "no work" in response.json()["detail"]
+
+    def test_it_does_not_return_the_snapshot_documents(self, analysed, client) -> None:
+        # A listing, not a second copy of every graph the work has ever had.
+        _, _, document = analysed
+        work_id = document["works"][0]["id"]
+
+        raw = client.get(f"/api/works/{work_id}/lineage").text
+
+        assert "evidence" not in raw
+        assert "weight_basis" not in raw

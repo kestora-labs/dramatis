@@ -370,7 +370,7 @@ leaves the evidence correctly anchored after re-ingest.
 *The reason the project exists. Corpus shape **B**.*
 
 - [x] **3.1** — Multi-file ingest for shape **B**, with per-file revision tracking.
-- [ ] **3.2** — Snapshot list per work, with text-revision and analysis-run lineage shown
+- [x] **3.2** — Snapshot list per work, with text-revision and analysis-run lineage shown
       separately.
 - [ ] **3.3** — Diff two snapshots: added, removed, strengthened, weakened, retyped edges;
       added, removed, merged, split characters.
@@ -378,7 +378,12 @@ leaves the evidence correctly anchored after re-ingest.
 - [ ] **3.5** — Absolute vs. relative edge-width scaling, toggleable, defaulting to
       absolute so the picture does not appear to change when only totals move.
 - [ ] **3.6** — Re-run an analysis against a new text revision while holding the prompt
-      constant, and against a new prompt while holding the text constant.
+      constant, and against a new prompt while holding the text constant. **Blocked until a
+      run records what it was asked for.** 3.2 found that two analyses under identical
+      settings record different configurations, because `resolution_prompt_version` reports
+      what the run *did* — null when the registry was already populated and no resolution
+      call was needed — rather than what it was configured to do. Holding the analysis
+      constant is not currently expressible. See **D33**.
 
 **Acceptance:** Given two revisions of fixture **B** differing by one rewritten chapter,
 the diff attributes every change to the text revision and reports no spurious changes

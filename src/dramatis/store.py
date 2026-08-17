@@ -713,8 +713,16 @@ class Store:
         return StoredSnapshot(**record)
 
     def list_snapshots(self, work_id: str) -> list[StoredSnapshot]:
+        """Every snapshot of a work, oldest first.
+
+        Ties on ``created_at`` break on insertion order, for the reason
+        ``list_text_revisions`` gives: a snapshot identifier is a content hash, so ordering
+        by it puts two snapshots written in the same second into an order decided by
+        hashing. 3.4 reads this order to decide which of two snapshots a diff runs *from*,
+        and a diff run backwards reports every strengthening as a weakening.
+        """
         rows = self.connection.execute(
-            "SELECT id FROM snapshots WHERE work_id = ? ORDER BY created_at, id", (work_id,)
+            "SELECT id FROM snapshots WHERE work_id = ? ORDER BY created_at, rowid", (work_id,)
         ).fetchall()
         found = [self.get_snapshot(row["id"]) for row in rows]
         return [snapshot for snapshot in found if snapshot is not None]

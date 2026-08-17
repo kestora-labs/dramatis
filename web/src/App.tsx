@@ -31,6 +31,16 @@ import {
   runName,
   type Lineage,
 } from "./lineage.js";
+import {
+  changeIndex,
+  changeList,
+  classFor,
+  describeAttribution,
+  pairKey,
+  unionDocument,
+  type ChangeEntry,
+  type DiffResponse,
+} from "./overlay.js";
 import { describeAnchor, passageUrl, splitPassage, type PassageResponse } from "./passage.js";
 
 interface SnapshotSummary {
@@ -69,6 +79,22 @@ const STYLE: cytoscape.StylesheetJson = [
     },
   },
   { selector: ":selected", style: { "background-color": "#c05621", "line-color": "#c05621" } },
+
+  // The overlay. Colour carries the direction of the change and opacity carries whether the
+  // element is still there: a removed edge is drawn, because a diff that omitted what went
+  // would hide the half a reader is least able to reconstruct.
+  { selector: "node.added", style: { "background-color": "#2f855a" } },
+  { selector: "node.removed", style: { "background-color": "#c53030", opacity: 0.45 } },
+  { selector: "node.merged", style: { "background-color": "#b7791f", opacity: 0.45 } },
+  { selector: "node.split", style: { "background-color": "#2b6cb0" } },
+  { selector: "edge.added", style: { "line-color": "#2f855a", opacity: 1 } },
+  {
+    selector: "edge.removed",
+    style: { "line-color": "#c53030", opacity: 0.5, "line-style": "dashed" },
+  },
+  { selector: "edge.strengthened", style: { "line-color": "#2b6cb0", opacity: 1 } },
+  { selector: "edge.weakened", style: { "line-color": "#b7791f", opacity: 1 } },
+  { selector: "edge.retyped", style: { "line-color": "#805ad5", opacity: 1 } },
 ];
 
 /**
@@ -171,11 +197,15 @@ function DetailPanel({
 function LineagePanel({
   lineage,
   selected,
+  comparedWith,
   onSelect,
+  onCompare,
 }: {
   lineage: Lineage;
   selected: string | null;
+  comparedWith: string | null;
   onSelect: (snapshotId: string) => void;
+  onCompare: (snapshotId: string | null) => void;
 }) {
   const grid = buildGrid(lineage);
   const labels = readingLabels(grid.readings);
@@ -233,9 +263,29 @@ function LineagePanel({
                         <button
                           key={snapshot.id}
                           type="button"
-                          className={snapshot.id === selected ? "cell chosen" : "cell"}
+                          className={
+                            snapshot.id === selected
+                              ? "cell chosen"
+                              : snapshot.id === comparedWith
+                                ? "cell compared"
+                                : "cell"
+                          }
                           aria-pressed={snapshot.id === selected}
-                          onClick={() => onSelect(snapshot.id)}
+                          title={
+                            snapshot.id === selected
+                              ? snapshot.id
+                              : `${snapshot.id} — shift-click to compare with the selected snapshot`
+                          }
+                          // Shift-click compares rather than selects. A diff is a second
+                          // choice about a graph already on screen, not a way of opening one.
+                          onClick={(event) => {
+                            if (event.shiftKey && snapshot.id !== selected) {
+                              onCompare(snapshot.id === comparedWith ? null : snapshot.id);
+                            } else {
+                              onCompare(null);
+                              onSelect(snapshot.id);
+                            }
+                          }}
                         >
                           {snapshot.characters}c · {snapshot.relations}r
                         </button>
@@ -267,6 +317,59 @@ function LineagePanel({
           {grid.orphaned.length} snapshot{grid.orphaned.length === 1 ? "" : "s"} name a revision or
           run this work does not list, and cannot be placed.
         </p>
+      )}
+    </section>
+  );
+}
+
+/**
+ * The diff as a list somebody can read down and check.
+ *
+ * Sits beside the overlay rather than instead of it: a graph cannot say "25 to 4", and a
+ * list cannot show that both edges that moved meet at the same character.
+ */
+function DiffPanel({
+  diff,
+  entries,
+  onClose,
+}: {
+  diff: DiffResponse;
+  entries: ChangeEntry[];
+  onClose: () => void;
+}) {
+  return (
+    <section className="detail">
+      <div className="detail-head">
+        <h2>What changed</h2>
+        <button type="button" className="clear" onClick={onClose} aria-label="Stop comparing">
+          ×
+        </button>
+      </div>
+
+      {/* Said for every attribution, not only the bad ones: this is the sentence that
+          decides what the rest of the panel is worth. */}
+      <p className={diff.attribution === "both" ? "caveat" : "tally"}>
+        {describeAttribution(diff)}
+      </p>
+
+      {diff.warnings.map((warning) => (
+        <p className="caveat" key={warning}>
+          {warning}
+        </p>
+      ))}
+
+      {entries.length === 0 ? (
+        <p className="tally">No characters and no relations differ.</p>
+      ) : (
+        <ul className="changes">
+          {entries.map((entry, index) => (
+            <li key={index} className={entry.kind}>
+              <span className="change-kind">{entry.kind}</span>
+              <span className="change-subject">{entry.subject}</span>
+              {entry.detail && <span className="change-detail">{entry.detail}</span>}
+            </li>
+          ))}
+        </ul>
       )}
     </section>
   );
@@ -544,6 +647,13 @@ export function App() {
   const [algorithm, setAlgorithm] = useState<LayoutName>(DEFAULT_LAYOUT);
   const [pin, setPin] = useState<PinnedLayout | null>(null);
   const [lineage, setLineage] = useState<Lineage | null>(null);
+  const [comparedWith, setComparedWith] = useState<string | null>(null);
+  const [diff, setDiff] = useState<DiffResponse | null>(null);
+  // Both documents, in diff order. Keeping the pair rather than 'the other one' means
+  // the union is always built the right way round, whichever cell was shift-clicked.
+  const [pair, setPair] = useState<{ before: SnapshotDocument; after: SnapshotDocument } | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   // Held in a ref as well as in state: the pin button and the drag handler need the live
   // instance, and they are not part of what makes the graph rebuild.
@@ -588,13 +698,61 @@ export function App() {
       .catch(() => setError(`could not load snapshot ${selected}`));
   }, [selected]);
 
-  const built = document_ ? buildGraph(document_, filters) : null;
+  useEffect(() => {
+    if (!selected || !comparedWith) {
+      setDiff(null);
+      setPair(null);
+      return;
+    }
+    // The earlier snapshot is the one to compare *from*, so the diff reads forwards
+    // regardless of which cell was shift-clicked.
+    const order = lineage?.snapshots.map((snapshot) => snapshot.id) ?? [];
+    const [before, after] =
+      order.indexOf(comparedWith) < order.indexOf(selected)
+        ? [comparedWith, selected]
+        : [selected, comparedWith];
+
+    Promise.all([
+      fetch(`/api/diff?before=${encodeURIComponent(before)}&after=${encodeURIComponent(after)}`),
+      fetch(`/api/snapshots/${encodeURIComponent(before)}`),
+      fetch(`/api/snapshots/${encodeURIComponent(after)}`),
+    ])
+      .then(async ([diffed, first, second]) => {
+        if (!diffed.ok) throw new Error((await diffed.json()).detail ?? "could not diff");
+        setDiff(await diffed.json());
+        setPair({ before: await first.json(), after: await second.json() });
+      })
+      .catch((reason: Error) => {
+        setError(reason.message);
+        setComparedWith(null);
+      });
+  }, [selected, comparedWith, lineage]);
+
+  // The overlay is drawn over everything either snapshot had, so what was removed is still
+  // on screen. Without a comparison this is just the snapshot.
+  const shown = pair ? unionDocument(pair.before, pair.after) : document_;
+  const built = shown ? buildGraph(shown, filters) : null;
   const options = document_ ? optionsFor(document_) : null;
 
   useEffect(() => {
     if (!container.current || !document_) return;
 
-    const { elements, weightBasis } = buildGraph(document_, filters);
+    const { elements, weightBasis } = buildGraph(shown ?? document_, filters);
+
+    // The overlay: each element carries the change that moved it, so the stylesheet can
+    // mark it. Done here rather than inside buildGraph because a diff is a second reading
+    // of a graph, not a property of one.
+    if (diff) {
+      const index = changeIndex(diff);
+      for (const element of elements) {
+        const data = element.data;
+        const change =
+          "source" in data
+            ? classFor(index.relations.get(pairKey(String(data.source), String(data.target))))
+            : (index.characters.get(String(data.id)) ?? null);
+        if (change) element.classes = `${element.classes ?? ""} ${change}`.trim();
+      }
+    }
     const plan = planLayout(
       pin,
       elements
@@ -666,7 +824,11 @@ export function App() {
     // `pin` is deliberately absent: pinning captures where the graph already is, so
     // rebuilding on it would throw away the arrangement being captured.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [document_, filters, algorithm, selected]);
+    // `diff` and `pair` are here because the overlay is drawn into the elements: without
+    // them the marks arrive after the graph is built and are never applied. They are state
+    // rather than derived values, so their identity is stable between renders — `shown` is
+    // rebuilt every render and would loop.
+  }, [document_, filters, algorithm, selected, diff, pair]);
 
   // A filter can remove the thing being inspected. Leaving its panel open would describe a
   // node or edge that is no longer on screen.
@@ -765,7 +927,15 @@ export function App() {
           ))}
         </select>
 
-        {lineage && <LineagePanel lineage={lineage} selected={selected} onSelect={setSelected} />}
+        {lineage && (
+          <LineagePanel
+            lineage={lineage}
+            selected={selected}
+            comparedWith={comparedWith}
+            onSelect={setSelected}
+            onCompare={setComparedWith}
+          />
+        )}
 
         {document_ && (
           <LayoutControls
@@ -788,7 +958,13 @@ export function App() {
           />
         )}
 
-        {detail ? (
+        {diff && shown ? (
+          <DiffPanel
+            diff={diff}
+            entries={changeList(shown, diff)}
+            onClose={() => setComparedWith(null)}
+          />
+        ) : detail ? (
           <DetailPanel
             detail={detail}
             onClear={() => {

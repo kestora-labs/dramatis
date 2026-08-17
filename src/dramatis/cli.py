@@ -82,6 +82,52 @@ def _run_validate(args: argparse.Namespace) -> int:
     return 1 if any(results.values()) else 0
 
 
+# -- structure ------------------------------------------------------------------------
+
+
+def _run_structure(args: argparse.Namespace) -> int:
+    """Show what a folder appears to hold, without ingesting or analysing anything.
+
+    Calls no model and writes nothing. A structure map is a thing somebody is asked to
+    confirm (4.2), and being able to look at it before spending anything is most of why it
+    is proposed separately from the ingest that will use it.
+    """
+    from dramatis.structure import as_json, propose_structure
+
+    try:
+        structure = propose_structure(args.path)
+    except IngestError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
+    if args.as_json:
+        json.dump(as_json(structure), sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 0
+
+    # ASCII only, for the reason IngestResult.summary gives: a Windows console under a
+    # legacy code page renders typographic punctuation as replacement characters, and output
+    # that looks corrupted is worse than output that looks plain.
+    print(f"{structure.root} - {len(structure.documents)} documents")
+    for plan in structure.documents:
+        print()
+        print(f"  {plan.path}  ({plan.characters:,} characters)")
+        print(f"    role         {plan.role.value}")
+        print(f"                 {plan.role.basis}")
+        print(f"    addressing   {plan.addressing.value}")
+        print(f"                 {plan.addressing.basis}")
+        print(f"    revision of  {plan.revision_of.value or '(none)'}")
+        print(f"                 {plan.revision_of.basis}")
+
+    # stderr, like every other remark this CLI makes, so --json stays parseable.
+    for note in structure.notes:
+        print(f"note: {note}", file=sys.stderr)
+    for path, why in structure.skipped:
+        print(f"note: skipped {path}: {why}", file=sys.stderr)
+
+    return 0
+
+
 # -- ingest ---------------------------------------------------------------------------
 
 
@@ -568,6 +614,19 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     validate.add_argument("-q", "--quiet", action="store_true", help="report failures only")
     validate.set_defaults(handler=_run_validate)
+
+    structure = subcommands.add_parser(
+        "structure",
+        help="show what a folder appears to hold",
+        description=(
+            "Propose a structure map for a folder: which documents appear to be revisions "
+            "of which, how each is addressed, and what still needs deciding. Calls no "
+            "model and writes nothing."
+        ),
+    )
+    structure.add_argument("path", type=Path, metavar="FOLDER")
+    structure.add_argument("--json", dest="as_json", action="store_true", help="machine-readable")
+    structure.set_defaults(handler=_run_structure)
 
     ingest = subcommands.add_parser(
         "ingest",

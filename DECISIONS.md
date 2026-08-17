@@ -1488,3 +1488,70 @@ nothing today and starts paying the moment a corpus has something to filter by.
 
 *Reversible* cheaply. One parameter with a default, threaded through the one function that
 decides how a graph looks.
+
+---
+
+## D38 — The structure map proposes only what a folder can actually evidence
+
+**Phase 4.1.** `propose_structure` reads a folder and returns a map: for each document, how
+it is addressed, whether it appears to be a revision of another, and what role it plays.
+Every answer carries the evidence it rests on, because **4.2** asks somebody to confirm it,
+and *confirm this* is unanswerable without being told what the proposal was made from.
+
+### Role is not proposed, and that is the bullet's substance
+
+Fixture **C** is built to punish reading filing conventions. Its reference material sits in
+`series-bible/`, its narrative in `transmissions/`, its revisions in YAML frontmatter, its
+units are numbered `t01` — and its README says what happens if any of that leaks into the
+core: *"Invariant 1 or the 'not tied to one author's method' non-goal has been broken."*
+
+A folder offers exactly one signal about role, and it is the names somebody chose. So role
+comes back `unknown`, with the reason recorded and 4.2 named as where it is answered. An
+honest unknown is worth more than a guess that happens to be right on the two corpora
+somebody tested. Six tests exist solely to spring that trap.
+
+The same reasoning gives regions the honest floor: one region covering the whole document.
+**D31** widened the map to hold regions so a preface bound into a novel can be classified
+apart from it, and finding where such a region ends means reading the text.
+
+### The filename carries a revision, and similarity only describes it
+
+Two files named `chapter-03.md` in sibling folders are the same chapter. They remain the
+same chapter when the text has been rewritten, because that is what revising means — so
+similarity is measured and reported, never used as a gate. A chapter thrown away and written
+again would score like a stranger while being the revision a reader most needs recorded.
+
+### A measurement error that nearly became a documented finding
+
+I first gated on similarity, and fixture **B**'s rewritten chapter measured `0.054` —
+below two unrelated documents at `0.040`. I wrote that up as *no threshold can separate them*
+and built the design on it.
+
+It was an artefact. `difflib.SequenceMatcher` applies an `autojunk` heuristic to sequences
+longer than 200, treating any element in more than 1% of them as noise — which, on a
+sequence of characters, is every common letter. The ratio is then both meaningless and
+asymmetric. The same pair measures:
+
+```
+0.054   ratio(draft-1, draft-2)     autojunk on
+0.545   ratio(draft-2, draft-1)     autojunk on, arguments swapped
+0.838   autojunk=False              the real figure
+```
+
+Measured properly, revisions score 0.838–1.000 and unrelated pairs 0.119–0.317. They
+separate cleanly, and my documented conclusion had been exactly backwards.
+
+The design did not change — the filename still carries the claim, for the reason above — but
+the reasoning under it was rebuilt on numbers that are true, and `_similarity` now passes
+`autojunk=False` with the incident recorded where somebody would remove the flag.
+
+**Addressing is `section` and settled**, because that is the only division the project can
+reproduce (**D27**). Proposing `chapter` would propose something the rest of the system
+cannot honour.
+
+**`dramatis structure FOLDER`** shows the map. It calls no model and writes nothing, so the
+proposal can be read before anything is spent — which is most of the reason it is a separate
+step from the ingest that will use it. Its output is ASCII, per the convention
+`IngestResult.summary` states, with a test.
+
+*Reversible* cheaply. Nothing is persisted; 4.2 is what stores a confirmed map.

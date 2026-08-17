@@ -400,7 +400,7 @@ graph.
 
 *Reference material alongside narrative. Corpus shape **C**. Self-hosting.*
 
-- [ ] **4.1** — Folder ingest producing a proposed **structure map**: for each document,
+- [x] **4.1** — Folder ingest producing a proposed **structure map**: for each document,
       is this narrative or reference material, what is its addressing scheme, does it
       appear to be a revision of another document. **A document may be divided into
       regions**, so that front matter, a critical preface, or an appendix bound into the

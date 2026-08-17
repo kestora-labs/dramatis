@@ -364,3 +364,126 @@ class TestPassage:
 
         assert quoted not in str(response.url)
         assert response.status_code == 200
+
+
+class TestPassageAfterAnEdit:
+    """Phase 2's second acceptance sentence, end to end.
+
+    *Editing the source text — inserting a paragraph before a quoted passage — leaves the
+    evidence correctly anchored after re-ingest.*
+
+    The snapshot stays bound to the revision it analysed; the caller names the newer one to
+    ask where the evidence is now.
+    """
+
+    def _reingest(self, tmp_path: Path, store_path: Path, text: str) -> str:
+        edited = tmp_path / "edited.txt"
+        edited.write_text(text, encoding="utf-8", newline="")
+        with Store(store_path) as store:
+            return ingest_file(
+                store, edited, work_title="A Work", collection_name="A Collection"
+            ).revision_id
+
+    def test_a_paragraph_inserted_before_the_quotation_leaves_it_anchored(
+        self, analysed, tmp_path: Path, client
+    ) -> None:
+        store_path, snapshot_id, document = analysed
+        relation = document["relations"][0]
+        quoted = relation["evidence"][0]["selector"]["exact"]
+
+        # The edit: a new opening paragraph, which moves every offset after it.
+        revision = self._reingest(
+            tmp_path,
+            store_path,
+            "A paragraph nobody had written before.\n\n" + PASSAGE,
+        )
+
+        payload = client.get(
+            f"/api/snapshots/{snapshot_id}/passage",
+            params={"relation": relation["id"], "evidence": 0, "revision": revision},
+        ).json()
+
+        span = payload["quotation"]
+        assert span is not None, "the evidence lost its anchor after an edit before it"
+        assert payload["text"][span["start"] : span["end"]] == quoted
+        assert payload["anchor"]["method"] == "exact"
+        assert payload["anchor"]["similarity"] == 1.0
+
+    def test_it_reports_that_the_passage_moved(self, analysed, tmp_path: Path, client) -> None:
+        # The quotation is in the same words and a different place. Saying so is the
+        # difference between a citation a reader can check and one they must take on trust.
+        store_path, snapshot_id, document = analysed
+        relation = document["relations"][0]
+
+        revision = self._reingest(
+            tmp_path, store_path, "A paragraph nobody had written before.\n\n" + PASSAGE
+        )
+        payload = client.get(
+            f"/api/snapshots/{snapshot_id}/passage",
+            params={"relation": relation["id"], "evidence": 0, "revision": revision},
+        ).json()
+
+        assert payload["anchor"]["moved"] is True
+        assert payload["anchor"]["stored_path"] == relation["evidence"][0]["locator"]["path"]
+        assert payload["path"] != payload["anchor"]["stored_path"]
+
+    def test_an_edit_inside_the_quotation_falls_to_a_fuzzy_match_and_says_so(
+        self, analysed, tmp_path: Path, client
+    ) -> None:
+        store_path, snapshot_id, document = analysed
+        relation = document["relations"][0]
+
+        revision = self._reingest(
+            tmp_path, store_path, PASSAGE.replace("Ada met Bram", "Ada finally met Bram")
+        )
+        payload = client.get(
+            f"/api/snapshots/{snapshot_id}/passage",
+            params={"relation": relation["id"], "evidence": 0, "revision": revision},
+        ).json()
+
+        assert payload["quotation"] is not None
+        assert payload["anchor"]["method"] == "fuzzy"
+        assert payload["anchor"]["similarity"] < 1.0
+        assert "Bram at the gate" in payload["text"]
+
+    def test_a_quotation_cut_from_the_work_is_refused_rather_than_relocated(
+        self, analysed, tmp_path: Path, client
+    ) -> None:
+        # Re-pointing at whatever scored highest would make every citation unfalsifiable.
+        store_path, snapshot_id, document = analysed
+        relation = document["relations"][0]
+
+        revision = self._reingest(
+            tmp_path, store_path, "Cai spoke to Ada alone.\n\nNothing else happened at all.\n"
+        )
+        response = client.get(
+            f"/api/snapshots/{snapshot_id}/passage",
+            params={"relation": relation["id"], "evidence": 0, "revision": revision},
+        )
+
+        assert response.status_code == 404 or response.json()["quotation"] is None
+
+    def test_the_snapshots_own_revision_is_the_default(self, analysed, client) -> None:
+        _, snapshot_id, document = analysed
+        relation = document["relations"][0]
+
+        payload = client.get(
+            f"/api/snapshots/{snapshot_id}/passage",
+            params={"relation": relation["id"], "evidence": 0},
+        ).json()
+
+        assert payload["text_revision_id"] == document["snapshot"]["text_revision_id"]
+        assert payload["anchor"]["moved"] is False
+        assert payload["anchor"]["method"] == "exact"
+
+    def test_an_unknown_revision_is_a_404(self, analysed, client) -> None:
+        _, snapshot_id, document = analysed
+        relation = document["relations"][0]
+
+        response = client.get(
+            f"/api/snapshots/{snapshot_id}/passage",
+            params={"relation": relation["id"], "evidence": 0, "revision": "rev:nope"},
+        )
+
+        assert response.status_code == 404
+        assert "text revision" in response.json()["detail"]

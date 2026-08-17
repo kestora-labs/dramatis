@@ -33,7 +33,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 
 from dramatis.extraction import Extraction, ObservedInteraction
-from dramatis.segmentation import Segmentation
+from dramatis.segmentation import AddressableText, Segmentation
 from dramatis.text import normalise_whitespace
 
 DEFAULT_MAX_REJECTION_RATE = 0.25
@@ -103,47 +103,6 @@ def _segment_contains(segmentation: Segmentation, position: int, needle: str) ->
     return needle in text
 
 
-@dataclass(frozen=True)
-class _AddressableText:
-    """The work's leaf passages joined, with a map back to the passage each offset sits in.
-
-    Searching this rather than the raw text means a quotation is checked against exactly
-    the material a locator can name, and a match yields the passage directly. It also lets
-    a quotation that runs across a paragraph break be attributed to the passage where it
-    begins, instead of matching nowhere because no single passage holds all of it.
-    """
-
-    joined: str
-    spans: tuple[tuple[int, int, int], ...]  # (start, end, segment position)
-
-    @classmethod
-    def of(cls, segmentation: Segmentation) -> _AddressableText:
-        parts: list[str] = []
-        spans: list[tuple[int, int, int]] = []
-        cursor = 0
-        for position in segmentation.leaves():
-            segment = segmentation.segments[position]
-            text = normalise_whitespace(segmentation.text[segment.start : segment.end])
-            if not text:
-                continue
-            if parts:
-                cursor += 1  # the single space the join inserts
-            parts.append(text)
-            spans.append((cursor, cursor + len(text), position))
-            cursor += len(text)
-        return cls(joined=" ".join(parts), spans=tuple(spans))
-
-    def find(self, needle: str) -> int | None:
-        """Return the passage a quotation begins in, or None if it is not present."""
-        offset = self.joined.find(needle)
-        if offset < 0:
-            return None
-        for start, end, position in self.spans:
-            if start <= offset < end:
-                return position
-        return self.spans[-1][2] if self.spans else None
-
-
 def verify(
     interactions: Iterable[ObservedInteraction] | Extraction,
     segmentation: Segmentation,
@@ -159,7 +118,7 @@ def verify(
     if isinstance(interactions, Extraction):
         interactions = interactions.interactions
 
-    addressable = _AddressableText.of(segmentation)
+    addressable = AddressableText.of(segmentation)
     whole = normalise_whitespace(segmentation.text)
 
     verified: list[ObservedInteraction] = []

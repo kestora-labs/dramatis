@@ -814,3 +814,70 @@ as blocked rather than quietly reinterpreted, in the same way D24 recorded phase
 
 *Reversible* cheaply. The refusal is one comparison in `spec_for_types`, and it widens the
 moment a stored structure map gives it something better to consult.
+
+---
+
+## D28 — Re-anchoring says which rung found the quotation, and refuses rather than reaching
+
+**Phase 2.4.** `reanchor` locates a stored selector in a text that may have changed under it,
+by exact match, then by the surrounding context, then by similarity. What it returns names
+the rung that answered, and the reader is told whenever that is anything but the first.
+
+**Each rung is a weaker claim than the one above.** An exact match is the quotation, found.
+A context match is one of several occurrences, chosen by the text stored around it. A fuzzy
+match is a passage that resembles the quotation and is not it. Rendering all three the same
+way would be the failure this project keeps naming in other forms: something that looks like
+information and is not. So the response carries `method` and `similarity`, the reader shows a
+sentence for anything below exact, and an approximate highlight is drawn differently from a
+verbatim one.
+
+**A quotation that cannot be found has no anchor.** Below the similarity threshold nothing
+is offered. An evidence list that silently re-pointed at whatever passage scored highest
+would make every citation in the project unfalsifiable — the reader would have no way to
+tell a recovered quotation from an invented one, which is precisely what Invariant 3's
+verification gate exists to prevent at the other end of the pipeline.
+
+**The recorded position is tried first, and accepted only if the quotation sits wholly
+inside it.** A result that had to widen past the named passage is ambiguous between the two
+cases widening covers: a quotation genuinely spanning a paragraph break, and one an edit has
+pushed into the following passage. Re-anchoring tells them apart, agreeing with the fast path
+in the first case and correcting it in the second — so a moved passage is reported as moved
+rather than as a wide window at the old address.
+
+### Three things that were wrong first, and what they cost
+
+**Stripping the stored context threw away the only thing that could disambiguate.** A stored
+prefix ends with the space joining it to the quotation; `normalise_whitespace` strips ends,
+so every comparison disagreed on the first character tried and every occurrence scored zero.
+The context rung silently degraded to "pick the first", which is exactly the behaviour it
+exists to avoid, and it would have looked like it was working.
+
+**Fixed-length fragments lose a short quotation to a one-word edit.** Candidate positions are
+found from fragments cut out of the quotation. At a fixed 24 characters, every fragment of a
+25-character quotation spans the same edit, and the passage becomes unrecoverable for being
+short rather than for being changed. Fragments now scale with the quotation and are sampled
+across it rather than taken from the ends.
+
+**Trimming candidates by position preferred the opening chapters.** When a fragment matches
+more places than the ceiling allows, keeping the lowest offsets is an arbitrary preference
+for the front of the book. The stored offset hint decides what survives the cut instead.
+
+All three had the same shape: a plausible-looking answer that was wrong in a way no user
+could have detected. They are recorded because the tests that catch them are the point of
+the tests, not because the code is interesting.
+
+### What this does not do
+
+**The client cannot yet choose which revision to read against.** The endpoint takes one and
+defaults to the snapshot's own, where re-anchoring is a no-op and the fast path always wins.
+Offering a reader a way to say *show me this evidence against the current draft* means a way
+to choose a revision, which is **phase 3**'s subject. Until then the ladder's rungs below
+`exact` are reachable through the API rather than through the interface, and the interface
+renders them correctly when they arrive.
+
+**`AddressableText` moved from `verification` into `segmentation`.** Both modules need to map
+an offset back to the passage it falls in, and two copies of that mapping is the arrangement
+this project keeps arguing against. No behaviour changed; `verification`'s tests pin it.
+
+*Reversible* cheaply. The rungs are three branches in one function, and the thresholds are
+module-level constants with tests pinning the properties rather than the values.

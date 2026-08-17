@@ -3,7 +3,8 @@ import cytoscape from "cytoscape";
 
 import { describeSelection, type Detail, type Selection } from "./detail.js";
 import { buildGraph, type SnapshotDocument } from "./graph.js";
-import { passageUrl, splitPassage, type PassageResponse } from "./passage.js";
+import { formatPath } from "./evidence.js";
+import { describeAnchor, passageUrl, splitPassage, type PassageResponse } from "./passage.js";
 
 interface SnapshotSummary {
   id: string;
@@ -146,6 +147,10 @@ function Reader({
 }) {
   const highlight = useRef<HTMLElement>(null);
   const { before, quoted, after } = splitPassage(passage.text, passage.quotation);
+  const caveat = describeAnchor(
+    passage.anchor,
+    passage.anchor.stored_path ? formatPath(passage.anchor.stored_path) : null,
+  );
 
   useEffect(() => {
     highlight.current?.scrollIntoView({ block: "center" });
@@ -162,10 +167,12 @@ function Reader({
 
       {passage.quotation === null && (
         <p className="error">
-          This quotation is no longer in the passage it names. The passage is shown unhighlighted;
-          recovering the quotation after an edit is 2.4.
+          This quotation is not in this revision of the text, in these words or close to them. The
+          passage it named is shown unhighlighted.
         </p>
       )}
+
+      {caveat && <p className="caveat">{caveat}</p>}
 
       {passage.widened && (
         <p className="hint">
@@ -175,7 +182,11 @@ function Reader({
 
       <p className="source">
         {before}
-        {quoted && <mark ref={highlight}>{quoted}</mark>}
+        {quoted && (
+          <mark ref={highlight} className={passage.anchor.method === "fuzzy" ? "approximate" : ""}>
+            {quoted}
+          </mark>
+        )}
         {after}
       </p>
     </aside>

@@ -17,6 +17,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from dramatis.text import normalise_whitespace
+
 Anchor = Literal["start", "end"]
 
 # A block boundary: the start of the text, or the first non-space after a blank line.
@@ -147,6 +149,63 @@ class Segmentation:
         """Positions of segments with no children — the units extraction iterates over."""
         parents = {segment.parent for segment in self.segments if segment.parent is not None}
         return [position for position in range(len(self.segments)) if position not in parents]
+
+
+@dataclass(frozen=True)
+class AddressableText:
+    """The work's leaf passages joined, with a map back to the passage each offset sits in.
+
+    This is the text a *locator can name*: front matter a segmentation rule left outside the
+    structure is not in it, and neither is anything a container holds beyond its leaves.
+    Searching it rather than the raw text means a quotation is checked against exactly the
+    material the schema can address, and a match yields the passage directly.
+
+    It also lets a quotation running across a paragraph break be handled at all. Such a span
+    matches no single passage, and is attributed to the passage it begins in.
+
+    Whitespace is normalised per passage, so the offsets index normalised text on both
+    sides — the same coordinate system `dramatis.text` verifies quotations in.
+    """
+
+    joined: str
+    spans: tuple[tuple[int, int, int], ...]
+    """(start, end, segment position), in order."""
+
+    @classmethod
+    def of(cls, segmentation: Segmentation) -> AddressableText:
+        parts: list[str] = []
+        spans: list[tuple[int, int, int]] = []
+        cursor = 0
+        for position in segmentation.leaves():
+            segment = segmentation.segments[position]
+            text = normalise_whitespace(segmentation.text[segment.start : segment.end])
+            if not text:
+                continue
+            if parts:
+                cursor += 1  # the single space the join inserts
+            parts.append(text)
+            spans.append((cursor, cursor + len(text), position))
+            cursor += len(text)
+        return cls(joined=" ".join(parts), spans=tuple(spans))
+
+    def segment_at(self, offset: int) -> int | None:
+        """The passage an offset falls in, or the last one if it falls off the end."""
+        for start, end, position in self.spans:
+            if start <= offset < end:
+                return position
+        return self.spans[-1][2] if self.spans else None
+
+    def span_of(self, position: int) -> tuple[int, int] | None:
+        """Where a passage sits in the joined text."""
+        for start, end, found in self.spans:
+            if found == position:
+                return start, end
+        return None
+
+    def find(self, needle: str) -> int | None:
+        """The passage a quotation begins in, or None if it is not present."""
+        offset = self.joined.find(needle)
+        return None if offset < 0 else self.segment_at(offset)
 
 
 @dataclass(frozen=True)

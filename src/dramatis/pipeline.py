@@ -129,7 +129,9 @@ def analyse(
         verification.verified,
         resolution,
         segmentation,
-        document_id=revision.document_ids[0] if revision.document_ids else None,
+        # The spans, not a single id: a revision of a folder is many documents, and which
+        # one a quotation belongs to is decided by where its passage falls.
+        document_spans=store.revision_document_spans(text_revision_id),
     )
 
     parameters: dict[str, Any] = {

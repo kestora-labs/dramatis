@@ -369,7 +369,7 @@ leaves the evidence correctly anchored after re-ingest.
 
 *The reason the project exists. Corpus shape **B**.*
 
-- [ ] **3.1** — Multi-file ingest for shape **B**, with per-file revision tracking.
+- [x] **3.1** — Multi-file ingest for shape **B**, with per-file revision tracking.
 - [ ] **3.2** — Snapshot list per work, with text-revision and analysis-run lineage shown
       separately.
 - [ ] **3.3** — Diff two snapshots: added, removed, strengthened, weakened, retyped edges;

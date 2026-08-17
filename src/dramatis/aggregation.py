@@ -211,6 +211,32 @@ def _context(segmentation: Segmentation, position: int, quotation: str) -> tuple
     return before.strip(), after.strip()
 
 
+def _document_at(
+    segmentation: Segmentation,
+    position: int | None,
+    spans: Sequence[tuple[int, int, str]] | None,
+) -> str | None:
+    """Which document a passage falls in.
+
+    A revision of a folder is many documents concatenated, so the document a quotation
+    belongs to is decided by where its passage starts. Naming the revision's first document
+    for everything — which is what a single-document corpus let us get away with — would
+    attribute every quotation in a novel to chapter one.
+    """
+    if not spans:
+        return None
+    if position is None:
+        return spans[0][2]
+
+    offset = segmentation.segments[position].start
+    for start, end, document_id in spans:
+        if start <= offset < end:
+            return document_id
+    # Past the end of the last document: an offset that no document covers is not a passage
+    # anyone can cite, so it is left unattributed rather than given to the nearest.
+    return None
+
+
 def _locator(
     segmentation: Segmentation, position: int | None, document_id: str | None
 ) -> dict[str, Any]:
@@ -236,6 +262,7 @@ def aggregate(
     segmentation: Segmentation,
     *,
     document_id: str | None = None,
+    document_spans: Sequence[tuple[int, int, str]] | None = None,
     weight_basis: str = INTERACTION_PASSAGES,
 ) -> Aggregation:
     """Group interactions into one relation per pair of resolved characters.
@@ -291,7 +318,12 @@ def aggregate(
         )
         bucket["passages"][passage_key] = Evidence(
             quotation=interaction.quotation,
-            locator=_locator(segmentation, interaction.segment_position, document_id),
+            locator=_locator(
+                segmentation,
+                interaction.segment_position,
+                _document_at(segmentation, interaction.segment_position, document_spans)
+                or document_id,
+            ),
             prefix=prefix,
             suffix=suffix,
             note=interaction.note,

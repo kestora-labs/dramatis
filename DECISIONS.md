@@ -1093,3 +1093,79 @@ and offering the choice earlier would let a project record a prompt nothing can 
 
 *Reversible.* 4.8 and 4.9 are unbuilt bullets; the amendment to 4.1 and 4.2 is a widening that
 costs nothing if the region case never arises.
+
+---
+
+## D32 — A document is one version of a file, and a file's identity is its path
+
+**Phase 3.1.** `ingest_folder` takes a folder as one text revision of many documents, and
+document identifiers now carry a content hash. Both halves of the bullet turn on the same
+change, and it began as a defect rather than a feature.
+
+### The defect
+
+`ids.document_id` derived an identifier from the filename alone, and `upsert_document`
+overwrites content on conflict. So a second ingest of an edited file landed on the same row
+and **rewrote the text an earlier revision pointed at**. Demonstrated before the change:
+
+```
+revision A: rev:02904c1e0563   'Ada met Bram at the gate.'
+revision B: rev:c85a893869ea   'Ada met Cai at the gate instead.'
+
+text of revision A afterwards:  'Ada met Cai at the gate instead.'
+rev:02904c1e0563  recorded 02904c1e  |  actual now c85a893869  |  MISMATCH
+```
+
+Nothing raised. The older revision reported text it had never held, its recorded hash no
+longer described what it returned, and every quotation anchored into it — the whole of
+2.2, 2.3 and 2.4 — cited a text that did not exist. It was invisible while a work was one
+file that nobody re-ingested, which is exactly how phases 1 and 2 exercised it.
+
+Phase 3 cannot be built on top of it: diffing two revisions is meaningless if the older one
+changes when the newer arrives.
+
+### The fix, and what it settles
+
+**A document row is one version of a file.** The identifier is `doc:<name>-<sha12>`, so
+edited content becomes a new row and the old one stays where the old revision left it. The
+name is kept in front of the hash because a human tracing an evidence locator back to a file
+should be able to read it.
+
+Idempotence is unaffected and slightly strengthened: the same bytes always yield the same
+identifier, which is what `ingest` opens by promising.
+
+**A file's identity across revisions is its path**, relative to the folder ingested. That is
+what makes `chapter-03.md` the same chapter in two drafts however much of it was rewritten,
+and it is what per-file tracking compares. Unchanged files are therefore *shared* between
+revisions rather than copied — on fixture **B**, two drafts of three chapters produce four
+document rows, not six, and the two that are shared are exactly the two the fixture says
+were untouched.
+
+### Folder ingest infers nothing
+
+The folder pointed at is the revision. `ingest_folder` does not decide that `draft-2/` is a
+revision of `draft-1/`, or that `cast.md` is reference material — fixture **B** states its
+directory-per-revision layout as data specifically so that no code has to know it, and
+classifying documents is **4.1**'s job.
+
+**What it will not read, it names.** A file that is not text, is empty, or is not UTF-8 is
+skipped and reported rather than passed over. A revision quietly missing a chapter is a
+graph missing a character with nothing on screen to say why. One unreadable file does not
+discard a folder the user meant to ingest.
+
+### The second defect, which only multi-file ingest could expose
+
+`pipeline.analyse` passed `revision.document_ids[0]` as the document for every piece of
+evidence. With one document per revision that was indistinguishable from correct. With a
+folder it attributes every quotation in the novel to chapter one.
+
+Evidence is now attributed by where its passage falls, using a span map returned by
+`Store.revision_document_spans`. That lives beside `revision_text` deliberately: the map and
+the concatenation have to agree about how documents are joined, and a caller deriving
+"documents, in order, end to end" for itself would be a second place for that to be wrong.
+An offset no document covers is left unattributed rather than given to the nearest.
+
+*Reversible* — but not cheaply, and not without cost. Identifiers minted under the old scheme
+remain valid and are still resolvable; reverting would reintroduce the overwrite. Stores
+written before this change keep whatever they already hold, and the first re-ingest of an
+edited file under the new scheme adds a row rather than destroying one.

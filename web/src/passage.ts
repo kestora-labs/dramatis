@@ -11,15 +11,61 @@
  * through a string-replacement step on its way to the DOM.
  */
 
+/** Which rung of the re-anchoring ladder found the quotation. */
+export interface AnchorReport {
+  method: "exact" | "context" | "fuzzy";
+  similarity: number;
+  ambiguous: boolean;
+  /** True when the quotation is no longer at the position the evidence recorded. */
+  moved: boolean;
+  stored_path: { type: string; index?: number; label?: string }[] | null;
+}
+
 /** What `GET /api/snapshots/{id}/passage` returns. */
 export interface PassageResponse {
   document_id: string | null;
   path: { type: string; index?: number; label?: string }[];
   text: string;
-  /** Null when the quotation could not be found — see 2.4. */
+  /** Null when the quotation could not be found anywhere in the revision. */
   quotation: { start: number; end: number } | null;
   /** True when the window grew past the named passage to hold the whole quotation. */
   widened: boolean;
+  text_revision_id: string;
+  anchor: AnchorReport;
+}
+
+/**
+ * What to tell the reader about a highlight they are looking at.
+ *
+ * Returns null when there is nothing worth saying, which is the common case: the quotation
+ * was found verbatim, exactly where the evidence recorded it. Everything else is a weaker
+ * claim than that, and the difference is the reader's to judge rather than the view's to
+ * smooth over — an approximate match drawn identically to a verbatim one is a citation
+ * nobody can check.
+ */
+export function describeAnchor(anchor: AnchorReport, moved: string | null): string | null {
+  if (anchor.method === "fuzzy") {
+    const percent = Math.round(anchor.similarity * 100);
+    return (
+      `This quotation is no longer in the text word for word — the closest passage is ` +
+      `shown, ${percent}% of a match. The text has been edited since this snapshot was made.`
+    );
+  }
+
+  if (anchor.ambiguous) {
+    return (
+      "This quotation appears in more than one place and nothing stored with it says " +
+      "which was meant. One of them is shown."
+    );
+  }
+
+  if (anchor.moved) {
+    return moved === null
+      ? "This passage has moved since the snapshot was made."
+      : `This passage has moved since the snapshot was made; the evidence recorded it at ${moved}.`;
+  }
+
+  return null;
 }
 
 /** A passage cut into the part before the quotation, the quotation, and the part after. */

@@ -338,7 +338,7 @@ wheel validates and analyses without a checkout anywhere on the machine.
       the work.
 - [x] **2.3** — Click a piece of evidence to open the source text at that position,
       highlighted.
-- [ ] **2.4** — Quote re-anchoring by exact match, then prefix/suffix, then fuzzy, so
+- [x] **2.4** — Quote re-anchoring by exact match, then prefix/suffix, then fuzzy, so
       evidence survives edits to the underlying text.
 - [ ] **2.5** — Filters: minimum weight, relation type, provenance.
 - [ ] **2.6** — Layout controls and a pinnable layout so a graph looks the same on
@@ -348,13 +348,20 @@ wheel validates and analyses without a checkout anywhere on the machine.
 in two clicks. Editing the source text — inserting a paragraph before a quoted passage —
 leaves the evidence correctly anchored after re-ingest.
 
-> **Blocked on phase 4 for fixture A, and met for a real run.** 2.3 reaches the passage in
-> two clicks on any snapshot whose segmentation can be reproduced, which the first
-> full-novel run is. Fixture **A** is hand-authored against *chapters*, and the work
-> declares `chapter › paragraph` while storing none of the rules that found them — so its
-> locators name positions no blank-line division can address, and the server refuses rather
-> than opening the third block of the title page and calling it chapter 3. Closing this
-> needs the structure map of **4.1**–**4.2**, not another bullet here. See **D27**.
+> **Second sentence met. First blocked on phase 4 for fixture A, and met for a real run.**
+>
+> *Re-anchoring after an edit* is done and demonstrated at full scale: a paragraph inserted
+> near the front of the novel and re-ingested leaves every sampled quotation anchored to
+> exactly the words it recorded, reported as moved, on the exact rung of the ladder. An edit
+> *inside* a quotation falls to the fuzzy rung, which says so rather than presenting a guess
+> as a citation. See **D28**.
+>
+> *Two clicks to the passage* holds on any snapshot whose segmentation can be reproduced,
+> which the first full-novel run is. Fixture **A** is hand-authored against *chapters*, and
+> the work declares `chapter › paragraph` while storing none of the rules that found them —
+> so its locators name positions no blank-line division can address, and the server refuses
+> rather than opening the third block of the title page and calling it chapter 3. Closing
+> this needs the structure map of **4.1**–**4.2**, not another bullet here. See **D27**.
 
 ---
 

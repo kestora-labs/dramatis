@@ -20,7 +20,7 @@
  * means nothing.
  */
 
-import type { SnapshotDocument, SnapshotEvidence } from "./graph.js";
+import type { SnapshotDocument, SnapshotEvidence, SnapshotSegment } from "./graph.js";
 
 /** Where the documents of a work sit relative to each other, by id. */
 export function documentOrder(document: SnapshotDocument): Map<string, number> {
@@ -116,13 +116,17 @@ export function orderEvidence(
  * vocabulary, for the reason the schema gives for keeping it free text: no closed list of
  * structural names survives contact with a real corpus.
  */
-export function formatLocator(evidence: SnapshotEvidence): string {
-  return evidence.locator.path
+export function formatPath(path: SnapshotSegment[]): string {
+  return path
     .map((segment) => {
       const named = segment.index === undefined ? segment.type : `${segment.type} ${segment.index}`;
       return segment.label === undefined ? named : `${named} — ${segment.label}`;
     })
     .join(" › ");
+}
+
+export function formatLocator(evidence: SnapshotEvidence): string {
+  return formatPath(evidence.locator.path);
 }
 
 /** One supporting passage, ready to render. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { passageUrl, splitPassage } from "./passage.js";
+import { describeAnchor, passageUrl, splitPassage } from "./passage.js";
 
 const TEXT = "Ada met Bram at the gate, and neither spoke.";
 
@@ -82,5 +82,62 @@ describe("passageUrl", () => {
     // A quotation in a query string puts a manuscript into every access log that sees it.
     const url = passageUrl("snap:1", "rel:a--b", 0);
     expect(url).not.toMatch(/[A-Za-z]{20}/);
+  });
+});
+
+describe("describeAnchor", () => {
+  const verbatim = {
+    method: "exact" as const,
+    similarity: 1,
+    ambiguous: false,
+    moved: false,
+    stored_path: null,
+  };
+
+  it("says nothing when the quotation was found verbatim where it was recorded", () => {
+    // The common case. A note on every passage would train the reader to ignore the notes
+    // that matter.
+    expect(describeAnchor(verbatim, null)).toBeNull();
+  });
+
+  it("says an approximate match is approximate, with how close it was", () => {
+    const caveat = describeAnchor(
+      { ...verbatim, method: "fuzzy", similarity: 0.87, moved: true },
+      "chapter 3",
+    );
+
+    expect(caveat).toContain("no longer in the text word for word");
+    expect(caveat).toContain("87%");
+  });
+
+  it("reports an ambiguous match rather than presenting a coin toss as a citation", () => {
+    const caveat = describeAnchor({ ...verbatim, method: "context", ambiguous: true }, "chapter 3");
+    expect(caveat).toContain("more than one place");
+  });
+
+  it("says where the evidence used to point when the passage has moved", () => {
+    const caveat = describeAnchor({ ...verbatim, moved: true, stored_path: [] }, "chapter 3");
+
+    expect(caveat).toContain("moved");
+    expect(caveat).toContain("chapter 3");
+  });
+
+  it("still reports a move when it cannot name the old position", () => {
+    const caveat = describeAnchor({ ...verbatim, moved: true }, null);
+
+    expect(caveat).toContain("moved");
+    expect(caveat).not.toContain("null");
+  });
+
+  it("prefers the strongest caveat when more than one applies", () => {
+    // A fuzzy match has almost always moved as well. Saying both would bury the one that
+    // changes how much the highlight is worth.
+    const caveat = describeAnchor(
+      { ...verbatim, method: "fuzzy", similarity: 0.9, ambiguous: true, moved: true },
+      "chapter 3",
+    );
+
+    expect(caveat).toContain("word for word");
+    expect(caveat).not.toContain("more than one place");
   });
 });

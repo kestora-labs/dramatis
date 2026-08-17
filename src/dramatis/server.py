@@ -25,7 +25,7 @@ from dramatis import __version__
 from dramatis.passage import (
     PassageNotFound,
     StructureNotReproducible,
-    find_passage,
+    open_evidence,
     spec_for_types,
 )
 from dramatis.schema import DOCUMENT_VERSION
@@ -168,7 +168,9 @@ def create_app(store_path: Path | str):
             store.close()
 
     @app.get("/api/snapshots/{snapshot_id}/passage")
-    def passage(snapshot_id: str, relation: str, evidence: int = 0) -> JSONResponse:
+    def passage(
+        snapshot_id: str, relation: str, evidence: int = 0, revision: str | None = None
+    ) -> JSONResponse:
         """The source text a piece of evidence points at, with the quotation located.
 
         Evidence is addressed by its position in the stored array rather than by sending
@@ -201,7 +203,15 @@ def create_app(store_path: Path | str):
 
             piece = pieces[evidence]
             locator = piece.get("locator", {})
-            text = store.revision_text(found.text_revision_id)
+
+            # A snapshot is bound to the revision it analysed, and that is the default. A
+            # caller may name a later one to ask the question 2.4 exists for: is this
+            # evidence still where it was, now that the text has been edited?
+            against = revision or found.text_revision_id
+            if store.get_text_revision(against) is None:
+                raise HTTPException(status_code=404, detail=f"no text revision {against!r}")
+
+            text = store.revision_text(against)
             work = store.get_work(found.work_id) or {}
             try:
                 spec = spec_for_types(work.get("segment_types"))
@@ -210,10 +220,10 @@ def create_app(store_path: Path | str):
             segmentation = segment_text(text, spec)
 
             try:
-                opened = find_passage(
+                opened = open_evidence(
                     segmentation,
                     locator.get("path", []),
-                    piece.get("selector", {}).get("exact", ""),
+                    piece.get("selector", {}),
                     document_id=locator.get("document_id"),
                 )
             except PassageNotFound as error:
@@ -230,6 +240,16 @@ def create_app(store_path: Path | str):
                         None if not opened.located else {"start": opened.start, "end": opened.end}
                     ),
                     "widened": opened.widened,
+                    "text_revision_id": against,
+                    # How much the highlight is worth. A fuzzy match rendered identically to
+                    # a verbatim one is a citation the reader has no way to weigh.
+                    "anchor": {
+                        "method": opened.method,
+                        "similarity": opened.similarity,
+                        "ambiguous": opened.ambiguous,
+                        "moved": opened.moved,
+                        "stored_path": opened.stored_path,
+                    },
                 }
             )
         finally:

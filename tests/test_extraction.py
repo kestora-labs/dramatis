@@ -222,13 +222,13 @@ class TestThePromptIsAFile:
         reader from looking where the fault is not."""
         import dramatis.extraction as extraction_module
 
-        extraction_module._prompt_file.cache_clear()
+        extraction_module.read_prompt.cache_clear()
         monkeypatch.setattr(extraction_module, "PROMPT_FILE", "not-a-prompt.md")
         try:
             with pytest.raises(ExtractionError, match="missing from the installation"):
                 extraction_module.system_prompt()
         finally:
-            extraction_module._prompt_file.cache_clear()
+            extraction_module.read_prompt.cache_clear()
 
 
 class TestWhatCountsAsACharacter:

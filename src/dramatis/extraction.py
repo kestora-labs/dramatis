@@ -50,7 +50,7 @@ this; the budget is a target, not a ceiling."""
 
 
 @cache
-def _prompt_file(name: str) -> str:
+def read_prompt(name: str) -> str:
     """Read one prompt file from the package.
 
     Nothing is stripped, templated, or reflowed on the way out: a file's bytes are its text.
@@ -62,8 +62,8 @@ def _prompt_file(name: str) -> str:
         return files(PROMPT_PACKAGE).joinpath(name).read_text(encoding="utf-8")
     except (FileNotFoundError, ModuleNotFoundError) as error:
         raise ExtractionError(
-            f"the extraction prompt {PROMPT_PACKAGE}.{name} is missing from the "
-            "installation. Reinstall dramatis; analysis cannot proceed without it."
+            f"the prompt {PROMPT_PACKAGE}.{name} is missing from the installation. "
+            "Reinstall dramatis; analysis cannot proceed without it."
         ) from error
 
 
@@ -78,9 +78,9 @@ def system_prompt(*, collectives_are_actors: bool = DEFAULT_COLLECTIVES_ARE_ACTO
     The hash recorded by a run covers what this returns, not either file, so the composition
     is inside the guarantee rather than beside it.
     """
-    prompt = _prompt_file(PROMPT_FILE)
+    prompt = read_prompt(PROMPT_FILE)
     if collectives_are_actors:
-        prompt = f"{prompt.rstrip()}\n\n{_prompt_file(COLLECTIVES_FILE)}"
+        prompt = f"{prompt.rstrip()}\n\n{read_prompt(COLLECTIVES_FILE)}"
     return prompt
 
 
@@ -245,11 +245,11 @@ def build_windows(
     return windows
 
 
-def _window_text(segmentation: Segmentation, window: Window) -> str:
+def window_text(segmentation: Segmentation, window: Window) -> str:
     return segmentation.text[window.start : window.end]
 
 
-def _locate(segmentation: Segmentation, window: Window, quotation: str) -> int | None:
+def locate_quotation(segmentation: Segmentation, window: Window, quotation: str) -> int | None:
     """Return the segment a quotation falls in, or None if it is not in the window.
 
     Matching is whitespace-normalised, for the reason set out in ``dramatis.text``: the
@@ -364,7 +364,7 @@ def extract(
     model = provider_name = ""
 
     for window in windows:
-        text = _window_text(segmentation, window)
+        text = window_text(segmentation, window)
         if not text.strip():
             continue
 
@@ -401,7 +401,7 @@ def extract(
                 participants=interaction.participants,
                 quotation=interaction.quotation,
                 note=interaction.note,
-                segment_position=_locate(segmentation, window, interaction.quotation),
+                segment_position=locate_quotation(segmentation, window, interaction.quotation),
             )
             for interaction in interactions
         )

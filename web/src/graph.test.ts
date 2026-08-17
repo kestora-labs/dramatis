@@ -144,6 +144,30 @@ describe("buildGraph", () => {
     expect(buildGraph(document).weightBasis).toBeNull();
   });
 
+  it("measures width against the heaviest edge sharing a basis, not the heaviest overall", () => {
+    // Phase 4.3 made this reachable: a bible weights relations in statements while the
+    // narrative weights them in passages of contact. A pair stated once is not a hundredth
+    // as close as a pair sharing a hundred scenes, and one shared maximum draws that claim.
+    const document = aDocument();
+    document.relations[1].weight_basis = "asserted_statements";
+    document.relations[1].weight = 1;
+
+    const { elements, maxWeightByBasis } = buildGraph(document);
+    const asserted = elements.find((element) => element.data.id === "rel:a--c");
+
+    expect(maxWeightByBasis).toEqual({ interaction_passages: 100, asserted_statements: 1 });
+    expect(asserted?.data.width).toBe(EDGE_WIDTH.max);
+  });
+
+  it("leaves widths alone when every relation shares one basis", () => {
+    const perBasis = buildGraph(aDocument());
+    const heavy = perBasis.elements.find((element) => element.data.id === "rel:a--b");
+    const light = perBasis.elements.find((element) => element.data.id === "rel:a--c");
+
+    expect(heavy?.data.width).toBe(EDGE_WIDTH.max);
+    expect(light?.data.width).toBeLessThan(EDGE_WIDTH.max / 2);
+  });
+
   it("drops an edge whose endpoint is not a character", () => {
     const document = aDocument();
     document.relations.push({

@@ -12,20 +12,29 @@ quotation failed is still registered — losing a quotation should not lose a pe
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from dramatis import __version__
 from dramatis.aggregation import Aggregation, aggregate
+from dramatis.assertion import (
+    ASSERTED_STATEMENTS,
+    Assertions,
+    aggregate_assertions,
+    extract_assertions,
+)
 from dramatis.extraction import DEFAULT_WINDOW_CHARACTERS, Extraction, extract
+from dramatis.extraction import PROMPT_VERSION as EXTRACTION_PROMPT_VERSION
 from dramatis.providers import Provider
 from dramatis.resolution import PROMPT_VERSION as RESOLUTION_PROMPT_VERSION
-from dramatis.resolution import Resolution, resolve
+from dramatis.resolution import Resolution, resolve_mentions
 from dramatis.segmentation import SegmentationSpec, segment_text
 from dramatis.snapshot import AnalysisRun, build_document, save_snapshot
 from dramatis.store import (
     COLLECTIVES_ARE_ACTORS,
     DEFAULT_COLLECTIVES_ARE_ACTORS,
+    NARRATIVE,
+    REFERENCE,
     Store,
     StoredSnapshot,
     utc_now,
@@ -52,10 +61,27 @@ class AnalysisResult:
     verification: Verification
     resolution: Resolution
     aggregation: Aggregation
+    assertions: Assertions = field(default_factory=Assertions)
+    """What the reference documents declared. Empty when the revision has none."""
+    asserted: Aggregation = field(
+        default_factory=lambda: Aggregation(weight_basis=ASSERTED_STATEMENTS)
+    )
+    """Asserted relations, kept apart from `aggregation` rather than merged into it.
+
+    The two carry different weight bases, and `require_comparable` exists to stop anything
+    ranking or diffing them together. Holding them in one field would have thrown that away
+    at the last moment.
+    """
 
     @property
     def warnings(self) -> tuple[str, ...]:
-        return self.extraction.warnings + self.resolution.warnings + self.aggregation.warnings
+        return (
+            self.extraction.warnings
+            + self.assertions.warnings
+            + self.resolution.warnings
+            + self.aggregation.warnings
+            + self.asserted.warnings
+        )
 
 
 def analyse(
@@ -81,13 +107,18 @@ def analyse(
         raise PipelineError(f"revision {text_revision_id!r} belongs to a work that is gone")
     collection_id = str(work["collection_id"])
 
-    text = store.revision_text(text_revision_id)
-    if not text.strip():
+    # Narrative and reference material are read separately and never concatenated (4.3).
+    # A bible read under the narrative prompt yields relations marked `observed`, which
+    # claims the story enacted something the author only wrote down.
+    text = store.revision_text(text_revision_id, roles=[NARRATIVE])
+    reference_text = store.revision_text(text_revision_id, roles=[REFERENCE])
+    if not text.strip() and not reference_text.strip():
         raise PipelineError(f"revision {text_revision_id!r} has no text")
 
     started_at = now or utc_now()
 
     segmentation = segment_text(text, spec)
+    reference_segmentation = segment_text(reference_text, spec) if reference_text.strip() else None
     if spec is not None:
         store.upsert_work(
             work["id"],
@@ -106,20 +137,47 @@ def analyse(
         store.get_setting(COLLECTIVES_ARE_ACTORS, DEFAULT_COLLECTIVES_ARE_ACTORS)
     )
 
-    extraction = extract(
-        segmentation,
-        provider,
-        target_characters=target_characters,
-        effort=effort,
-        collectives_are_actors=collectives_are_actors,
+    extraction = (
+        extract(
+            segmentation,
+            provider,
+            target_characters=target_characters,
+            effort=effort,
+            collectives_are_actors=collectives_are_actors,
+        )
+        if text.strip()
+        else Extraction(
+            findings=(), prompt_version=EXTRACTION_PROMPT_VERSION, model="", provider=""
+        )
     )
 
     verification = verify(extraction, segmentation, max_rejection_rate=max_rejection_rate)
 
-    # Resolution runs on the whole extraction, not the verified subset: a character seen
-    # only in a passage whose quotation failed is still a character in the work.
-    resolution = resolve(
-        extraction,
+    assertions = Assertions()
+    assertion_verification = Verification()
+    if reference_segmentation is not None:
+        assertions = extract_assertions(
+            reference_segmentation,
+            provider,
+            target_characters=target_characters,
+            effort=effort,
+        )
+        # The same gate, against the reference text. Invariant 3 does not soften because a
+        # relation was declared rather than enacted.
+        assertion_verification = verify(
+            assertions.relationships,
+            reference_segmentation,
+            max_rejection_rate=max_rejection_rate,
+        )
+
+    # One resolution over both passes. "Ada" in the bible and "Ada" on the page must become
+    # the same character, or 4.4's overlay would compare a declaration against an enactment
+    # that never meets it, and every relation would read as both undeclared and unenacted.
+    #
+    # Run on the whole reading, not the verified subset: a character seen only in a passage
+    # whose quotation failed is still a character in the work.
+    resolution = resolve_mentions(
+        extraction.characters + assertions.characters,
         store,
         collection_id,
         provider=resolution_provider if resolution_provider is not None else provider,
@@ -131,9 +189,19 @@ def analyse(
         resolution,
         segmentation,
         # The spans, not a single id: a revision of a folder is many documents, and which
-        # one a quotation belongs to is decided by where its passage falls.
-        document_spans=store.revision_document_spans(text_revision_id),
+        # one a quotation belongs to is decided by where its passage falls. Narrowed to the
+        # same roles as the text, or the offsets would index a different string.
+        document_spans=store.revision_document_spans(text_revision_id, roles=[NARRATIVE]),
     )
+
+    asserted = Aggregation(weight_basis=ASSERTED_STATEMENTS)
+    if reference_segmentation is not None:
+        asserted = aggregate_assertions(
+            assertion_verification.verified,
+            resolution,
+            reference_segmentation,
+            document_spans=store.revision_document_spans(text_revision_id, roles=[REFERENCE]),
+        )
 
     # Parameters are what the run was *asked* to do, never what happened to it. The
     # distinction is not pedantry: these are the material a run's identity is hashed from,
@@ -155,10 +223,16 @@ def analyse(
         "weight_basis": aggregation.weight_basis,
         COLLECTIVES_ARE_ACTORS: collectives_are_actors,
     }
+    # Recorded only when there was reference material to read. A run's identity is hashed
+    # from these, so adding a key unconditionally would give every narrative-only corpus a
+    # new run identifier for a question it was never asked.
+    if reference_segmentation is not None:
+        parameters["assertion_prompt_version"] = assertions.prompt_version
+        parameters["asserted_weight_basis"] = asserted.weight_basis
 
     run = AnalysisRun(
-        model=extraction.model or "none",
-        provider=extraction.provider or None,
+        model=extraction.model or assertions.model or "none",
+        provider=extraction.provider or assertions.provider or None,
         prompt_version=extraction.prompt_version,
         prompt_sha256=extraction.prompt_sha256 or None,
         pipeline_version=PIPELINE_VERSION,
@@ -169,7 +243,7 @@ def analyse(
     )
 
     character_ids = set(resolution.assignments.values())
-    for relation in aggregation.relations:
+    for relation in aggregation.relations + asserted.relations:
         character_ids.update({relation.source, relation.target})
 
     document = build_document(
@@ -179,6 +253,7 @@ def analyse(
         run=run,
         character_ids=character_ids,
         aggregation=aggregation,
+        asserted=asserted,
         label=label,
         created_at=now,
     )
@@ -190,4 +265,6 @@ def analyse(
         verification=verification,
         resolution=resolution,
         aggregation=aggregation,
+        assertions=assertions,
+        asserted=asserted,
     )

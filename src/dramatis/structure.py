@@ -52,7 +52,7 @@ from dramatis.ingest import TEXT_SUFFIXES, IngestError, read_text
 from dramatis.providers import ModelRequest, Provider, ProviderError
 from dramatis.reanchor import Anchor, reanchor
 from dramatis.segmentation import DEFAULT_SEGMENT_TYPE
-from dramatis.store import utc_now
+from dramatis.store import NARRATIVE, REFERENCE, utc_now
 from dramatis.text import normalise_whitespace
 
 PROMPT_PACKAGE = "dramatis.prompts"
@@ -80,8 +80,6 @@ tells whoever confirms it whether they are looking at an edit, a rewrite, or a c
 """
 
 UNKNOWN = "unknown"
-NARRATIVE = "narrative"
-REFERENCE = "reference"
 """The two roles a document or a region can have, and the absence of an answer.
 
 `unknown` is a first-class value rather than a null, because the difference between "nobody

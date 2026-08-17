@@ -430,8 +430,8 @@ graph.
       the narrative begins and ends, the user corrects it, and the answer is stored as a
       property of that document rather than as a rule about documents in general.
       *(Regions added by **D31**. See **D39**.)*
-- [ ] **4.3** — Extraction of `asserted` relations from reference documents, distinct in
-      provenance from `observed` relations extracted from narrative.
+- [x] **4.3** — Extraction of `asserted` relations from reference documents, distinct in
+      provenance from `observed` relations extracted from narrative. *(See **D41**.)*
 - [ ] **4.4** — Overlay view comparing asserted against observed, surfacing relations
       declared but never enacted, and enacted but never declared.
 - [ ] **4.5** — Character registry scoped to a collection so characters may span multiple

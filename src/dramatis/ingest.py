@@ -25,10 +25,18 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from dramatis import ids
-from dramatis.store import COLLECTIVES_ARE_ACTORS, Document, Store, TextRevision, utc_now
+from dramatis.store import (
+    COLLECTIVES_ARE_ACTORS,
+    DOCUMENT_ROLES,
+    NARRATIVE,
+    Document,
+    Store,
+    TextRevision,
+    utc_now,
+)
 from dramatis.text import content_hash, normalise_line_endings, revision_hash
 
-DEFAULT_ROLE = "narrative"
+DEFAULT_ROLE = NARRATIVE
 
 TEXT_SUFFIXES = frozenset({".txt", ".md", ".markdown", ".text"})
 """Which files in a folder are taken as text.
@@ -157,7 +165,7 @@ def ingest_file(
     that answer; callers that mean to change it should say so to the person first, because
     it makes existing snapshots incomparable with everything after.
     """
-    if role not in {"narrative", "reference"}:
+    if role not in DOCUMENT_ROLES:
         raise IngestError(f"unknown document role {role!r}; expected 'narrative' or 'reference'")
 
     if collectives_are_actors is not None:
@@ -337,7 +345,7 @@ def ingest_folder(
     single role for a whole folder cannot describe fixture **C**, which keeps its reference
     material and its narrative side by side.
     """
-    if role not in {"narrative", "reference"}:
+    if role not in DOCUMENT_ROLES:
         raise IngestError(f"unknown document role {role!r}; expected 'narrative' or 'reference'")
 
     path = Path(path)

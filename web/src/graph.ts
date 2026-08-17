@@ -141,8 +141,15 @@ export interface GraphElement {
 
 export interface BuiltGraph {
   elements: GraphElement[];
-  /** The weight the widths were measured against, which depends on the scaling. */
+  /** The weight the widths were measured against, which depends on the scaling.
+   *
+   * The largest across every basis present. When a snapshot mixes bases, widths are measured
+   * per basis instead — see `maxWeightByBasis` — and this is the number a reader would see
+   * quoted for the heaviest edge overall.
+   */
   maxWeight: number;
+  /** The heaviest weight of each basis present, which is what widths are scaled against. */
+  maxWeightByBasis: Record<string, number>;
   maxDegree: number;
   scaling: Scaling;
   weightBasis: string | null;
@@ -194,6 +201,18 @@ export function buildGraph(
   const measured = scaling === "absolute" ? drawable : relations;
   const against = scaling === "absolute" ? unfiltered : counts;
   const maxWeight = measured.reduce((most, relation) => Math.max(most, relation.weight), 0);
+
+  // Widths are measured per basis, not across all of them. Phase 4.3 made a mixed snapshot
+  // reachable for the first time: reference material yields relations weighted in
+  // statements while narrative yields relations weighted in passages of contact, and a pair
+  // stated once by a bible is not a twentieth as close as a pair sharing twenty scenes. One
+  // maximum over both would draw exactly that claim. Within a basis the comparison is real,
+  // so each edge is scaled against the heaviest edge that shares its basis.
+  const maxByBasis = new Map<string, number>();
+  for (const relation of measured) {
+    const most = maxByBasis.get(relation.weight_basis) ?? 0;
+    if (relation.weight > most) maxByBasis.set(relation.weight_basis, relation.weight);
+  }
   const maxDegree = [...against.values()].reduce((most, count) => Math.max(most, count), 0);
 
   const elements: GraphElement[] = [];
@@ -234,7 +253,7 @@ export function buildGraph(
         weightBasis: relation.weight_basis,
         provenance: relation.provenance,
         evidenceCount: relation.evidence?.length ?? 0,
-        width: edgeWidth(relation.weight, maxWeight),
+        width: edgeWidth(relation.weight, maxByBasis.get(relation.weight_basis) ?? maxWeight),
       },
     });
   }
@@ -242,6 +261,7 @@ export function buildGraph(
   return {
     elements,
     maxWeight,
+    maxWeightByBasis: Object.fromEntries(maxByBasis),
     maxDegree,
     scaling,
     weightBasis,

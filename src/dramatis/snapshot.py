@@ -127,10 +127,18 @@ def build_document(
     run: AnalysisRun,
     character_ids: set[str],
     aggregation: Aggregation,
+    asserted: Aggregation | None = None,
     label: str | None = None,
     created_at: str | None = None,
 ) -> dict[str, Any]:
-    """Render a schema-shaped document from what the store and the pipeline hold."""
+    """Render a schema-shaped document from what the store and the pipeline hold.
+
+    ``asserted`` holds relations read from reference material (**4.3**). Two aggregations
+    rather than one, all the way to here, because each carries its own weight basis and
+    merging them would produce a single basis that is true of neither. The schema puts
+    ``weight_basis`` on each relation for exactly this reason, so the snapshot can hold both
+    without either claiming the other's scale.
+    """
     work = store.get_work(work_id)
     if work is None:
         raise SnapshotError(f"unknown work {work_id!r}")
@@ -207,7 +215,10 @@ def build_document(
         "analysis_runs": [run.as_schema()],
         "snapshot": snapshot,
         "characters": characters,
-        "relations": [relation.as_schema() for relation in aggregation.relations],
+        "relations": [
+            relation.as_schema()
+            for relation in (aggregation.relations + (asserted.relations if asserted else ()))
+        ],
     }
 
 

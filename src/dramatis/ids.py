@@ -11,6 +11,7 @@ self-describing in a stored document.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import unicodedata
 
@@ -50,28 +51,38 @@ def work_id(title: str) -> str:
 DOCUMENT_HASH_LENGTH = 12
 
 
-def document_id(name: str, content_sha: str | None = None) -> str:
-    """Identify a document, optionally by the content it holds.
+def document_id(path: str, content_sha: str) -> str:
+    """Identify one version of one file: where it sits, and what it held there.
 
-    **A document row is one version of a file, not the file itself.** Without the hash, a
-    second ingest of an edited file lands on the same identifier and overwrites the content
-    an earlier revision points at — the older revision then reports text it never contained,
-    and its recorded hash stops matching what it returns. Nothing raises; the graph, its
-    evidence, and every quotation anchored into that revision simply describe a text that no
-    longer exists.
+    **Both halves are required, because neither identifies a document alone.**
 
-    Including the hash makes each version its own row, so a revision keeps the exact text it
-    was hashed from. What survives across versions is the *path*, which is where a file's
-    identity actually lives: `chapter-03.md` is the same chapter in two drafts however much
-    of it was rewritten.
+    Without the content, a second ingest of an edited file lands on the same identifier and
+    overwrites the text an earlier revision points at — the older revision then reports text
+    it never contained, and its recorded hash stops matching what it returns. Nothing raises;
+    the graph, its evidence, and every quotation anchored into that revision simply describe
+    a text that no longer exists. That is the defect **D32** fixed.
 
-    Idempotence is unaffected and slightly improved — the same bytes always yield the same
+    Without the path, two files holding the same bytes become one document. That is not an
+    exotic case but the ordinary one: a drafts folder is mostly chapters nobody touched
+    between revisions, so ingesting the folder that contains both drafts asks a single
+    document to sit at two places in one revision. See **D40**.
+
+    ``path`` is the one the document is stored under — relative to the folder ingested, not
+    absolute. Relative is what lets a file untouched between two drafts keep its identifier,
+    so the two revisions share one row; an absolute path would mint a new document every time
+    the folder moved.
+
+    The slug is for a human tracing an evidence locator back to a file. It is not what makes
+    the identifier unique: `slugify` collapses separators and truncates at
+    `MAX_SLUG_LENGTH`, so two genuinely different paths can reduce to one token. The hash
+    therefore covers the path as well as the content, and uniqueness never rests on the slug
+    being lossless.
+
+    Idempotence is unaffected: the same bytes at the same path always yield the same
     identifier, which is the property `ingest` promises.
     """
-    slug = slugify(name) or "untitled"
-    if content_sha:
-        slug = f"{slug}-{content_sha[:DOCUMENT_HASH_LENGTH]}"
-    return f"doc:{slug}"
+    digest = hashlib.sha256(f"{path}\0{content_sha}".encode()).hexdigest()
+    return f"doc:{slugify(path) or 'untitled'}-{digest[:DOCUMENT_HASH_LENGTH]}"
 
 
 def character_id(name: str, *, disambiguator: str | None = None) -> str:

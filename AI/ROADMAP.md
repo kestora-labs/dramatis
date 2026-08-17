@@ -380,6 +380,25 @@ leaves the evidence correctly anchored after re-ingest.
 - [x] **3.6** — Re-run an analysis against a new text revision while holding the prompt
       constant, and against a new prompt while holding the text constant. *(Taken out of
       order: it blocked the acceptance for 3.2 and 3.3. See **D35**.)*
+- [x] **3.7** — A document's identity is its path *and* the content that was at it, never
+      the content alone. Two files holding the same bytes at different places in one corpus
+      are two documents — the ordinary state of a drafts folder, not a corner case. See
+      **D40**.
+
+> **Why 3.7 exists.** 3.1 made document identifiers content-addressed so that an edited file
+> became a new row instead of overwriting the text an older revision points at, and **D32**
+> named the path as where a file's identity actually lives. Only the *stem* reached the
+> identifier. `dramatis ingest fixtures/b` — one revision of the folder holding both drafts,
+> which is a sentence a user is entitled to say — therefore asked one document to sit at two
+> positions in one revision, and raised on `revision_documents`' composite key. Fixture **B**
+> has two such pairs: the chapters nobody touched between drafts.
+>
+> The crash is the guard working, and what it was stopping is the part worth recording.
+> Without the composite key the single row would have carried whichever path was written
+> last, so a quotation from the first draft would have cited the second, and per-file
+> tracking would have had no path to report the first draft's chapter under at all. That is
+> the same class of failure — a revision quietly describing a text other than its own — that
+> 3.1 was opened to fix, arriving by the other door.
 
 **Acceptance:** Given two revisions of fixture **B** differing by one rewritten chapter,
 the diff attributes every change to the text revision and reports no spurious changes

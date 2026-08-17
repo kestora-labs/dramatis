@@ -470,4 +470,4 @@ class TestIdentifiers:
     def test_identifiers_are_namespaced_by_kind(self) -> None:
         assert ids.collection_id("A").startswith("col:")
         assert ids.work_id("A").startswith("work:")
-        assert ids.document_id("A").startswith("doc:")
+        assert ids.document_id("A.txt", "abcdef123456").startswith("doc:")

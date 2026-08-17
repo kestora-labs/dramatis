@@ -81,7 +81,8 @@ class TestAnOlderRevisionKeepsItsText:
         assert sorted(rows) == sorted([first.document_id, second.document_id])
 
     def test_identical_content_is_still_one_document(self, tmp_path: Path) -> None:
-        # Idempotence is the promise this module opens with, and content addressing keeps it.
+        # Idempotence is the promise this module opens with: the same bytes at the same path
+        # are the same document, however often the folder is read.
         source = tmp_path / "chapter.txt"
         source.write_text("Unchanged.\n", encoding="utf-8", newline="")
 
@@ -307,22 +308,127 @@ class TestTheSummaryAUserReads:
         result.summary.encode("ascii")
 
 
+class TestTwoFilesMayHoldTheSameText:
+    """The defect D40 exists to fix.
+
+    Content-addressed identifiers made two byte-identical files one document, and a document
+    can sit at only one place in one revision. That is not a rare collision: a drafts folder
+    is mostly chapters nobody touched between revisions, so it is the *usual* shape. Ingesting
+    the folder that holds both drafts raised on `revision_documents`' composite key — and the
+    key was the guard, not the fault. Without it the revision would simply have lost a chapter.
+    """
+
+    def test_two_identical_files_under_different_paths_are_two_documents(
+        self, tmp_path: Path
+    ) -> None:
+        root = a_folder(
+            tmp_path / "book",
+            {"draft-1/chapter-01.md": "Ada waited.\n", "draft-2/chapter-01.md": "Ada waited.\n"},
+        )
+        with Store(tmp_path / "p.sqlite") as store:
+            result = ingest_folder(store, root, work_title="W", collection_name="C")
+            revision = store.get_text_revision(result.revision_id)
+
+            assert [entry.path for entry in result.documents] == [
+                "draft-1/chapter-01.md",
+                "draft-2/chapter-01.md",
+            ]
+            assert len({entry.document_id for entry in result.documents}) == 2
+            assert revision is not None
+            assert len(revision.document_ids) == 2
+
+    def test_each_keeps_its_own_path(self, tmp_path: Path) -> None:
+        # One row for both would carry whichever path was written last, so per-file tracking
+        # would stop being able to say which chapter changed.
+        root = a_folder(
+            tmp_path / "book",
+            {"draft-1/chapter-01.md": "Ada waited.\n", "draft-2/chapter-01.md": "Ada waited.\n"},
+        )
+        with Store(tmp_path / "p.sqlite") as store:
+            result = ingest_folder(store, root, work_title="W", collection_name="C")
+            stored = [store.get_document(entry.document_id) for entry in result.documents]
+
+            assert [document.path for document in stored] == [
+                "draft-1/chapter-01.md",
+                "draft-2/chapter-01.md",
+            ]
+
+    def test_the_revision_holds_the_text_twice(self, tmp_path: Path) -> None:
+        # The work contains both copies, so the revision's text and hash must too. A shared
+        # row would have silently dropped one, and the graph would be missing a chapter.
+        root = a_folder(
+            tmp_path / "book",
+            {"draft-1/chapter-01.md": "Ada waited.\n", "draft-2/chapter-01.md": "Ada waited.\n"},
+        )
+        with Store(tmp_path / "p.sqlite") as store:
+            result = ingest_folder(store, root, work_title="W", collection_name="C")
+
+            assert store.revision_text(result.revision_id) == "Ada waited.\nAda waited.\n"
+            assert len(store.revision_document_spans(result.revision_id)) == 2
+
+    def test_fixture_b_ingests_whole(self, tmp_path: Path) -> None:
+        # The report: `dramatis ingest fixtures/b`. Chapters 1 and 2 are untouched between
+        # the two drafts and so are byte-identical; chapter 3 is the rewritten one.
+        with Store(tmp_path / "p.sqlite") as store:
+            result = ingest_folder(store, FIXTURE_B, work_title="Lamplighter")
+
+            assert len({entry.document_id for entry in result.documents}) == len(result.documents)
+            assert {"draft-1/chapter-01.md", "draft-2/chapter-01.md"} <= {
+                entry.path for entry in result.documents
+            }
+
+    def test_the_two_drafts_ingested_separately_still_share_a_row(self, tmp_path: Path) -> None:
+        # D32's property, and what keeps it: the path is *relative to the folder ingested*, so
+        # an untouched chapter is `chapter-01.md` in both drafts and keeps one identifier.
+        # Absolute paths would mint a second row and per-file tracking would report a change
+        # where the fixture says there is none.
+        with Store(tmp_path / "p.sqlite") as store:
+            first = ingest_folder(store, FIXTURE_B / "draft-1", work_title="L")
+            second = ingest_folder(store, FIXTURE_B / "draft-2", work_title="L")
+            rows = store.count("documents")
+
+        by_path = {entry.path: entry for entry in second.documents}
+        assert by_path["chapter-01.md"].state == "unchanged"
+        assert by_path["chapter-03.md"].state == "changed"
+        assert (
+            by_path["chapter-01.md"].document_id
+            == {entry.path: entry for entry in first.documents}["chapter-01.md"].document_id
+        )
+        assert rows == 4, "three chapters, one of them rewritten"
+
+
 class TestDocumentIdentifiers:
-    def test_the_same_bytes_always_give_the_same_identifier(self) -> None:
-        assert ids.document_id("chapter-03", "abc123def456789") == ids.document_id(
-            "chapter-03", "abc123def456789"
+    def test_the_same_bytes_at_the_same_path_always_give_the_same_identifier(self) -> None:
+        assert ids.document_id("chapter-03.md", "abc123def456789") == ids.document_id(
+            "chapter-03.md", "abc123def456789"
         )
 
     def test_different_bytes_give_different_identifiers(self) -> None:
-        assert ids.document_id("chapter-03", "aaaa") != ids.document_id("chapter-03", "bbbb")
+        assert ids.document_id("chapter-03.md", "aaaa") != ids.document_id("chapter-03.md", "bbbb")
 
-    def test_the_name_is_still_legible_in_the_identifier(self) -> None:
+    def test_the_same_bytes_at_different_paths_give_different_identifiers(self) -> None:
+        # The other half of identity, and the one D40 added: two documents may legitimately
+        # hold the same content, which is the ordinary state of a chapter nobody touched.
+        assert ids.document_id("draft-1/chapter-01.md", "aaaa") != ids.document_id(
+            "draft-2/chapter-01.md", "aaaa"
+        )
+
+    def test_the_path_is_still_legible_in_the_identifier(self) -> None:
         # An opaque hash would make a stored document unreadable in a snapshot document,
         # where a human is the one tracing an evidence locator back to its file.
-        assert ids.document_id("chapter-03", "abcdef123456").startswith("doc:chapter-03-")
+        assert ids.document_id("draft-2/chapter-03.md", "abcdef123456").startswith(
+            "doc:draft-2-chapter-03-md-"
+        )
 
-    def test_a_document_with_no_content_hash_keeps_the_old_shape(self) -> None:
-        assert ids.document_id("chapter-03") == "doc:chapter-03"
+    def test_uniqueness_does_not_rest_on_the_slug_being_lossless(self) -> None:
+        # `slugify` collapses separators and truncates at MAX_SLUG_LENGTH, so two different
+        # paths can reduce to one token. The hash covers the path, so they still differ.
+        stub = "TBD"
+        deep = "drafts/" + "the-long-winter-" * 5
+        first, second = f"{deep}/chapter-17.md", f"{deep}/chapter-18.md"
+
+        assert ids.slugify(first) == ids.slugify(second), "the premise: the slugs collide"
+        assert ids.document_id(first, stub) != ids.document_id(second, stub)
 
 
 class TestEvidenceKnowsWhichDocumentItCameFrom:

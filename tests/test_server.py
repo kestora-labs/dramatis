@@ -574,3 +574,42 @@ class TestLineage:
 
         assert "evidence" not in raw
         assert "weight_basis" not in raw
+
+
+class TestDiffEndpoint:
+    def test_it_reports_attribution_first_among_its_claims(self, analysed, client) -> None:
+        _, snapshot_id, _ = analysed
+
+        payload = client.get(
+            "/api/diff", params={"before": snapshot_id, "after": snapshot_id}
+        ).json()
+
+        assert payload["attribution"] == "same"
+        assert payload["characters"] == []
+        assert payload["relations"] == []
+
+    def test_an_unknown_snapshot_is_a_404(self, analysed, client) -> None:
+        _, snapshot_id, _ = analysed
+
+        assert (
+            client.get(
+                "/api/diff", params={"before": "snap:nope", "after": snapshot_id}
+            ).status_code
+            == 404
+        )
+        assert (
+            client.get(
+                "/api/diff", params={"before": snapshot_id, "after": "snap:nope"}
+            ).status_code
+            == 404
+        )
+
+    def test_it_names_the_weight_basis_it_compared_on(self, analysed, client) -> None:
+        _, snapshot_id, _ = analysed
+
+        payload = client.get(
+            "/api/diff", params={"before": snapshot_id, "after": snapshot_id}
+        ).json()
+
+        assert payload["weights_comparable"] is True
+        assert payload["weight_basis"]

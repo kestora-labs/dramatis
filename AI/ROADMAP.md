@@ -372,7 +372,7 @@ leaves the evidence correctly anchored after re-ingest.
 - [x] **3.1** — Multi-file ingest for shape **B**, with per-file revision tracking.
 - [x] **3.2** — Snapshot list per work, with text-revision and analysis-run lineage shown
       separately.
-- [ ] **3.3** — Diff two snapshots: added, removed, strengthened, weakened, retyped edges;
+- [x] **3.3** — Diff two snapshots: added, removed, strengthened, weakened, retyped edges;
       added, removed, merged, split characters.
 - [ ] **3.4** — Diff rendered both as a graph overlay and as a readable change list.
 - [ ] **3.5** — Absolute vs. relative edge-width scaling, toggleable, defaulting to
@@ -389,6 +389,16 @@ leaves the evidence correctly anchored after re-ingest.
 the diff attributes every change to the text revision and reports no spurious changes
 elsewhere. Re-running the identical analysis on identical text produces an identical
 graph.
+
+> **Second half met; the attribution is blocked on 3.6.** 3.3 diffs the two drafts and
+> reports exactly what `corpus.json` predicts — the Auber/Idris edge weakened, the
+> Neve/Idris and Auber/Neve edges strengthened, and no character changes at all. What it
+> cannot yet do is credit that to the text. The two runs differ in exactly one recorded
+> field, `resolution_prompt_version`, which is `resolve-v1` for the first analysis and null
+> for the second because the registry was already populated and resolution never called a
+> model. Every other part of the configuration matches. Until a run records what it was
+> asked for rather than what it did, the diff is right to answer *both* — see **D33** and
+> **D34**.
 
 ---
 

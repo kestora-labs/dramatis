@@ -375,7 +375,7 @@ leaves the evidence correctly anchored after re-ingest.
 - [x] **3.3** — Diff two snapshots: added, removed, strengthened, weakened, retyped edges;
       added, removed, merged, split characters.
 - [x] **3.4** — Diff rendered both as a graph overlay and as a readable change list.
-- [ ] **3.5** — Absolute vs. relative edge-width scaling, toggleable, defaulting to
+- [x] **3.5** — Absolute vs. relative edge-width scaling, toggleable, defaulting to
       absolute so the picture does not appear to change when only totals move.
 - [x] **3.6** — Re-run an analysis against a new text revision while holding the prompt
       constant, and against a new prompt while holding the text constant. *(Taken out of

@@ -73,6 +73,27 @@ export interface SnapshotDocument {
   relations: SnapshotRelation[];
 }
 
+/**
+ * What a width and a size are measured against.
+ *
+ * **absolute** — the heaviest relation in the snapshot, whether or not it is currently
+ * drawn. A weight of 10 renders at one width and keeps it: narrowing the graph, or opening
+ * a comparison, leaves every surviving edge exactly as thick as it was.
+ *
+ * **relative** — the heaviest relation *on screen*. The picture always uses its full range,
+ * which is what a reader wants when studying one filtered view closely, and which is why
+ * the option exists at all.
+ *
+ * The default is absolute because the relative case has a failure the reader cannot see.
+ * Filter away the heaviest edge and every remaining edge thickens; nothing about the work
+ * changed, but the graph now says the survivors are more central than it said a moment ago.
+ * The same happens across a comparison whenever one snapshot is busier than the other: the
+ * normalisation moves, the picture moves, and only the totals actually did.
+ */
+export type Scaling = "absolute" | "relative";
+
+export const DEFAULT_SCALING: Scaling = "absolute";
+
 export const EDGE_WIDTH = { min: 1, max: 14 } as const;
 export const NODE_SIZE = { min: 18, max: 72 } as const;
 
@@ -120,8 +141,10 @@ export interface GraphElement {
 
 export interface BuiltGraph {
   elements: GraphElement[];
+  /** The weight the widths were measured against, which depends on the scaling. */
   maxWeight: number;
   maxDegree: number;
+  scaling: Scaling;
   weightBasis: string | null;
   /** How many relations are drawn, and how many the snapshot holds. */
   relationsShown: number;
@@ -144,7 +167,11 @@ export interface BuiltGraph {
  * something upstream is wrong — dropping the edge keeps the view honest instead of
  * inventing a node to hang it on.
  */
-export function buildGraph(document: SnapshotDocument, filters: Filters = NO_FILTERS): BuiltGraph {
+export function buildGraph(
+  document: SnapshotDocument,
+  filters: Filters = NO_FILTERS,
+  scaling: Scaling = DEFAULT_SCALING,
+): BuiltGraph {
   const known = new Set(document.characters.map((character) => character.id));
   const drawable = document.relations.filter(
     (relation) => known.has(relation.source) && known.has(relation.target),
@@ -160,8 +187,14 @@ export function buildGraph(document: SnapshotDocument, filters: Filters = NO_FIL
   // Degrees in the unfiltered graph, to tell a character the filter emptied from one that
   // the snapshot itself left with nobody.
   const unfiltered = degrees({ ...document, relations: drawable });
-  const maxWeight = relations.reduce((most, relation) => Math.max(most, relation.weight), 0);
-  const maxDegree = [...counts.values()].reduce((most, count) => Math.max(most, count), 0);
+  // What the encodings are measured against. Under absolute scaling this is the whole
+  // snapshot rather than the drawn subset, so a filter removes edges without resizing the
+  // ones it leaves — the two encodings take their reference from the same place, as the
+  // note at the top of this file requires of them.
+  const measured = scaling === "absolute" ? drawable : relations;
+  const against = scaling === "absolute" ? unfiltered : counts;
+  const maxWeight = measured.reduce((most, relation) => Math.max(most, relation.weight), 0);
+  const maxDegree = [...against.values()].reduce((most, count) => Math.max(most, count), 0);
 
   const elements: GraphElement[] = [];
   let charactersHidden = 0;
@@ -210,6 +243,7 @@ export function buildGraph(document: SnapshotDocument, filters: Filters = NO_FIL
     elements,
     maxWeight,
     maxDegree,
+    scaling,
     weightBasis,
     relationsShown: relations.length,
     relationsTotal: drawable.length,

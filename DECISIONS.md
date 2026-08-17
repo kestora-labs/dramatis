@@ -1431,3 +1431,60 @@ order, as the other two do.
 
 *Reversible* cheaply. The overlay is a pure function over two documents and a diff, and the
 marks are classes on elements the graph would draw anyway.
+
+---
+
+## D37 — Widths are measured against the snapshot, not against what survived the filter
+
+**Phase 3.5.** Edge width and node size are scaled against the heaviest relation in the
+snapshot rather than the heaviest one currently drawn. The old behaviour is kept as a
+`relative` option; `absolute` is the default.
+
+### What the default prevents
+
+Under relative scaling the reference moves whenever the view narrows. Filter the heaviest
+edge away and every remaining edge thickens — nothing about the work changed, but the graph
+now says the survivors are more central than it said a moment ago, and there is nothing on
+screen to say why.
+
+Measured on fixture **A**, filtering to `kinship` so the weight-100 romantic edge drops out:
+
+```
+Elizabeth — Jane, weight 75
+
+unfiltered              width 12.26
+filtered, absolute      width 12.26     unchanged
+filtered, relative      width 14.0      now reads as the heaviest edge in the work
+```
+
+The same failure applies to node size, so the same reference governs both. `graph.ts`
+already required the two encodings to "read consistently rather than one compressing while
+the other does not", and scaling one against the snapshot while the other floated with the
+view would break that.
+
+**A node whose degree genuinely changes still changes size.** Filtering an edge away really
+does leave a character less connected in that view; that is the data, not the scale. What
+absolute holds still is the *reference* — a character the filter did not touch keeps its
+dot, which relative does not manage.
+
+### Why relative is kept rather than removed
+
+A narrowed view using its full range is what a reader studying one filtered slice wants, and
+it is the honest choice once the reader knows the slice is the subject. The problem was never
+that relative is wrong; it is that it was the only option and its failure is invisible. Both
+are offered and the panel says which reference is in force and what that means.
+
+### Where the choice does nothing, which is worth knowing
+
+On a snapshot whose only usable filter is the minimum-weight floor, the toggle cannot change
+anything: a floor never removes the maximum, so the drawn maximum is always the snapshot
+maximum. The first full-novel run is exactly that snapshot — no relation types and a single
+provenance (**D29**), so the weight slider is its only control.
+
+The setting therefore begins to matter when a filter can remove the heaviest edge, which
+means relation types or a second provenance — the fixture has the first, and phase 4 brings
+the second. This is not an argument against the default; it is the reason the default costs
+nothing today and starts paying the moment a corpus has something to filter by.
+
+*Reversible* cheaply. One parameter with a default, threaded through the one function that
+decides how a graph looks.

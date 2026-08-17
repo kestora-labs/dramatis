@@ -19,6 +19,7 @@ import json
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from dramatis import __version__
 from dramatis.ingest import IngestError, ingest_file, ingest_folder
@@ -27,6 +28,8 @@ from dramatis.providers import Provider, ProviderError
 from dramatis.schema import schema_version
 from dramatis.store import COLLECTIVES_ARE_ACTORS, Store
 from dramatis.validation import Issue, validate_file
+
+DEFAULT_EFFORT = "medium"
 
 STORE_HELP = (
     f"project file to use. Without this, {STORE_FILENAME} is looked for in the current "
@@ -376,14 +379,62 @@ def _run_status(args: argparse.Namespace) -> int:
 # -- analyse --------------------------------------------------------------------------
 
 
+def _settings_like(store: Store, args: argparse.Namespace) -> dict[str, Any]:
+    """The analysis settings recorded by an existing snapshot's run.
+
+    This is what makes 3.6's sentence sayable: *re-run an analysis against a new text
+    revision while holding the prompt constant*. Two graphs are only evidence about a
+    rewrite if the reading was held still between them, and "I passed the same flags" is not
+    the same claim as "the run recorded the same configuration".
+
+    A setting given explicitly on the command line still wins — the point is to make holding
+    the analysis still the easy path, not to make changing it impossible — and the override
+    is reported, because a re-run that quietly ignored half of what it was told to copy
+    would be worse than one that never offered.
+    """
+    from dramatis.pipeline import PipelineError
+
+    snapshot = store.get_snapshot(args.like)
+    if snapshot is None:
+        raise PipelineError(f"no snapshot {args.like!r} to copy the analysis from")
+
+    run = store.get_analysis_run(snapshot.analysis_run_id)
+    if run is None:
+        raise PipelineError(f"snapshot {args.like!r} names a run that is gone")
+
+    parameters = dict(run.get("parameters") or {})
+    wanted = {
+        key: parameters[key]
+        for key in ("effort", "target_characters", "max_rejection_rate")
+        if key in parameters
+    }
+
+    # An explicit --effort is an instruction, not an accident, so it overrides. Said out
+    # loud because the result will not be comparable with the snapshot it was copied from.
+    if args.effort is not None and "effort" in wanted and args.effort != wanted["effort"]:
+        print(
+            f"note: --effort {args.effort} overrides the {wanted['effort']} recorded by "
+            f"{args.like}; this run will not be comparable with it.",
+            file=sys.stderr,
+        )
+        wanted.pop("effort")
+
+    print(
+        f"note: holding the analysis as recorded by {args.like} "
+        f"({', '.join(f'{k}={v}' for k, v in sorted(wanted.items())) or 'nothing to copy'})",
+        file=sys.stderr,
+    )
+    return wanted
+
+
 def _run_analyse(args: argparse.Namespace) -> int:
-    from dramatis.extraction import ExtractionError
+    from dramatis.extraction import DEFAULT_WINDOW_CHARACTERS, ExtractionError
     from dramatis.pipeline import PipelineError, analyse
     from dramatis.providers.anthropic_provider import AnthropicProvider
     from dramatis.providers.cassette import CheckpointProvider
     from dramatis.resolution import ResolutionError
     from dramatis.snapshot import SnapshotError
-    from dramatis.verification import VerificationError
+    from dramatis.verification import DEFAULT_MAX_REJECTION_RATE, VerificationError
 
     provider: Provider = AnthropicProvider(model=args.model)
     checkpoint: CheckpointProvider | None = None
@@ -396,11 +447,14 @@ def _run_analyse(args: argparse.Namespace) -> int:
         # silently created an empty store would report success for work it did not do.
         path = resolve_store(args.store).require()
         with Store(path) as store:
+            settings = _settings_like(store, args) if args.like else {}
             result = analyse(
                 store,
                 args.revision,
                 provider,
-                effort=args.effort,
+                effort=settings.get("effort", args.effort or DEFAULT_EFFORT),
+                target_characters=settings.get("target_characters", DEFAULT_WINDOW_CHARACTERS),
+                max_rejection_rate=settings.get("max_rejection_rate", DEFAULT_MAX_REJECTION_RATE),
                 label=args.label,
             )
     except (
@@ -599,8 +653,23 @@ def _build_parser() -> argparse.ArgumentParser:
     analyse.add_argument(
         "--effort",
         choices=["low", "medium", "high", "xhigh", "max"],
-        default="medium",
-        help="how much work the model should spend per window (default: medium)",
+        default=None,
+        help=(
+            "how much work the model should spend per window (default: medium). Left "
+            "unset it is a default; given, it is an instruction, and --like says so when "
+            "the two disagree."
+        ),
+    )
+    analyse.add_argument(
+        "--like",
+        metavar="SNAPSHOT_ID",
+        default=None,
+        help=(
+            "read this snapshot's analysis settings and use them, so a re-run against a "
+            "different revision holds the analysis still and any difference between the two "
+            "graphs belongs to the text. Settings given explicitly still win, and are "
+            "reported."
+        ),
     )
     analyse.add_argument(
         "--checkpoint",

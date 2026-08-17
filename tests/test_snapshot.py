@@ -588,13 +588,22 @@ class TestTheWholePipeline:
         assert revisions[0][0] == revisions[1][0], "same text, same revision identifier"
         assert revisions[0][1] != revisions[1][1], "different moment, honestly recorded"
 
-    def test_a_populated_registry_makes_the_second_run_a_different_analysis(self, project) -> None:
-        """Not a flaw — the second run genuinely does less work, and says so.
+    def test_a_populated_registry_does_less_work_without_becoming_another_analysis(
+        self, project
+    ) -> None:
+        """Both facts are true and they belong in different places.
 
-        Resolution consults the model only for names it does not already know, so a
-        re-analysis over a populated registry records a different parameter set. The graph
-        it produces is the same; the run that produced it is not, and both facts belong in
-        the record.
+        The second run genuinely does less: resolution consults the model only for names it
+        does not already know, so a re-analysis over a populated registry never calls it,
+        and `Resolution.prompt_version` says so. That is an outcome.
+
+        It used to be recorded in the run's parameters, which are the material a run's
+        identity is hashed from — so two analyses of one configuration became two
+        configurations, for a reason about the state of the registry rather than about the
+        analysis. Phase 3 cannot survive that: holding the analysis still across two
+        revisions is what makes a diff attributable to the text, and it was not expressible.
+        The parameters now record the resolution prompt this run was *configured* to use,
+        which it was configured to use whether or not it needed it (D35).
         """
         store, ingested = project
         at = "2026-08-16T09:00:00+00:00"
@@ -609,9 +618,12 @@ class TestTheWholePipeline:
             store, ingested.revision_id, ScriptedProvider([one_window_reply()]), now=at
         )
 
+        # The outcome is still observable, and still honest.
         assert first.resolution.prompt_version == "resolve-v1"
         assert second.resolution.prompt_version is None, "no unknown names, so no call"
-        assert first.snapshot.analysis_run_id != second.snapshot.analysis_run_id
+
+        # The configuration is not perturbed by it.
+        assert first.snapshot.analysis_run_id == second.snapshot.analysis_run_id
 
         def graph(result) -> tuple:
             document = result.snapshot.document
@@ -620,7 +632,7 @@ class TestTheWholePipeline:
                 sorted((r["id"], r["weight"]) for r in document["relations"]),
             )
 
-        assert graph(first) == graph(second), "the graph is the same; only the run differs"
+        assert graph(first) == graph(second), "same configuration, same text, same graph"
 
     def test_an_unknown_revision_is_a_clean_error(self, project) -> None:
         store, _ = project
@@ -645,3 +657,99 @@ class TestTheWholePipeline:
             analyse(store, ingested.revision_id, ScriptedProvider([reply, a_grouping()]))
 
         assert store.connection.execute("SELECT count(*) FROM snapshots").fetchone()[0] == 0
+
+
+class TestHoldingOneAxisStill:
+    """Phase 3.6, and the sentence phase 3's acceptance rests on.
+
+    *Re-run an analysis against a new text revision while holding the prompt constant, and
+    against a new prompt while holding the text constant.* Both halves are only sayable if a
+    run records what it was configured to do rather than what happened to it — see D35.
+    """
+
+    def _second_revision(self, tmp_path: Path, store: Store):
+        edited = a_text(
+            tmp_path,
+            PASSAGE + "\nCai and Bram spoke at length about the gate.\n",
+            name="edited.txt",
+        )
+        return ingest_file(store, edited, work_title="A Work", collection_name="A Collection")
+
+    def test_the_same_analysis_over_two_revisions_credits_the_text(
+        self, project, tmp_path: Path
+    ) -> None:
+        from dramatis.diff import TEXT, diff_snapshots
+
+        store, first = project
+        second = self._second_revision(tmp_path, store)
+
+        # A month apart, so the run identifiers differ; the configuration does not.
+        before = analyse(
+            store,
+            first.revision_id,
+            ScriptedProvider([one_window_reply(), a_grouping()]),
+            now="2026-01-01T00:00:00+00:00",
+        )
+        after = analyse(
+            store,
+            second.revision_id,
+            ScriptedProvider([one_window_reply(), a_grouping()]),
+            now="2026-02-01T00:00:00+00:00",
+        )
+
+        assert before.snapshot.analysis_run_id != after.snapshot.analysis_run_id
+        result = diff_snapshots(before.snapshot.document, after.snapshot.document)
+
+        assert result.attribution == TEXT
+        assert not result.warnings
+
+    def test_a_different_setting_over_one_revision_credits_the_analysis(self, project) -> None:
+        from dramatis.diff import ANALYSIS, diff_snapshots
+
+        store, first = project
+        before = analyse(
+            store,
+            first.revision_id,
+            ScriptedProvider([one_window_reply(), a_grouping()]),
+            now="2026-01-01T00:00:00+00:00",
+            effort="medium",
+        )
+        after = analyse(
+            store,
+            first.revision_id,
+            ScriptedProvider([one_window_reply(), a_grouping()]),
+            now="2026-02-01T00:00:00+00:00",
+            effort="low",
+        )
+
+        result = diff_snapshots(before.snapshot.document, after.snapshot.document)
+        assert result.attribution == ANALYSIS
+
+    def test_the_recorded_resolution_prompt_no_longer_depends_on_the_registry(
+        self, project
+    ) -> None:
+        """The defect this bullet existed to remove.
+
+        The field used to be null whenever resolution answered from the registry without a
+        model call, which is every analysis after the first — so a second run of identical
+        settings recorded a different configuration for a reason about the registry rather
+        than about the analysis.
+        """
+        store, first = project
+        at = "2026-01-01T00:00:00+00:00"
+
+        one = analyse(
+            store, first.revision_id, ScriptedProvider([one_window_reply(), a_grouping()]), now=at
+        )
+        two = analyse(store, first.revision_id, ScriptedProvider([one_window_reply()]), now=at)
+
+        def recorded(result):
+            run = next(
+                entry
+                for entry in result.snapshot.document["analysis_runs"]
+                if entry["id"] == result.snapshot.analysis_run_id
+            )
+            return run["parameters"]["resolution_prompt_version"]
+
+        assert recorded(one) == recorded(two) == "resolve-v1"
+        assert two.resolution.prompt_version is None, "the outcome is still observable"

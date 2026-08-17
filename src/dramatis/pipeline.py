@@ -19,6 +19,7 @@ from dramatis import __version__
 from dramatis.aggregation import Aggregation, aggregate
 from dramatis.extraction import DEFAULT_WINDOW_CHARACTERS, Extraction, extract
 from dramatis.providers import Provider
+from dramatis.resolution import PROMPT_VERSION as RESOLUTION_PROMPT_VERSION
 from dramatis.resolution import Resolution, resolve
 from dramatis.segmentation import SegmentationSpec, segment_text
 from dramatis.snapshot import AnalysisRun, build_document, save_snapshot
@@ -134,12 +135,23 @@ def analyse(
         document_spans=store.revision_document_spans(text_revision_id),
     )
 
+    # Parameters are what the run was *asked* to do, never what happened to it. The
+    # distinction is not pedantry: these are the material a run's identity is hashed from,
+    # so an outcome recorded here makes two analyses of one configuration into two
+    # configurations, and a diff between them can then credit nothing to either axis.
+    #
+    # `resolution_prompt_version` was exactly that mistake. `Resolution.prompt_version` is
+    # null when resolution answered from the registry without consulting a model, which
+    # happens on every analysis after the first — so a second run of identical settings
+    # recorded a different configuration from the first, for a reason that was about the
+    # state of the registry rather than about the analysis. It records the version this run
+    # was configured to use, which it was configured to use whether or not it needed it.
     parameters: dict[str, Any] = {
         "effort": effort,
         "target_characters": target_characters,
         "max_rejection_rate": max_rejection_rate,
         "segment_types": list(segmentation.segment_types),
-        "resolution_prompt_version": resolution.prompt_version,
+        "resolution_prompt_version": RESOLUTION_PROMPT_VERSION,
         "weight_basis": aggregation.weight_basis,
         COLLECTIVES_ARE_ACTORS: collectives_are_actors,
     }

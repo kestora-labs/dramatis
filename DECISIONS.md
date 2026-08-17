@@ -1313,3 +1313,73 @@ status rather than reading as though it were met.
 
 *Reversible* cheaply. The module is pure over two documents and holds no state; the endpoint
 is additive.
+
+---
+
+## D35 — A run records what it was asked to do, not what happened to it
+
+**Phase 3.6**, taken out of order because it blocked the acceptance for 3.2 and 3.3.
+
+`parameters["resolution_prompt_version"]` recorded `Resolution.prompt_version`, which is
+null whenever resolution answered from the character registry without consulting a model.
+That happens on every analysis after the first. It now records the version the run was
+*configured* to use, which it was configured to use whether or not it turned out to need it.
+
+### Why one field mattered this much
+
+`parameters` is the material a run's identity is hashed from. An outcome recorded there
+makes two analyses of one configuration into two configurations — and then a diff between
+them can credit nothing to either axis, because both appear to have moved.
+
+That is not a cosmetic defect. Phase 3's acceptance is *"the diff attributes every change to
+the text revision"*, and fixture **B** says the same thing in its own words before it lists
+a single expected change: *"Both drafts must be analysed by the same run configuration, or
+the diff cannot distinguish a rewrite from a better prompt."* Holding the analysis still
+across two revisions was not expressible, so the sentence could not be satisfied by any
+amount of work in 3.2 or 3.3. Both bullets recorded it and moved on; this is where it is
+paid.
+
+Measured before and after, on fixture **B**'s two drafts analysed under identical settings:
+
+```
+before   attribution: both   (param differs: resolution_prompt_version -> resolve-v1 | None)
+after    attribution: text   (no warnings)
+```
+
+Both directions now hold. Two revisions a month apart under one configuration attribute to
+the **text**; one revision under two different settings attributes to the **analysis**.
+
+### The prior position, and why it is changed rather than overruled
+
+A test asserted the old behaviour deliberately, with reasons: *"Not a flaw — the second run
+genuinely does less work, and says so. The graph it produces is the same; the run that
+produced it is not, and both facts belong in the record."*
+
+The first half of that is right and is kept. The second confuses two claims. *This run did
+less work* is an outcome, and it remains observable — `Resolution.prompt_version` is still
+null when no model was consulted, and the test still asserts it. *This run was a different
+analysis* is a claim about configuration, and it was not true: nothing about the analysis
+differed, only the state of the registry it happened to meet. Both facts do belong in the
+record; they do not both belong in the identity.
+
+What is lost is the archived note that a particular run skipped the resolution call. That is
+a real loss, accepted deliberately: an outcome sitting inside identity material is what
+broke comparability, and phase 5's review work is a better home for execution detail than
+the field a run is hashed from.
+
+### `--like`, so the guarantee is reachable
+
+`dramatis analyse REVISION --like SNAPSHOT` reads that snapshot's recorded settings and uses
+them. *I passed the same flags* is not the same claim as *the run recorded the same
+configuration*, and only the second is what a diff needs.
+
+Settings given explicitly still win — the point is to make holding the analysis still the
+easy path, not to make changing it impossible — and an override is announced, because a
+re-run that quietly ignored half of what it was told to copy would be worse than one that
+never offered. `--effort` therefore no longer defaults to `medium` in the parser: it
+defaults to nothing, so an instruction can be told from an absence.
+
+*Reversible* cheaply in code, and not in effect: snapshots written before this change carry
+the old parameters and will not compare with ones written after. That is the same class of
+break D19 warned about for the collectives setting, and for the same reason — the record of
+what a run was is what makes two of them comparable.

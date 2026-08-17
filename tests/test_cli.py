@@ -7,6 +7,7 @@ messages.
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
@@ -458,3 +459,74 @@ class TestTheCollectivesQuestionWhenNobodyCanAnswer:
 
         with Store(store) as opened:
             assert opened.get_setting(COLLECTIVES_ARE_ACTORS) is True
+
+
+class TestAnalyseLike:
+    """`--like` makes holding the analysis still the easy path.
+
+    "I passed the same flags" is not the same claim as "the run recorded the same
+    configuration", and the second is what a diff needs (D35).
+    """
+
+    def test_it_copies_the_settings_a_snapshot_recorded(self, monkeypatch) -> None:
+        from dramatis.cli import _settings_like
+
+        class FakeStore:
+            def get_snapshot(self, identifier):
+                return type("S", (), {"analysis_run_id": "run:1"})()
+
+            def get_analysis_run(self, identifier):
+                return {
+                    "id": "run:1",
+                    "parameters": {
+                        "effort": "high",
+                        "target_characters": 9000,
+                        "max_rejection_rate": 0.1,
+                        "weight_basis": "interaction_passages",
+                    },
+                }
+
+        args = argparse.Namespace(like="snap:1", effort=None)
+        settings = _settings_like(FakeStore(), args)
+
+        assert settings == {
+            "effort": "high",
+            "target_characters": 9000,
+            "max_rejection_rate": 0.1,
+        }
+        assert "weight_basis" not in settings, "an outcome is not a setting to copy"
+
+    def test_an_explicit_effort_wins_and_says_it_broke_comparability(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        from dramatis.cli import _settings_like
+
+        class FakeStore:
+            def get_snapshot(self, identifier):
+                return type("S", (), {"analysis_run_id": "run:1"})()
+
+            def get_analysis_run(self, identifier):
+                return {"id": "run:1", "parameters": {"effort": "high"}}
+
+        args = argparse.Namespace(like="snap:1", effort="low")
+        settings = _settings_like(FakeStore(), args)
+
+        assert "effort" not in settings
+        assert "will not be comparable" in capsys.readouterr().err
+
+    def test_an_unknown_snapshot_is_refused(self) -> None:
+        from dramatis.cli import _settings_like
+        from dramatis.pipeline import PipelineError
+
+        class FakeStore:
+            def get_snapshot(self, identifier):
+                return None
+
+        with pytest.raises(PipelineError, match="no snapshot"):
+            _settings_like(FakeStore(), argparse.Namespace(like="snap:gone", effort=None))
+
+    def test_the_flag_is_offered_on_analyse(self) -> None:
+        from dramatis.cli import _build_parser
+
+        parsed = _build_parser().parse_args(["analyse", "rev:1", "--like", "snap:1"])
+        assert parsed.like == "snap:1"

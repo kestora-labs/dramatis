@@ -1823,3 +1823,77 @@ question it was never asked.
 *Reversible.* Removing the reference pass leaves observed analysis byte-identical: a corpus
 with no reference documents makes the same model calls, records the same parameters, and
 produces the same run identifier as before this bullet.
+
+## D42 — The overlay asks whether a pair appears on each side, and nothing about how much
+
+**Phase 4.4.** **4.3** separated what reference material declares from what narrative enacts.
+This is the view they were separated for, and fixture **C** names what it must surface:
+
+> **Declared but never enacted.** The bible states that Ada Mbeki and Tomas Reiner are
+> estranged siblings — a relationship given a whole section. They never share a scene.
+>
+> **Enacted but never declared.** Ada and Sister Yeong carry the most page time of any pair
+> in the corpus, and the bible does not mention the relationship at all.
+
+Run against the real fixture, the panel reads *2 declared but never enacted, 1 enacted but
+never declared; 0 agreed* — Ada and Tomas, Ada and the Quorum, Ada and Sister Yeong.
+
+### Pairs are matched by endpoints, never by relation id
+
+**4.3** made the identifiers differ by provenance precisely so the two classes could not
+merge upstream. Keying this comparison on id would therefore find agreement nowhere and
+report an entire corpus as both undeclared and unenacted — the same failure the separation
+was built to prevent, arriving one layer later. Matching is on the sorted endpoint pair, so a
+pair also matches when the two readings named it in opposite orders.
+
+### Nothing compares the weights
+
+An observed weight counts passages of contact; an asserted weight counts statements.
+`require_comparable` refuses to put them on one scale, and this view honours that rather than
+routing around it. The question is only whether a pair appears on each side. *Declared more
+strongly than enacted* is not a sentence this data can support, so it is not one the view
+offers, and there is a test asserting a pair stated once and enacted four hundred times is
+simply `agreed`.
+
+### The view is withheld unless both classes are present
+
+In a narrative-only corpus every relation is trivially enacted-but-never-declared, which
+restates that the corpus has no bible rather than finding anything in it. Offering the control
+anyway would be **2.5**'s failure again: something that looks like information and is not. The
+refusal names *which* half is missing, because "unavailable" alone reads as a defect rather
+than as a fact about the corpus.
+
+### A hand-entered relation is neither, and is counted saying so
+
+Invariant 5 has three provenances. A `human` relation is not evidence of the corpus
+disagreeing with itself, so it takes no side — but dropping it silently would make the totals
+here disagree with the totals everywhere else in the application. It is excluded from the
+comparison and reported as excluded.
+
+### Two consequences of 4.3 that only became visible on screen
+
+**A mixed-basis snapshot stopped being an error.** The client raised a red banner reading
+*this snapshot mixes weight bases; edge widths are not comparable*. Since 4.3 that is the
+ordinary state of any corpus with reference material, and since the per-basis width change it
+is no longer even true. A banner for the expected case teaches a reader to ignore banners, so
+it is gone; `FilterControls` already withholds the weight filter and names the basis, which is
+where this belongs.
+
+**The thickness note was quietly wrong.** It read *measured against the heaviest relation in
+the snapshot (3)* while asserted edges were being measured against 1. It now names each basis
+and what it was measured against, whenever there is more than one.
+
+### The marks live where they can be tested
+
+**3.4** shipped its overlay with the marks computed inside the component, and they were
+silently never applied — the effect building the graph did not depend on the diff. `applyMarks`
+therefore sits in `declared.ts` beside the comparison it applies, so a test can hold the two
+together, and the effect's dependency list carries the toggle. Verified live as well as in
+tests: the three edges of the fixture C snapshot carry `declared-only`, `declared-only` and
+`enacted-only`, and toggling the view off clears them.
+
+A diff overlay and a provenance overlay are never drawn at once. They answer different
+questions with different palettes, and one picture carrying both would answer neither.
+
+*Reversible.* The comparison derives from a loaded snapshot and stores nothing. Deleting
+`declared.ts` and its three call sites returns the client to 4.3's behaviour.

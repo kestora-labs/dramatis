@@ -424,6 +424,75 @@ def _run_ingest(args: argparse.Namespace) -> int:
 # -- status ---------------------------------------------------------------------------
 
 
+# -- characters -----------------------------------------------------------------------
+
+
+def _run_characters(args: argparse.Namespace) -> int:
+    """The collection's cast, and which works each character appears in.
+
+    Calls no model and reaches no network (Invariant 6): every answer here is arithmetic over
+    snapshots already stored. Whoever spans most works is listed first, because that is the
+    question a shared-universe registry is opened to ask.
+    """
+    from dramatis.registry import RegistryError, as_json, build_registry
+
+    try:
+        path = resolve_store(args.store).require()
+    except StoreNotFound as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
+    with Store(path) as store:
+        collections = store.list_collections()
+        collection_id = args.collection
+        if collection_id is None:
+            if not collections:
+                print("error: this project holds no collection", file=sys.stderr)
+                return 1
+            collection_id = str(collections[0]["id"])
+
+        try:
+            registry = build_registry(store, collection_id)
+        except RegistryError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 1
+
+    if args.as_json:
+        json.dump(as_json(registry), sys.stdout, indent=2, ensure_ascii=False)
+        sys.stdout.write("\n")
+        return 0
+
+    # ASCII only, for the reason IngestResult.summary gives: a Windows console under a legacy
+    # code page renders typographic punctuation as replacement characters.
+    works = len(registry.works)
+    print(f"{registry.collection_name} - {len(registry)} characters across {works} works")
+    for entry in registry.entries:
+        if args.spanning and not entry.spans:
+            continue
+        where = ", ".join(
+            f"{appearance.work_title} ({appearance.relations} "
+            f"{'relation' if appearance.relations == 1 else 'relations'})"
+            for appearance in entry.appearances
+        )
+        print()
+        print(f"  {entry.name}  [{entry.character.kind}]")
+        if entry.character.aliases:
+            print(f"    also        {', '.join(entry.character.aliases)}")
+        # "in no current reading" rather than nothing: a character the newest snapshot of
+        # every work leaves out is a real state, and a blank line reads as a bug.
+        print(f"    appears in  {where or 'no current reading of any work'}")
+
+    for title in registry.unanalysed:
+        print(
+            f"note: {title} has never been analysed, so nobody appears in it yet", file=sys.stderr
+        )
+
+    return 0
+
+
+# -- status ---------------------------------------------------------------------------
+
+
 def _run_status(args: argparse.Namespace) -> int:
     location = resolve_store(args.store)
     try:
@@ -808,6 +877,29 @@ def _build_parser() -> argparse.ArgumentParser:
         help="emit machine-readable results on stdout",
     )
     ingest.set_defaults(handler=_run_ingest)
+
+    characters = subcommands.add_parser(
+        "characters",
+        help="the collection's cast, and which works each character appears in",
+        description=(
+            "List the character registry a collection shares across its works, with the "
+            "works each character appears in and the snapshot that says so. Calls no model "
+            "and writes nothing."
+        ),
+    )
+    characters.add_argument("--store", type=Path, default=None, help=STORE_HELP)
+    characters.add_argument(
+        "--collection",
+        default=None,
+        help="which collection to read. A project holds one, so this is rarely needed.",
+    )
+    characters.add_argument(
+        "--spanning",
+        action="store_true",
+        help="only characters appearing in more than one work",
+    )
+    characters.add_argument("--json", dest="as_json", action="store_true", help="machine-readable")
+    characters.set_defaults(handler=_run_characters)
 
     status = subcommands.add_parser(
         "status",

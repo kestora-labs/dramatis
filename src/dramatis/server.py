@@ -30,6 +30,7 @@ from dramatis.passage import (
     open_evidence,
     spec_for_types,
 )
+from dramatis.registry import RegistryError, as_json, build_registry
 from dramatis.schema import DOCUMENT_VERSION
 from dramatis.segmentation import segment_text
 from dramatis.snapshot import canonical_json
@@ -164,6 +165,32 @@ def create_app(store_path: Path | str):
                 "SELECT id, collection_id, title, creator FROM works ORDER BY title"
             ).fetchall()
             return [dict(row) for row in rows]
+        finally:
+            store.close()
+
+    @app.get("/api/registry")
+    def registry(collection_id: str | None = None) -> JSONResponse:
+        """The collection's cast, and which works each character appears in (**4.5**).
+
+        A project holds one collection, so ``collection_id`` is optional and the only one
+        there is used when it is omitted. It is still accepted, because a caller that names
+        what it wants and gets a 404 is better off than one that silently reads something
+        else.
+
+        Calls no model and reaches no network: this is arithmetic over stored snapshots
+        (Invariant 6).
+        """
+        store = open_store()
+        try:
+            collections = store.list_collections()
+            if collection_id is None:
+                if not collections:
+                    raise HTTPException(status_code=404, detail="this project holds no collection")
+                collection_id = str(collections[0]["id"])
+            try:
+                return JSONResponse(as_json(build_registry(store, collection_id)))
+            except RegistryError as error:
+                raise HTTPException(status_code=404, detail=str(error)) from error
         finally:
             store.close()
 

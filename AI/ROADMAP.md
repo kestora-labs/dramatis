@@ -434,8 +434,8 @@ graph.
       provenance from `observed` relations extracted from narrative. *(See **D41**.)*
 - [x] **4.4** — Overlay view comparing asserted against observed, surfacing relations
       declared but never enacted, and enacted but never declared. *(See **D42**.)*
-- [ ] **4.5** — Character registry scoped to a collection so characters may span multiple
-      works.
+- [x] **4.5** — Character registry scoped to a collection so characters may span multiple
+      works. *(See **D43**.)*
 - [ ] **4.6** — Ollama provider adapter for fully local analysis.
 - [ ] **4.7** — Docker image; Postgres as an alternative store.
 - [ ] **4.8** — The server's first **mutating endpoints**, and the guard they need. Writes

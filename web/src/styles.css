@@ -199,6 +199,20 @@ code {
   color: #b7791f;
 }
 
+/* 4.4. The two disagreements carry the colours the graph gives them; an agreed pair is
+   dimmed to match its faint edge, because it is the row needing no attention. */
+.changes li.declared-only .change-kind {
+  color: #805ad5;
+}
+
+.changes li.enacted-only .change-kind {
+  color: #c05621;
+}
+
+.changes li.agreed {
+  opacity: 0.55;
+}
+
 .change-detail {
   grid-column: 2;
   color: var(--muted);

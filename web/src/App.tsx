@@ -41,6 +41,14 @@ import {
   type ChangeEntry,
   type DiffResponse,
 } from "./overlay.js";
+import {
+  applyMarks,
+  compareProvenance,
+  describeComparison,
+  findingList,
+  type Comparison,
+  type FindingEntry,
+} from "./declared.js";
 import { describeAnchor, passageUrl, splitPassage, type PassageResponse } from "./passage.js";
 
 interface SnapshotSummary {
@@ -95,6 +103,21 @@ const STYLE: cytoscape.StylesheetJson = [
   { selector: "edge.strengthened", style: { "line-color": "#2b6cb0", opacity: 1 } },
   { selector: "edge.weakened", style: { "line-color": "#b7791f", opacity: 1 } },
   { selector: "edge.retyped", style: { "line-color": "#805ad5", opacity: 1 } },
+
+  // 4.4, comparing what a corpus declares against what it enacts. A separate palette from
+  // the diff marks above, and never drawn at the same time: two mark systems answering
+  // different questions in one picture is a picture answering neither.
+  //
+  // The two disagreements are the loud ones and the agreement recedes, because a pair that
+  // is both declared and enacted is the case needing no attention. Declared-only is dashed
+  // as well as coloured: it is the relationship that exists in the plan and not on the page,
+  // and a dashed edge is the one convention a reader already reads as "not really there".
+  {
+    selector: "edge.declared-only",
+    style: { "line-color": "#805ad5", opacity: 1, "line-style": "dashed" },
+  },
+  { selector: "edge.enacted-only", style: { "line-color": "#c05621", opacity: 1 } },
+  { selector: "edge.agreed", style: { "line-color": "#a0aec0", opacity: 0.35 } },
 ];
 
 /**
@@ -375,6 +398,65 @@ function DiffPanel({
   );
 }
 
+/**
+ * What the corpus declares, against what it enacts.
+ *
+ * Two findings, and the panel is arranged so the first is unmissable: a relationship the
+ * reference material gives a section to and the narrative never shows is the thing an author
+ * opened this view to find. Agreements are listed last and drawn faint, because they are the
+ * case needing no attention.
+ *
+ * No weights appear anywhere here. The two classes count different things, and a column of
+ * numbers side by side would invite exactly the comparison `require_comparable` refuses.
+ */
+function DeclaredPanel({
+  comparison,
+  entries,
+  onClose,
+}: {
+  comparison: Comparison;
+  entries: FindingEntry[];
+  onClose: () => void;
+}) {
+  return (
+    <section className="detail">
+      <div className="detail-head">
+        <h2>Declared and enacted</h2>
+        <button type="button" className="clear" onClick={onClose} aria-label="Stop comparing">
+          ×
+        </button>
+      </div>
+
+      <p className="tally">{describeComparison(comparison)}</p>
+
+      {comparison.other.length > 0 && (
+        // Neither declared nor enacted. Said out loud so the totals here agree with the
+        // totals everywhere else, rather than quietly excluding a third of the graph.
+        <p className="note">
+          {comparison.other.length} relation(s) were entered by hand and are neither declared nor
+          enacted, so they are not compared here.
+        </p>
+      )}
+
+      <ul className="changes">
+        {entries.map((entry, index) => (
+          <li key={index} className={entry.agreement}>
+            <span className="change-kind">
+              {entry.agreement === "declared-only"
+                ? "declared only"
+                : entry.agreement === "enacted-only"
+                  ? "enacted only"
+                  : "agreed"}
+            </span>
+            <span className="change-subject">{entry.subject}</span>
+            {entry.detail && <span className="change-detail">{entry.detail}</span>}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /** Every node's position, as the graph currently has them. */
 function positionsOf(instance: cytoscape.Core): Positions {
   const positions: Positions = {};
@@ -396,6 +478,7 @@ function LayoutControls({
   pinned,
   scaling,
   measuredAgainst,
+  bases,
   onChoose,
   onPin,
   onUnpin,
@@ -405,6 +488,7 @@ function LayoutControls({
   pinned: PinnedLayout | null;
   scaling: Scaling;
   measuredAgainst: number;
+  bases: Record<string, number>;
   onChoose: (name: LayoutName) => void;
   onPin: () => void;
   onUnpin: () => void;
@@ -443,10 +527,17 @@ function LayoutControls({
           </li>
         ))}
       </ul>
+      {/* Named per basis when there is more than one, because since 4.3 that is the ordinary
+          state of a corpus with reference material, and a single number would be untrue of
+          every edge not on the basis it came from. */}
       <p className="tally">
-        {scaling === "absolute"
-          ? `Measured against the heaviest relation in the snapshot (${measuredAgainst}), so narrowing the graph does not thicken what it leaves.`
-          : `Measured against the heaviest relation on screen (${measuredAgainst}), so this view uses its full range — and changes when the view does.`}
+        {Object.keys(bases).length > 1
+          ? `Measured within each basis, since they count different things: ${Object.entries(bases)
+              .map(([basis, most]) => `${basis} against ${most}`)
+              .join(", ")}.`
+          : scaling === "absolute"
+            ? `Measured against the heaviest relation in the snapshot (${measuredAgainst}), so narrowing the graph does not thicken what it leaves.`
+            : `Measured against the heaviest relation on screen (${measuredAgainst}), so this view uses its full range — and changes when the view does.`}
       </p>
 
       {pinned ? (
@@ -682,6 +773,7 @@ export function App() {
   const [pair, setPair] = useState<{ before: SnapshotDocument; after: SnapshotDocument } | null>(
     null,
   );
+  const [declared, setDeclared] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Held in a ref as well as in state: the pin button and the drag handler need the live
   // instance, and they are not part of what makes the graph rebuild.
@@ -761,6 +853,9 @@ export function App() {
   const shown = pair ? unionDocument(pair.before, pair.after) : document_;
   const built = shown ? buildGraph(shown, filters, scaling) : null;
   const options = document_ ? optionsFor(document_) : null;
+  // Derived rather than state: it is a reading of the loaded snapshot, and a stale copy of
+  // it would mark the graph for a snapshot the reader has already navigated away from.
+  const comparison = document_ ? compareProvenance(document_) : null;
 
   useEffect(() => {
     if (!container.current || !document_) return;
@@ -780,6 +875,11 @@ export function App() {
             : (index.characters.get(String(data.id)) ?? null);
         if (change) element.classes = `${element.classes ?? ""} ${change}`.trim();
       }
+    } else if (declared) {
+      // Only when no diff is drawn. A comparison between snapshots and a comparison between
+      // provenances are two different questions, and one picture carrying both palettes at
+      // once would answer neither (4.4).
+      applyMarks(elements, compareProvenance(document_));
     }
     const plan = planLayout(
       pin,
@@ -842,9 +942,13 @@ export function App() {
       });
     });
 
-    if (weightBasis === null) {
-      setError("this snapshot mixes weight bases; edge widths are not comparable");
-    }
+    // A snapshot mixing weight bases used to raise an error here. Since 4.3 it is the
+    // ordinary state of any corpus with reference material — statements and passages of
+    // contact are counted differently — and widths are measured within each basis, so an
+    // edge is comparable with the edges it can honestly be compared with. `FilterControls`
+    // already withholds the weight filter and names the basis, which is where a reader
+    // should learn this; a red banner for the expected case teaches them to ignore banners.
+    void weightBasis;
     return () => {
       instance.destroy();
       graph.current = null;
@@ -856,7 +960,7 @@ export function App() {
     // them the marks arrive after the graph is built and are never applied. They are state
     // rather than derived values, so their identity is stable between renders — `shown` is
     // rebuilt every render and would loop.
-  }, [document_, filters, algorithm, selected, diff, pair, scaling]);
+  }, [document_, filters, algorithm, selected, diff, pair, scaling, declared]);
 
   // A filter can remove the thing being inspected. Leaving its panel open would describe a
   // node or edge that is no longer on screen.
@@ -971,11 +1075,23 @@ export function App() {
             pinned={pin}
             scaling={scaling}
             measuredAgainst={built?.maxWeight ?? 0}
+            bases={built?.maxWeightByBasis ?? {}}
             onChoose={chooseLayout}
             onPin={pinLayout}
             onUnpin={unpinLayout}
             onScaling={setScaling}
           />
+        )}
+
+        {comparison && (comparison.available || declared) && (
+          <button
+            type="button"
+            className="clear"
+            aria-pressed={declared}
+            onClick={() => setDeclared(!declared)}
+          >
+            {declared ? "Stop comparing provenance" : "Compare declared with enacted"}
+          </button>
         )}
 
         {options && built && (
@@ -994,6 +1110,12 @@ export function App() {
             diff={diff}
             entries={changeList(shown, diff)}
             onClose={() => setComparedWith(null)}
+          />
+        ) : declared && comparison && document_ ? (
+          <DeclaredPanel
+            comparison={comparison}
+            entries={findingList(document_, comparison)}
+            onClose={() => setDeclared(false)}
           />
         ) : detail ? (
           <DetailPanel

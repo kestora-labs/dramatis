@@ -432,8 +432,8 @@ graph.
       *(Regions added by **D31**. See **D39**.)*
 - [x] **4.3** — Extraction of `asserted` relations from reference documents, distinct in
       provenance from `observed` relations extracted from narrative. *(See **D41**.)*
-- [ ] **4.4** — Overlay view comparing asserted against observed, surfacing relations
-      declared but never enacted, and enacted but never declared.
+- [x] **4.4** — Overlay view comparing asserted against observed, surfacing relations
+      declared but never enacted, and enacted but never declared. *(See **D42**.)*
 - [ ] **4.5** — Character registry scoped to a collection so characters may span multiple
       works.
 - [ ] **4.6** — Ollama provider adapter for fully local analysis.

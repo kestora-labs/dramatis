@@ -31,6 +31,7 @@ dev = [
     "uvicorn>=0.29",
 ]
 anthropic = ["anthropic>=0.40"]
+postgres = ["psycopg[binary]>=3.1"]
 serve = ["fastapi>=0.110", "uvicorn>=0.29"]
 
 [project.scripts]

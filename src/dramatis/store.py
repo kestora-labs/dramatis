@@ -5,6 +5,11 @@ portable file is a deliberate feature — a researcher can archive it, send it, 
 without exporting anything, and Invariant 6 means it can be opened later with no API key
 and no network.
 
+**Postgres is the alternative, chosen by pointing at a URL instead of a file** (**4.10**).
+Nothing in this module knows which is in use: `dramatis.drivers` rewrites what differs on the
+way out, so the queries below are written once. SQLite remains the default and the shape the
+project is designed around.
+
 Document contents are stored in the database rather than referenced on disk. A snapshot
 whose evidence cannot be resolved back to the exact text it was drawn from is not evidence,
 and a path on somebody's laptop is not a durable reference.
@@ -16,13 +21,14 @@ an older store simply adds what is missing.
 from __future__ import annotations
 
 import json
-import sqlite3
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from dramatis.drivers import Connection, driver_for, is_postgres
 
 STORE_VERSION = 3
 
@@ -287,19 +293,29 @@ def _setting_key(name: str) -> str:
 
 
 class Store:
-    """A Dramatis project file."""
+    """A Dramatis project: one SQLite file, or a Postgres database named by URL.
+
+    The backend is chosen by what it is pointed at and is invisible above this class — the
+    queries below are written once and rewritten for the driver on the way out (**4.10**).
+    """
 
     def __init__(self, path: Path | str) -> None:
-        self.path = Path(path)
-        self._connection: sqlite3.Connection | None = None
+        # A Postgres URL is kept as the string it is; a file becomes a Path. `self.path` is
+        # what every message shows the user, so it must read back as what they typed.
+        self._driver = driver_for(path)
+        self.path = path if is_postgres(path) else Path(path)
+        self._connection: Connection | None = None
+
+    @property
+    def backend(self) -> str:
+        """Which database this store speaks to, for anything that reports on itself."""
+        return self._driver.name
 
     # -- lifecycle ----------------------------------------------------------------------
 
     def open(self) -> Store:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._connection = sqlite3.connect(self.path)
-        self._connection.row_factory = sqlite3.Row
-        self._connection.execute("PRAGMA foreign_keys = ON")
+        self._connection = Connection(self._driver.connect(self.path), self._driver)
+        self._driver.prepare(self._connection._raw)
         self._connection.executescript(DDL)
         self._connection.execute(
             "INSERT INTO meta (key, value) VALUES ('store_version', ?) ON CONFLICT(key) DO NOTHING",
@@ -320,13 +336,13 @@ class Store:
         self.close()
 
     @property
-    def connection(self) -> sqlite3.Connection:
+    def connection(self) -> Connection:
         if self._connection is None:
             raise RuntimeError("store is not open; use `with Store(path) as store:`")
         return self._connection
 
     @contextmanager
-    def transaction(self) -> Iterator[sqlite3.Connection]:
+    def transaction(self) -> Iterator[Connection]:
         connection = self.connection
         try:
             yield connection
@@ -573,7 +589,10 @@ class Store:
         }
         if table not in allowed:
             raise ValueError(f"unknown table {table!r}")
-        return int(self.connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0])
+        # Named rather than taken positionally: a Postgres row is a mapping, and `row[0]`
+        # raises a KeyError on it. Naming the column works on both backends (**4.10**).
+        row = self.connection.execute(f"SELECT count(*) AS tally FROM {table}").fetchone()
+        return int(row["tally"])
 
     def get_work(self, identifier: str) -> dict[str, Any] | None:
         row = self.connection.execute("SELECT * FROM works WHERE id = ?", (identifier,)).fetchone()
@@ -593,7 +612,7 @@ class Store:
         not a cosmetic complaint once the list is what a reader uses to follow the work.
         """
         rows = self.connection.execute(
-            "SELECT id FROM text_revisions WHERE work_id = ? ORDER BY created_at, rowid",
+            "SELECT id FROM text_revisions WHERE work_id = ? ORDER BY created_at, {tiebreak}",
             (work_id,),
         ).fetchall()
         revisions = [self.get_text_revision(row["id"]) for row in rows]
@@ -728,7 +747,7 @@ class Store:
         rows = self.connection.execute(
             "SELECT r.id FROM snapshots s "
             "JOIN analysis_runs r ON r.id = s.analysis_run_id "
-            "WHERE s.work_id = ? GROUP BY r.id ORDER BY r.started_at, r.rowid",
+            "WHERE s.work_id = ? GROUP BY r.id ORDER BY r.started_at, r.{tiebreak}",
             (work_id,),
         ).fetchall()
         found = [self.get_analysis_run(row["id"]) for row in rows]
@@ -791,7 +810,7 @@ class Store:
         and a diff run backwards reports every strengthening as a weakening.
         """
         rows = self.connection.execute(
-            "SELECT id FROM snapshots WHERE work_id = ? ORDER BY created_at, rowid", (work_id,)
+            "SELECT id FROM snapshots WHERE work_id = ? ORDER BY created_at, {tiebreak}", (work_id,)
         ).fetchall()
         found = [self.get_snapshot(row["id"]) for row in rows]
         return [snapshot for snapshot in found if snapshot is not None]
@@ -805,7 +824,7 @@ class Store:
         """
         return "".join(row["content"] for row in self._revision_rows(revision_id, roles))
 
-    def _revision_rows(self, revision_id: str, roles: Sequence[str] | None) -> list[sqlite3.Row]:
+    def _revision_rows(self, revision_id: str, roles: Sequence[str] | None) -> list[Any]:
         """Documents of a revision in position order, optionally narrowed by role.
 
         One query behind both ``revision_text`` and ``revision_document_spans``, because the

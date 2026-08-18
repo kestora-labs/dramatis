@@ -455,13 +455,13 @@ graph.
       **7.4**–**7.5**, where prompts become versioned artefacts. *(**D31**. Depends on
       **4.11**, which makes an excluded region actually reduce the cast; done first, as
       **3.6** was. See **D48**.)*
-- [ ] **4.10** — Postgres as an alternative store. The `Store` interface is unchanged; a
+- [x] **4.10** — Postgres as an alternative store. The `Store` interface is unchanged; a
       driver behind it speaks either SQLite or Postgres, chosen by the store URL. This is
       larger than it looks: `rowid` tie-breaking (added by **3.2** and **3.4** to keep
       snapshot and revision ordering stable) has no Postgres equivalent and needs an explicit
       monotonic column with a migration, and every `?` placeholder and `PRAGMA` is
       SQLite-specific. Tested against a real Postgres, never a mock. *(Split from **4.7**; see
-      **D45**.)*
+      **D45** and **D49**.)*
 - [x] **4.11** — **Analysis honours an excluded region.** A region a person marks `excluded`
       in the structure map is dropped from the document at ingest, so its characters never
       reach extraction — the mechanism **4.9** confirms in the browser and **D31**'s preface

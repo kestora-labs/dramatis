@@ -1897,3 +1897,67 @@ questions with different palettes, and one picture carrying both would answer ne
 
 *Reversible.* The comparison derives from a loaded snapshot and stores nothing. Deleting
 `declared.ts` and its three call sites returns the client to 4.3's behaviour.
+
+## D43 — A character's appearances are derived from snapshots, not recorded beside them
+
+**Phase 4.5.** The registry was already collection-scoped, and the scoping already worked:
+`_resolve_collection` puts a second work into the collection a project already holds, and
+`resolution` matches surface forms against everything that collection knows. Probed before
+building anything, *Chief Mbeki* in a second novel already resolved to the *Ada Mbeki* the
+first one registered, and both snapshots already carried one `char:ada-mbeki`.
+
+Two things were missing, and they are what this bullet is.
+
+**Nothing tested it.** A shared universe silently becoming two casts that happen to rhyme is
+the kind of failure that shows up as a graph looking slightly thin, months later. The load-
+bearing test is now explicit: a character introduced under one name, referred to in the next
+work by another, coming back as one person with one identifier.
+
+**Nothing could ask where a character appears** — the obvious question about a registry that
+spans works, and the only one that makes the spanning visible.
+
+### Derived, not stored
+
+A `character_works` table would be a second source of truth needing to be kept in step with
+the snapshots it summarises, and the symptom of it falling behind is a character reported in
+a work they were cut from. Snapshots are immutable (Invariant 4), so deriving from them is
+stable: the same store always yields the same answer and no write path can forget to update
+it. The cost is a read over each work's newest snapshot, which is arithmetic over data already
+in memory.
+
+### Only the newest reading of each work counts
+
+A character in the first draft of a novel and cut from the second does not appear in that
+novel. A registry reading every snapshot ever taken would go on asserting they do, and would
+grow monotonically more wrong the more a work was revised. The snapshot each appearance rests
+on is named, so the claim can be checked rather than taken — the same reason every proposal in
+`structure` carries its basis.
+
+Two states that look identical from outside are told apart rather than conflated. A character
+in no current snapshot stays in the registry with no appearances, because some reading put
+them there and dropping them would quietly narrow the cast the next resolution matches
+against. A work nobody has analysed is named as unanalysed, because a character missing for
+that reason looks exactly like a character who is not in it.
+
+### Ordering answers the question the registry is opened with
+
+Whoever spans most works comes first, then by name. A reader of a shared-universe registry is
+looking for who carries across it, which is a different question from the alphabet.
+
+### Two surfaces, both offline
+
+`GET /api/registry` and `dramatis characters` (with `--spanning` and `--json`). Neither calls a
+model or reaches a network, per Invariant 6 — there is a test that builds the whole registry
+with a provider that would raise on any call.
+
+### What this bullet deliberately does not include
+
+**No browser view.** The roadmap asks 4.4 for an *overlay view* and asks 4.5 for a *registry*,
+and the difference in wording is taken as meant. Editing the registry from the client is
+**5.3**'s bullet — manual merge and split, with the decision recorded — and building a
+read-only version of that surface now would be work done twice. The endpoint exists for
+whenever the client wants it.
+
+*Reversible.* `registry.py` reads and writes nothing; deleting it and its two call sites
+returns the project to 4.4, with the cross-work behaviour it always had and the tests that
+now describe it.

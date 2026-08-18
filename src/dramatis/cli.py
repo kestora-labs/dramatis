@@ -1032,8 +1032,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "serve",
         help="browse stored snapshots in a browser",
         description=(
-            "Serve stored snapshots on this machine. Reads only: it never calls a model "
-            "and never leaves the loopback interface unless told to."
+            "Serve a project in a browser on this machine. Reads snapshots, and accepts "
+            "writes to project metadata from the local client only — every write refuses a "
+            "cross-origin request. It never calls a model, and never leaves the loopback "
+            "interface unless told to."
         ),
     )
     serve.add_argument("--store", type=Path, default=None, help=STORE_HELP)

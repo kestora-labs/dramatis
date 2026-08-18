@@ -1,6 +1,7 @@
 """The local web server.
 
-Serves stored snapshots to the browser and nothing else. Two constraints shape it.
+Serves stored snapshots to the browser, and — from **4.8** — accepts writes to a project's
+metadata. Three constraints shape it.
 
 **It hands back the stored document unchanged.** No view model, no reshaping, no computed
 fields. What the client renders is what was archived and what would be cited, for the same
@@ -12,6 +13,15 @@ Serving it on every interface by default would put a manuscript on the office ne
 because someone typed a command. Changing the interface is possible and deliberately
 awkward, and says so.
 
+**Every write refuses a cross-origin request.** A page the user has open anywhere can POST
+to `127.0.0.1`; the reply is unreadable to it, but the side effect would land. One middleware
+checks the request's `Origin` against the server's own on every mutating method and refuses a
+mismatch before it reaches a handler. Keyed on the method rather than a list of endpoints, so
+a write added later is guarded the moment it exists rather than when somebody remembers to opt
+it in. Reads are not guarded — they change nothing, and a cross-origin read is already blocked
+from being *read* by the browser's own same-origin policy. Settled here, at the first write,
+rather than retrofitted once there are a dozen (**D31**).
+
 The web framework is an optional dependency, imported lazily, so reading and validating a
 project keeps working without it (Invariant 6).
 """
@@ -22,6 +32,7 @@ import hashlib
 import os
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from dramatis import __version__
 from dramatis.diff import DiffError, diff_snapshots
@@ -35,7 +46,7 @@ from dramatis.registry import RegistryError, as_json, build_registry
 from dramatis.schema import DOCUMENT_VERSION
 from dramatis.segmentation import segment_text
 from dramatis.snapshot import canonical_json
-from dramatis.store import Store
+from dramatis.store import Store, utc_now
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 7373
@@ -165,6 +176,48 @@ def create_app(store_path: Path | str):
         if not path.is_file():
             raise HTTPException(status_code=404, detail=f"no project file at {path}")
         return Store(path).open()
+
+    mutating = {"POST", "PUT", "PATCH", "DELETE"}
+
+    @app.middleware("http")
+    async def refuse_cross_origin_writes(request, call_next):
+        """Refuse a browser write that came from another origin (4.8, D31).
+
+        The attack: a page open on any site can `fetch` a POST at `127.0.0.1` from the
+        user's browser. It cannot read the reply — the same-origin policy stops that — but a
+        write's *side effect* lands regardless, and a preflight does not always intervene,
+        because a form-style POST is a "simple" request the browser sends without asking.
+
+        What a browser cannot forge is the `Origin` header: it stamps every write with the
+        page's true origin. A legitimate request comes from the Dramatis client served on
+        this machine, so its `Origin` matches the `Host` it was sent to; a request from
+        elsewhere does not, and is refused before it reaches an endpoint, so the side effect
+        never happens.
+
+        The guard is keyed on the HTTP method, not on a list of endpoints. That is the whole
+        of why it lives here rather than on each handler: a write added later — **5.1**'s
+        review status, a correction, whatever comes — is guarded the moment it exists,
+        because it is a POST or a PUT, and nobody has to remember to opt it in. Reads pass
+        untouched: a read changes nothing, and the browser already refuses to hand a
+        cross-origin reply back to the page that asked.
+
+        A request with no `Origin` at all is allowed: that is a non-browser client such as
+        curl or the CLI, not a cross-site vector — a browser cannot suppress the header on a
+        cross-origin write, so its absence is not a page hiding.
+        """
+        if request.method in mutating:
+            origin = request.headers.get("origin")
+            if origin is not None and urlparse(origin).netloc != request.headers.get("host"):
+                return JSONResponse(
+                    {
+                        "detail": (
+                            "cross-origin writes are refused. This server accepts writes only "
+                            "from the Dramatis client served on this machine."
+                        )
+                    },
+                    status_code=403,
+                )
+        return await call_next(request)
 
     @app.get("/api/health")
     def health() -> dict[str, Any]:
@@ -446,6 +499,92 @@ def create_app(store_path: Path | str):
                     },
                 }
             )
+        finally:
+            store.close()
+
+    # -- writes -----------------------------------------------------------------------------
+    # The server's first mutating endpoints (4.8). The same-origin middleware above guards
+    # every one by virtue of their method — none has to opt in. Writes are confined to project
+    # metadata — a store's existence, its settings, its structure map — and none of them calls
+    # a model or touches the author's text (D31).
+
+    @app.post("/api/store", status_code=201)
+    def create_store() -> JSONResponse:
+        """Bring the project store into existence, or report it already was.
+
+        The one write that cannot go through `open_store`, which 404s on a missing file:
+        this is what a missing file is answered with. Opening initialises the schema; doing
+        so when the file is already there changes nothing, so a repeated call is safe and
+        says `created: false` rather than failing.
+        """
+        existed = path.is_file()
+        Store(path).open().close()
+        return JSONResponse(
+            {"store": str(path), "created": not existed},
+            status_code=200 if existed else 201,
+        )
+
+    @app.get("/api/settings")
+    def get_settings() -> dict[str, Any]:
+        store = open_store()
+        try:
+            return store.settings()
+        finally:
+            store.close()
+
+    @app.put("/api/settings")
+    def put_settings(values: dict[str, Any]) -> dict[str, Any]:
+        """Merge settings into the project, and return everything it now records.
+
+        Merge rather than replace: a client setting one key must not silently drop the
+        others. Returns the full settings so the caller sees the result rather than assuming
+        its write was the whole of it.
+        """
+        if not isinstance(values, dict):
+            raise HTTPException(status_code=422, detail="settings must be a JSON object")
+        store = open_store()
+        try:
+            for name, value in values.items():
+                store.set_setting(name, value)
+            return store.settings()
+        finally:
+            store.close()
+
+    @app.get("/api/structure")
+    def get_structure(root: str) -> dict[str, Any]:
+        store = open_store()
+        try:
+            return store.structure_map(root)
+        finally:
+            store.close()
+
+    @app.put("/api/structure")
+    def put_structure(payload: dict[str, Any]) -> dict[str, Any]:
+        """Save a confirmed structure map for a folder.
+
+        The map is keyed by the folder it describes, so the body carries both: `root`, and
+        `plans` as `{relative_path: plan}`. `confirmed_at` is stamped here rather than taken
+        from the client, because it records when the server accepted the answer, not what a
+        browser's clock happened to say.
+        """
+        root = payload.get("root")
+        plans = payload.get("plans")
+        if not isinstance(root, str) or not root:
+            raise HTTPException(status_code=422, detail="a structure map needs a 'root' string")
+        if not isinstance(plans, dict):
+            raise HTTPException(status_code=422, detail="'plans' must be a JSON object")
+        store = open_store()
+        try:
+            store.save_structure_map(root, plans, utc_now())
+            return {"root": root, "saved": len(plans)}
+        finally:
+            store.close()
+
+    @app.delete("/api/structure")
+    def delete_structure(root: str) -> dict[str, Any]:
+        store = open_store()
+        try:
+            return {"root": root, "forgotten": store.forget_structure_map(root)}
         finally:
             store.close()
 

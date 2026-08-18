@@ -440,13 +440,13 @@ graph.
 - [x] **4.7** — Docker image: a multi-stage build that ships the API, the built client, and
       every prompt in one container running `dramatis serve` against a mounted store. *(Split
       from Postgres, which became **4.10**; see **D45**.)*
-- [ ] **4.8** — The server's first **mutating endpoints**, and the guard they need. Writes
+- [x] **4.8** — The server's first **mutating endpoints**, and the guard they need. Writes
       are confined to project metadata — settings, the structure map, and creating a store —
       and every one of them refuses a request whose `Origin` is not the server's own. A
       browser can post across origins to `127.0.0.1` from any page the user has open, and
       the side effect lands even though the reply cannot be read. Decided once here rather
       than retrofitted after **5.1** has added a dozen more. `serve --help` stops claiming
-      it only reads. *(**D31**.)*
+      it only reads. *(**D31**. See **D46**.)*
 - [ ] **4.9** — **Project creation in the browser**: choose a single file, a folder, or a
       folder tree; name the store; set whether collectives are actors; confirm the regions
       **4.2** proposed, so a critical preface can be excluded from analysis before a token

@@ -2142,3 +2142,67 @@ same gate this project already accepts for its other infrastructure config.
 *Reversible.* The image, its ignore file, and its test are additive; `web_root()` defaults to
 the previous behaviour when the variable is unset. Deleting all of it returns the project to a
 checkout-only server with no change to how it runs from source.
+
+## D46 — The server learns to write, and one middleware guards every write there will ever be
+
+**Phase 4.8.** The server had been read-only by absence of write endpoints, never by
+mechanism (**D31** established this). This adds its first three: creating a store, writing
+settings, and saving a structure map — the metadata surface **4.9** will compose into browser
+project creation. None calls a model or touches the author's text, so Invariants 6 and 7 are
+untouched; the only real consequence is the guard.
+
+### The guard is a middleware keyed on method, not a check on each endpoint
+
+A page open on any site can `fetch` a POST at `127.0.0.1` from the user's browser. It cannot
+read the reply — the same-origin policy stops that — but a write's side effect lands anyway,
+and a preflight does not always intervene: a form-style POST is a "simple" request the browser
+sends without asking first. What a browser cannot forge is the `Origin` header, which it stamps
+with the page's true origin. So the guard compares `Origin` to the `Host` the request was sent
+to and refuses a mismatch.
+
+It lives in one middleware, guarding by HTTP method, rather than as a dependency on each
+handler. That is a deliberate improvement on the bullet's literal "every one of them checks":
+**D31**'s reason for settling this now was *"rather than retrofitted once there are a dozen"*,
+and a middleware keyed on the method carries that further than a per-endpoint dependency could.
+A write added later — **5.1**'s review status, a correction — is guarded the moment it exists,
+because it is a POST or a PUT, and nobody has to remember to opt it in. The failure mode of the
+per-endpoint approach is a future endpoint that forgets the guard; the method-keyed middleware
+has no such mode.
+
+A request with no `Origin` is allowed: a non-browser client such as curl or the CLI, not a
+cross-site vector, because a browser cannot suppress the header on a cross-origin write. Reads
+carry no guard at all — they change nothing, and the browser already refuses to hand a
+cross-origin reply back to the page that asked.
+
+### A footgun worth recording: FastAPI could not see the `Request`
+
+The guard was first written as a dependency, `def same_origin(request: Request)`, and every
+guarded call answered **422**: `{"loc": ["query", "request"], "msg": "Field required"}`.
+FastAPI had taken `request` for a query parameter.
+
+The cause is a three-part trap. `server.py` carries `from __future__ import annotations`, so
+every annotation is a *string*. FastAPI resolves that string against the function's module
+globals. But the framework is an optional dependency imported *inside* `create_app` (Invariant
+6 forbids importing it at module load), so `Request` was a local of `create_app`, invisible to
+the module globals FastAPI consults — and an unresolved annotation falls through to "query
+parameter". The tell was that even the 422-expecting body-validation tests passed, for the
+wrong reason, which is exactly how a broken guard would have shipped looking green.
+
+The middleware sidesteps it entirely: middleware takes the request as a positional argument
+with no annotation to resolve. The rewrite was better on its own merits and immune to the trap
+that produced it.
+
+### Verified against a live server, not only the test client
+
+The header logic is exercised through Starlette's TestClient, but the guard's whole purpose is
+what a real browser and a real ASGI stack do, so `dramatis serve` was run and driven with curl,
+which can set `Origin` and `Host` freely. A same-origin PUT wrote a setting (200); a
+cross-origin PUT was refused (403) **and reading the setting back proved the write never
+landed** — the evil request tried to flip it and did not; a no-Origin PUT wrote (200). This is
+the property the endpoint tests assert, confirmed where it actually matters.
+
+`serve --help` and the module docstring stop calling the server read-only; both now say it
+accepts writes to project metadata from the local client only.
+
+*Reversible.* The endpoints and the middleware are additive. Removing them returns the server
+to reads alone, which is where **4.7** left it.

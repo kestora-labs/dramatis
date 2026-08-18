@@ -2280,3 +2280,80 @@ that test and seven others, so it bites.
 *Reversible.* The kept-text helper and the `excluded` role are additive; a document with no
 excluded region is stored exactly as before, and removing the machinery returns ingest to
 storing whole files.
+
+## D48 — A project is created in the browser, and two bugs only a browser could find
+
+**Phase 4.9.** Choose a file, a folder or a tree; say what each document is; mark front matter
+to leave out; ingest. It calls no model — proposing reads the folder, and analysing stays
+`analyse`'s job — so opening the flow costs nothing and abandoning it costs nothing.
+
+This completes phase 4's acceptance sentence: *a project is created from the browser without
+touching the command line, and a preface excluded there produces a cast free of the people it
+discusses.* It rests on **4.8**'s write endpoints and **4.11**'s exclusion, both built for it.
+
+### Two endpoints, on the split the guard already draws
+
+`GET /api/structure/propose` reads a path and proposes what it holds. A read, so **4.8**'s
+middleware leaves it alone, and it deliberately works **without a store**: creating the project
+is a later step of the same flow, and 404ing the first screen would make the flow impossible to
+start. `POST /api/ingest` is the write that ends it, guarded automatically by being a POST —
+the property the method-keyed middleware was chosen for.
+
+The server reads a filesystem path the browser names rather than accepting an upload. For a
+local-first tool that is the honest shape: the server is on the user's machine, `ingest_file`
+and `ingest_folder` already read paths, and an upload path would be a second way in to keep in
+step with the first.
+
+### The client emits the JSON the store already speaks
+
+`create.plansFor` builds exactly what `structure.as_json` writes and `ingest.kept_text` reads —
+an excluded region is a region with role `excluded` beside a narrative region carrying the
+boundary quotation, not a browser-only spelling of "skip this bit". A test in each language
+holds that shape, and a server test drives the whole flow over HTTP, because only a test
+crossing both can catch them drifting apart. Drifting apart means a confirmed preface silently
+staying in the analysis, which is the failure this whole feature exists to prevent.
+
+Logic lives in `create.ts` rather than the component, for the reason **4.4** learned: a rule
+that cannot be tested is a rule that ships broken and looks green.
+
+### Two bugs found by running it, not by reading it
+
+**`serve` refused to start without a project.** `resolve_store(...).require()` raises when the
+file is absent, so on a fresh machine the server would not run — and if the server will not
+run, there is no browser in which to create anything. The acceptance is unreachable by
+construction. A store *named* on the command line may now be absent (the browser will create
+it); an *unnamed* missing store still raises, because that is somebody in the wrong directory
+rather than somebody starting something new. The server says which case it is.
+
+**The client crashed to a blank page on an empty project.** `/api/snapshots` answers 404 before
+the store exists, the loader read the body as an array regardless, and `found.find` threw on
+`{detail: ...}` — killing the whole app. That is precisely the state a new user starts in.
+Snapshot loading now tolerates a project that holds nothing, and an empty project *opens* the
+creation flow, because a fresh install otherwise lands on an empty graph with no visible next
+step.
+
+Neither is reachable from a unit test of either side. Both were found within a minute of
+pointing a browser at a real server with no project in it — the same lesson **4.6** and **4.7**
+each recorded, arriving a third time.
+
+### Verified as a person would do it
+
+A real server on an empty store, a real browser, a real file with a preface. The flow opened by
+itself, read the file, took a role and the line the narrative begins at, and created the
+project. The store afterwards holds one work, `collectives_are_actors: false`, and 144
+characters of text beginning *"It is a truth universally acknowledged"* — with Coleridge, who
+is in the preface and not in the novel, absent.
+
+### What is deliberately not here
+
+**Naming the store in the browser.** The server serves one store, fixed when it starts, so a
+name chosen in the browser would name a file the server is not serving. `dramatis serve --store
+my-novel.sqlite` names it; the browser creates it. Changing that means a server that can switch
+stores, which is a larger change than this bullet.
+
+**Prompt selection**, as the bullet says: it belongs to **7.4**–**7.5**, where prompts become
+versioned artefacts, and offering it earlier would let a project record a prompt nothing can
+compare against.
+
+*Reversible.* The two endpoints and the panel are additive. The `serve` change widens what is
+allowed and refuses nothing that used to work.

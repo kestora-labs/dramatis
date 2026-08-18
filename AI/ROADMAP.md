@@ -447,14 +447,14 @@ graph.
       the side effect lands even though the reply cannot be read. Decided once here rather
       than retrofitted after **5.1** has added a dozen more. `serve --help` stops claiming
       it only reads. *(**D31**. See **D46**.)*
-- [ ] **4.9** — **Project creation in the browser**: choose a single file, a folder, or a
+- [x] **4.9** — **Project creation in the browser**: choose a single file, a folder, or a
       folder tree; name the store; set whether collectives are actors; confirm the regions
       **4.2** proposed, so a critical preface can be excluded from analysis before a token
       is spent on it. Creation ingests and records settings; it never calls a model, which
       remains `analyse`'s job alone. Prompt selection is deliberately absent — it belongs to
       **7.4**–**7.5**, where prompts become versioned artefacts. *(**D31**. Depends on
       **4.11**, which makes an excluded region actually reduce the cast; done first, as
-      **3.6** was.)*
+      **3.6** was. See **D48**.)*
 - [ ] **4.10** — Postgres as an alternative store. The `Store` interface is unchanged; a
       driver behind it speaks either SQLite or Postgres, chosen by the store URL. This is
       larger than it looks: `rowid` tie-breaking (added by **3.2** and **3.4** to keep

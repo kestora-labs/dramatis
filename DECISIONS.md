@@ -2206,3 +2206,77 @@ accepts writes to project metadata from the local client only.
 
 *Reversible.* The endpoints and the middleware are additive. Removing them returns the server
 to reads alone, which is where **4.7** left it.
+
+## D47 — An excluded region is dropped, not described to the model; and 4.9 splits to build it first
+
+**Phase 4.11, split from 4.9.** Building the browser project-creation flow surfaced that its
+whole point — *"a preface excluded there produces a cast free of the people it discusses"* —
+rested on machinery that did not exist. Regions had been recorded since **4.1**/**4.2** and
+consumed only for CLI display; nothing in ingest or the pipeline acted on one. So 4.9 became
+two bullets: **4.11**, the backend that makes an excluded region actually reduce the cast,
+built first; then 4.9, the browser flow on top. Taken out of order for the same reason **3.6**
+was — a later number is a dependency of an earlier one, and the roadmap says so.
+
+### Drop the text, do not ask the model to ignore it
+
+The alternative considered was to send the whole document and instruct the extraction prompt
+to skip the preface. It was rejected, and the reasoning is worth keeping because it recurs.
+
+Extraction reads in windows, so *either* approach must first work out which windows fall in
+the excluded region — that alignment is shared. After it, the choice is only whether a
+pure-preface window is *dropped* or *sent with an "ignore" instruction*. Dropping wins on
+every axis that matters here: it costs nothing to send, it is deterministic, and it does not
+depend on a model obeying a negative instruction across a window boundary. Instructing would
+make exclusion a model *behaviour* — a preface character present in one run and absent in the
+next from identical settings, which is the exact class of non-determinism **D35** and **D40**
+fought, and it cuts against **4.3**'s settled principle that *the text is split before it is
+read, not after.*
+
+So exclusion is mechanical and happens at **ingest**: the kept text is stored, the preface is
+not, and everything downstream — segmentation, extraction, evidence, the passage reader —
+works unchanged because it reads the stored document, which is now the narrative.
+
+Ingest was the natural home for a second reason found by looking: the work does not record the
+folder it came from, so the pipeline cannot recover a revision's structure map at analysis
+time, while ingest already looks the map up to apply document roles (**4.2**). Analysis-time
+exclusion would have needed new plumbing and a normalised-vs-raw offset mapping; ingest-time
+needed neither.
+
+### The boundary is a quotation matched in raw text, never a stored offset
+
+The kept span is the narrative region, located by its verbatim boundary quotations. The offset
+the map records is in *normalised* space and is only ever the hint; `_locate_raw` builds a
+pattern from the quotation where each run of whitespace matches any run, and searches the raw
+document text, returning a raw offset in the same coordinate space as the text it cuts. This
+is the discipline `text` states of every offset in the project, and it is why fixture **A**'s
+preface excludes cleanly even though the file is hard-wrapped — and why a boundary quotation
+carrying a word the file does not (a comma the 1894 text omits after *"good fortune"*) is
+correctly *not* matched. A confirmed exclusion whose boundary cannot be found is **refused**,
+not ignored: silently keeping the preface would produce the very cast the exclusion was for.
+
+### `excluded` is a region role, and costs no schema change
+
+A region may carry role `excluded`, alongside the two document roles. It lives only in the
+structure map's JSON; the `documents.role` column keeps its two-value CHECK, because an
+excluded region is not a kind of document but a span of one. A model never proposes it —
+throwing text away is a person's call.
+
+### A single file is now a corpus of one
+
+`propose_structure` accepted only a folder. **4.9** offers a file, a folder, or a tree as
+equals, and the preface that most needs excluding — a public-domain novel with a critical
+introduction bound in, which is fixture **A** exactly — arrives as one file. A file is now its
+own structure-map root, holding one document named for it, so the map, confirmation and
+exclusion machinery reaches it unchanged.
+
+### Proven on fixture A, no browser and no model
+
+The mechanism is proven where **D31** measured the problem: the 34,289-character preface of
+*Pride and Prejudice* is confirmed excluded, the file is ingested, and the stored document
+begins at *"It is a truth universally acknowledged"* with Coleridge and Whitman — two of the
+38 phantom characters — gone, the novel itself intact. Neutering the exclusion helper fails
+that test and seven others, so it bites.
+
+*Reversible.* The kept-text helper and the `excluded` role are additive; a document with no
+excluded region is stored exactly as before, and removing the machinery returns ingest to
+storing whole files.

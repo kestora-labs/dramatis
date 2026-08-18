@@ -21,13 +21,17 @@ same path relative to the folder ingested, and that is what per-file tracking co
 
 from __future__ import annotations
 
+import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from dramatis import ids
 from dramatis.store import (
     COLLECTIVES_ARE_ACTORS,
     DOCUMENT_ROLES,
+    EXCLUDED,
     NARRATIVE,
     Document,
     Store,
@@ -37,6 +41,82 @@ from dramatis.store import (
 from dramatis.text import content_hash, normalise_line_endings, revision_hash
 
 DEFAULT_ROLE = NARRATIVE
+
+
+def _locate_raw(text: str, quotation: str) -> tuple[int, int] | None:
+    """Where a verbatim quotation falls in raw text, tolerant of whitespace runs.
+
+    The structure map records a region's boundary as a quotation the model returned; the file
+    on disk may have been reflowed since. A pattern built from the quotation — each run of
+    whitespace matching any run — finds it either way, and returns *raw* offsets, so the slice
+    lands in the same coordinate space as the text it cuts. That is the point: a stored offset
+    would be in normalised space, and applying it to raw text lands wrong by however much the
+    file was hard-wrapped, which is the class of bug 2.4 and 3.1 spent effort on.
+    """
+    stripped = quotation.strip()
+    if not stripped:
+        return None
+    pattern = r"\s+".join(re.escape(token) for token in re.split(r"\s+", stripped))
+    match = re.search(pattern, text)
+    return (match.start(), match.end()) if match else None
+
+
+def kept_text(text: str, plan: Mapping[str, Any]) -> tuple[str, str | None]:
+    """A document's text with any region marked ``excluded`` removed (**4.11**).
+
+    Returns the kept text and, when a boundary cannot be located, a note saying nothing was
+    dropped and why — never a silent guess, because cutting at the wrong place removes a
+    chapter from the analysis with nothing on screen to say so.
+
+    The kept span is the narrative region, found by its verbatim boundary quotations: front
+    matter before it goes when a region *before* it is excluded, an appendix after it goes
+    when a region *after* it is excluded. The offsets the map records are the hint; the
+    quotations are the authority — the rule `text` states of every offset in this project.
+    """
+    regions = list(plan.get("regions") or [])
+    excluded = [i for i, region in enumerate(regions) if _role_of(region) == EXCLUDED]
+    if not excluded:
+        return text, None
+
+    narrative = next(
+        ((i, r) for i, r in enumerate(regions) if r.get("begins_with") or r.get("ends_with")),
+        None,
+    )
+    if narrative is None:
+        return (
+            text,
+            "a region is marked excluded but none carries a boundary to cut at; kept whole",
+        )
+    index, region = narrative
+    begins, ends = region.get("begins_with") or "", region.get("ends_with") or ""
+
+    start, end = 0, len(text)
+    if any(i < index for i in excluded) and begins:
+        found = _locate_raw(text, begins)
+        if found is None:
+            return (
+                text,
+                f"the narrative start is not in the document; kept whole: {begins[:40]!r}",
+            )
+        start = found[0]
+    if any(i > index for i in excluded) and ends:
+        found = _locate_raw(text, ends)
+        if found is None:
+            return (
+                text,
+                f"the narrative end is not in the document; kept whole: {ends[:40]!r}",
+            )
+        end = found[1]
+
+    kept = text[start:end]
+    if not kept.strip():
+        return text, "excluding the region would empty the document; kept whole"
+    return kept, None
+
+
+def _role_of(region: Mapping[str, Any]) -> Any:
+    return (region.get("role") or {}).get("value")
+
 
 TEXT_SUFFIXES = frozenset({".txt", ".md", ".markdown", ".text"})
 """Which files in a folder are taken as text.
@@ -61,6 +141,8 @@ class IngestResult:
     sha256: str
     characters: int
     already_present: bool
+    excluded: bool = False
+    """True when a confirmed region was dropped from the document before storing (**4.11**)."""
 
     @property
     def summary(self) -> str:
@@ -68,9 +150,10 @@ class IngestResult:
         # ASCII only: a Windows console under a legacy code page renders a typographic
         # ellipsis as a replacement character, which looks like corruption in the one line
         # a user reads most often.
+        excluded = "\n  a confirmed region was excluded" if self.excluded else ""
         return (
             f"{state}: {self.revision_id} ({self.characters:,} characters, "
-            f"sha256 {self.sha256[:12]}...)"
+            f"sha256 {self.sha256[:12]}...)" + excluded
         )
 
 
@@ -174,6 +257,19 @@ def ingest_file(
     path = Path(path)
     text = read_text(path)
 
+    # A single file is its own structure-map root (structure.propose_structure), keyed under
+    # its resolved path with one document named for the file. Absent a confirmed map this is
+    # empty and nothing is dropped; where a preface region was confirmed excluded, its text
+    # never enters the store, so it never reaches extraction (4.11).
+    plan = store.structure_map(str(path.resolve())).get(path.name, {})
+    kept, exclusion_note = kept_text(text, plan)
+    if exclusion_note:
+        # A confirmed exclusion that cannot be applied is refused, not ignored: keeping the
+        # preface silently would produce exactly the polluted cast the exclusion was for.
+        raise IngestError(f"{path.name}: {exclusion_note}")
+    excluded = kept != text
+    text = kept
+
     title = work_title or path.stem.replace("_", " ").replace("-", " ").strip() or path.name
 
     work_id = ids.work_id(title)
@@ -227,6 +323,7 @@ def ingest_file(
         sha256=revision_sha,
         characters=len(text),
         already_present=already_present,
+        excluded=excluded,
     )
 
 
@@ -261,6 +358,8 @@ class FolderIngestResult:
     Reported because it is the difference between a folder somebody has classified and one
     that took a flag's default, and nothing else on screen distinguishes them.
     """
+    excluded: tuple[str, ...] = ()
+    """Documents a confirmed region was dropped from before storing (**4.11**)."""
 
     @property
     def characters(self) -> int:
@@ -282,11 +381,15 @@ class FolderIngestResult:
             if self.confirmed
             else ""
         )
+        excluded = (
+            f"\n  {len(self.excluded)} had a confirmed region excluded" if self.excluded else ""
+        )
         return (
             f"{state}: {self.revision_id} ({len(self.documents)} documents, "
             f"{self.characters:,} characters, sha256 {self.sha256[:12]}...)"
             + (f"\n  {counts}" if counts else "")
             + confirmed
+            + excluded
         )
 
 
@@ -385,11 +488,25 @@ def ingest_folder(
 
     # The shape read here is what `structure.as_json` writes. Read through the store rather
     # than by importing that module, which imports this one.
+    plans = store.structure_map(str(path.resolve()))
     confirmed = {
-        relative: entry.get("role", {}).get("value")
-        for relative, entry in store.structure_map(str(path.resolve())).items()
+        relative: (entry.get("role") or {}).get("value") for relative, entry in plans.items()
     }
     roles = {relative: confirmed.get(relative) or role for relative, _ in readable}
+
+    # A confirmed excluded region — a preface bound into a chapter file — is dropped before
+    # the text is hashed or stored, so it never reaches extraction (4.11). Refused, not
+    # ignored, when its boundary cannot be found, for the reason `ingest_file` gives.
+    excluded_paths: list[str] = []
+    kept_readable: list[tuple[str, str]] = []
+    for relative, document_text in readable:
+        kept, exclusion_note = kept_text(document_text, plans.get(relative, {}))
+        if exclusion_note:
+            raise IngestError(f"{relative}: {exclusion_note}")
+        if kept != document_text:
+            excluded_paths.append(relative)
+        kept_readable.append((relative, kept))
+    readable = kept_readable
 
     previous_id, previous = _previous_state(store, work_id)
 
@@ -463,4 +580,5 @@ def ingest_folder(
         already_present=already_present,
         compared_with=previous_id,
         confirmed=tuple(sorted(relative for relative in roles if relative in confirmed)),
+        excluded=tuple(sorted(excluded_paths)),
     )

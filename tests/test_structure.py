@@ -170,16 +170,21 @@ class TestWhatIsLeftOut:
         assert structure.documents == ()
         assert any("no readable text" in note for note in structure.notes)
 
-    def test_a_missing_folder_is_a_clean_error(self, tmp_path: Path) -> None:
-        with pytest.raises(IngestError, match="no such folder"):
+    def test_a_missing_path_is_a_clean_error(self, tmp_path: Path) -> None:
+        with pytest.raises(IngestError, match="no such file or folder"):
             propose_structure(tmp_path / "absent")
 
-    def test_a_file_is_refused(self, tmp_path: Path) -> None:
-        path = tmp_path / "one.md"
-        path.write_text("Ada.\n", encoding="utf-8", newline="")
+    def test_a_single_file_is_a_corpus_of_one(self, tmp_path: Path) -> None:
+        # 4.9 offers a file, a folder or a tree as equals, and the commonest preface to
+        # exclude arrives as one file. The file is its own root; its one document is named
+        # for the file.
+        path = tmp_path / "novel.md"
+        path.write_text("It is a truth universally acknowledged.\n", encoding="utf-8", newline="")
 
-        with pytest.raises(IngestError, match="describes a folder"):
-            propose_structure(path)
+        structure = propose_structure(path)
+
+        assert [plan.path for plan in structure.documents] == ["novel.md"]
+        assert structure.root == str(path.resolve())
 
 
 class TestTheMapAsADocument:

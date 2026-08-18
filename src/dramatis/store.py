@@ -53,6 +53,16 @@ what the database will accept. `structure` proposes these values, `ingest` recor
 `pipeline` reads by them (**4.3**).
 """
 
+EXCLUDED = "excluded"
+"""A third value a *region* role can take, alongside the two document roles.
+
+Not in ``DOCUMENT_ROLES`` and not a value the ``documents.role`` column will accept: an
+excluded region is not a kind of document but a span of one that ingest drops (**4.11**) — a
+critical preface, a transcriber's note, an appendix. It lives only in the structure map's
+JSON. It is here, beside the roles it stands with, so `structure` and `ingest` spell it the
+same way. A model never proposes it; throwing text away is a person's call.
+"""
+
 SETTING_PREFIX = "setting:"
 """Namespace separating a project's settings from the store's own machinery.
 

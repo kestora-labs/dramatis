@@ -16,6 +16,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from dramatis.drivers import is_postgres
+
 STORE_FILENAME = "dramatis.sqlite"
 
 
@@ -23,7 +25,8 @@ STORE_FILENAME = "dramatis.sqlite"
 class StoreLocation:
     """Where a command decided the project file is, and how it decided."""
 
-    path: Path
+    path: Path | str
+    """A `Path` for a file, or a URL string for a Postgres store (**4.10**)."""
     exists: bool
     explicit: bool
     searched_from: Path | None = None
@@ -85,6 +88,12 @@ def resolve_store(
     worse than the problem discovery solves.
     """
     if explicit is not None:
+        # A Postgres URL is a store too (**4.10**), and it is not a path: `Path()` would
+        # mangle it into something like `postgresql:\host\db` and then report that no
+        # project exists there. It is passed through as written, and taken to exist —
+        # whether the server answers is the driver's question, and it says so plainly.
+        if is_postgres(explicit):
+            return StoreLocation(path=str(explicit), exists=True, explicit=True)
         path = Path(explicit)
         return StoreLocation(path=path, exists=path.is_file(), explicit=True)
 

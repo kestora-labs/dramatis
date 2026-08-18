@@ -840,7 +840,7 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     structure.add_argument("path", type=Path, metavar="FOLDER")
-    structure.add_argument("--store", type=Path, default=None, help=STORE_HELP)
+    structure.add_argument("--store", default=None, help=STORE_HELP)
     structure.add_argument(
         "--ask",
         action="store_true",
@@ -892,7 +892,7 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     ingest.add_argument("path", type=Path, metavar="FILE|FOLDER")
-    ingest.add_argument("--store", type=Path, default=None, help=STORE_HELP)
+    ingest.add_argument("--store", default=None, help=STORE_HELP)
     ingest.add_argument("--work", help="work title (default: derived from the filename)")
     ingest.add_argument("--collection", help="collection name (default: the work title)")
     ingest.add_argument("--creator", help="author of the work")
@@ -938,7 +938,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "and writes nothing."
         ),
     )
-    characters.add_argument("--store", type=Path, default=None, help=STORE_HELP)
+    characters.add_argument("--store", default=None, help=STORE_HELP)
     characters.add_argument(
         "--collection",
         default=None,
@@ -960,7 +960,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "only, and never creates a project."
         ),
     )
-    status.add_argument("--store", type=Path, default=None, help=STORE_HELP)
+    status.add_argument("--store", default=None, help=STORE_HELP)
     status.add_argument(
         "--json",
         action="store_true",
@@ -981,7 +981,7 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     analyse.add_argument("revision", metavar="REVISION_ID")
-    analyse.add_argument("--store", type=Path, default=None, help=STORE_HELP)
+    analyse.add_argument("--store", default=None, help=STORE_HELP)
     analyse.add_argument(
         "--provider",
         choices=["anthropic", "ollama"],
@@ -1052,7 +1052,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "interface unless told to."
         ),
     )
-    serve.add_argument("--store", type=Path, default=None, help=STORE_HELP)
+    serve.add_argument("--store", default=None, help=STORE_HELP)
     serve.add_argument("--port", type=int, default=7373, help="port to listen on (default: 7373)")
     serve.add_argument(
         "--host",

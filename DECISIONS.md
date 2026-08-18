@@ -2357,3 +2357,78 @@ compare against.
 
 *Reversible.* The two endpoints and the panel are additive. The `serve` change widens what is
 allowed and refuses nothing that used to work.
+
+## D49 — One set of queries, two databases, and the column that replaces `rowid`
+
+**Phase 4.10.** Postgres as an alternative store, chosen by pointing `--store` at a URL
+instead of a file. SQLite remains the default and the shape the project is designed around —
+one file you can archive, send or deposit. Postgres exists for the deployment that is wrong
+for: several people reading one corpus, a container with no persistent disk, an institution
+that backs up databases and not directories.
+
+### A driver behind the interface, not a second Store
+
+`Store` is unchanged, and so are its queries. A `Connection` wrapper rewrites what differs on
+the way to the driver, which is why nothing above `dramatis.drivers` knows there are two
+backends and why no call site had to be touched. The alternatives were worse in the same way:
+a second Store means every future method written twice, and a query builder means writing
+something other than SQL forever. Both drift.
+
+Scoping it found less to do than feared. The SQL was already portable — `ON CONFLICT ... DO
+UPDATE` is in both, and no `INSERT OR REPLACE`, `AUTOINCREMENT` or SQLite date function
+appears anywhere. Three things actually differ, and they are the whole module: placeholders,
+the tie-break column, and the foreign-key pragma.
+
+### `rowid` becomes `seq`, and only where ordering depends on it
+
+**3.2** and **3.4** each fixed a real bug by ordering on `created_at, rowid`: a revision or
+snapshot identifier is a content hash, so ordering by it puts two rows written in the same
+second into an order decided by hashing — and a diff run backwards reports every strengthening
+as a weakening. `rowid` is SQLite's own. Postgres gets an explicit `BIGSERIAL seq` on the three
+ordered tables, and queries write `{tiebreak}` for whichever the dialect uses.
+
+Only those three tables get it. A column existing purely to break ties is noise on a table
+nothing orders. The two schemas therefore differ by one column, deliberately: a store is
+chosen once, not moved between backends, and no claim is made that a SQLite file can be poured
+into Postgres.
+
+The property is tested rather than asserted — three revisions written with identical
+timestamps come back in insertion order, and the test also states what the identifier-sorted
+order would have been, so a regression shows the bug 3.2 fixed rather than a bare inequality.
+
+### Three bugs a real Postgres found, and a mock would not have
+
+The bullet said *tested against a real Postgres, never a mock*, and this is what that bought.
+
+**`SELECT *` fed the driver's own column into a dataclass.** `TextRevision(**row)` refused
+`seq` as an unexpected keyword. Fixed at the driver: bookkeeping columns are stripped from
+every row on the way out, so `SELECT *` keeps working everywhere and nothing above knows the
+column exists. SQLite rows pass through untouched, because `sqlite3.Row` supports positional
+access that callers use and `rowid` is never selected anyway.
+
+**`fetchone()[0]` is not a thing a Postgres row does.** `count()` took its result
+positionally; psycopg returns a mapping, which raises `KeyError: 0`. The column is now named.
+
+**A URL is not a path.** `--store` was `type=Path` in argparse and `resolve_store` called
+`Path()` on it, so a Postgres URL arrived as `postgresql:\dramatis:...` and was reported as a
+missing project. Both now pass a URL through as the string it is. Without this the backend
+worked and was unreachable from the command line, which is the same as not working.
+
+### The tests run rather than skipping themselves
+
+They are in the ordinary suite and skip only when no server answers, rather than sitting
+behind a marker that is always deselected. **4.6** recorded what the other shape costs: a live
+test that skips itself forever reports green on exactly the machines that could have run it.
+A container is cheap and reproducible in a way a billable API is not, so there is no reason to
+hide these. The module docstring gives the one `docker run` line that makes them run.
+
+### Verified end to end
+
+Not only unit tests: the whole pipeline — ingest, extraction, resolution, aggregation,
+snapshot — against a live Postgres, producing a snapshot that still validates against the
+schema; snapshot immutability enforced on both backends; and a full CLI round trip,
+`dramatis ingest` then `dramatis status`, against a URL.
+
+*Reversible.* SQLite behaviour is unchanged and untouched by the driver: the placeholder is
+already `?`, the tie-break is already `rowid`, and nothing is stripped from its rows. Deleting
+`drivers.py` and inlining the SQLite driver returns the store to where 4.9 left it.

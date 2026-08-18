@@ -74,6 +74,14 @@ model, or reach an Ollama on the host for a fully local one.
 A project is one SQLite file — texts, character registry, and every snapshot. Copy it and
 you have copied the project.
 
+For a deployment a single file is wrong for — several people reading one corpus, a container
+with no persistent disk — point `--store` at a Postgres URL instead. Nothing else changes:
+
+```bash
+pip install "dramatis[postgres]"
+dramatis ingest draft.txt --store postgresql://user:pass@localhost/dramatis --work "My Novel"
+```
+
 Commands look for `dramatis.sqlite` in the current directory and every directory above it,
 so they work anywhere inside a project. Only `ingest` creates one; everything else says so
 rather than starting an empty project you did not ask for. `--store` names a file directly

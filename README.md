@@ -31,8 +31,16 @@ npm ci --prefix web && npm --prefix web run build
 dramatis serve                                 # http://127.0.0.1:7373
 ```
 
-`analyse` is the only command that calls a model. `ingest`, `status`, `validate`, and
-`serve` never do, and work with no credential and no network.
+To keep the text on your own machine entirely, run a model locally with
+[Ollama](https://ollama.com) and point `analyse` at it. No key, no account, no egress:
+
+```bash
+ollama pull llama3.1
+dramatis analyse rev:abc123 --provider ollama
+```
+
+`analyse` calls a model, and `structure --ask` does when you ask it to. `ingest`, `status`,
+`validate`, `characters`, and `serve` never do, and work with no credential and no network.
 
 ## The project file
 
@@ -62,7 +70,8 @@ linear scale renders the leads as ropes and everyone else as indistinguishable h
 ## Privacy
 
 Nothing leaves your machine except the text you send to the model provider you configure,
-and with a local model nothing leaves at all. There is no telemetry, no analytics, and no
+and with `--provider ollama` nothing leaves at all — Dramatis tells you if the Ollama you
+have configured is on another machine. There is no telemetry, no analytics, and no
 phone-home — not now and not later. Reading, rendering, diffing, and exporting an existing
 analysis never require a network connection or an API key.
 

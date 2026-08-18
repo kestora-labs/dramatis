@@ -629,16 +629,53 @@ def _settings_like(store: Store, args: argparse.Namespace) -> dict[str, Any]:
     return wanted
 
 
+def _provider_for(args: argparse.Namespace) -> Provider:
+    """Build the provider the run was asked for, and say what it will and will not do.
+
+    Both remarks go to stderr, and both are about promises the user is relying on. A local
+    model that is not on this machine has quietly stopped being local, and an effort setting
+    the provider cannot honour is a knob connected to nothing — which the run's parameters
+    will nonetheless record, because they record what was asked (**D35**).
+    """
+    if args.provider == "ollama":
+        from dramatis.providers.ollama_provider import OllamaProvider
+
+        ollama = OllamaProvider(model=args.model, host=args.host)
+        if not ollama.is_local:
+            print(
+                f"note: {ollama.host} is not this machine, so the text will leave it. "
+                "Unset OLLAMA_HOST or pass --host for a fully local analysis.",
+                file=sys.stderr,
+            )
+        if args.effort is not None and not ollama.honours_effort:
+            print(
+                f"note: --effort {args.effort} is recorded but not sent: Ollama has no "
+                "reasoning-effort setting, so this run reads the same as any other effort.",
+                file=sys.stderr,
+            )
+        return ollama
+
+    from dramatis.providers.anthropic_provider import AnthropicProvider
+
+    if args.host is not None:
+        raise ProviderError("--host applies to --provider ollama; Anthropic's address is fixed")
+    return AnthropicProvider(model=args.model)
+
+
 def _run_analyse(args: argparse.Namespace) -> int:
     from dramatis.extraction import DEFAULT_WINDOW_CHARACTERS, ExtractionError
     from dramatis.pipeline import PipelineError, analyse
-    from dramatis.providers.anthropic_provider import AnthropicProvider
     from dramatis.providers.cassette import CheckpointProvider
     from dramatis.resolution import ResolutionError
     from dramatis.snapshot import SnapshotError
     from dramatis.verification import DEFAULT_MAX_REJECTION_RATE, VerificationError
 
-    provider: Provider = AnthropicProvider(model=args.model)
+    try:
+        provider = _provider_for(args)
+    except ProviderError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
     checkpoint: CheckpointProvider | None = None
     if args.checkpoint is not None:
         checkpoint = CheckpointProvider(provider, args.checkpoint)
@@ -925,11 +962,26 @@ def _build_parser() -> argparse.ArgumentParser:
         description=(
             "Read a stored text revision with a model, verify every quotation against the "
             "source, and record the resulting graph as an immutable snapshot. Needs a "
-            "credential: this is the only command that calls a provider."
+            "credential for a hosted provider; --provider ollama runs on this machine and "
+            "needs none."
         ),
     )
     analyse.add_argument("revision", metavar="REVISION_ID")
     analyse.add_argument("--store", type=Path, default=None, help=STORE_HELP)
+    analyse.add_argument(
+        "--provider",
+        choices=["anthropic", "ollama"],
+        default="anthropic",
+        help=(
+            "which provider to call. 'ollama' runs a model on this machine, so the text "
+            "never leaves it and no credential is needed."
+        ),
+    )
+    analyse.add_argument(
+        "--host",
+        default=None,
+        help="where Ollama is, if not $OLLAMA_HOST or http://127.0.0.1:11434",
+    )
     analyse.add_argument(
         "--model",
         default=None,

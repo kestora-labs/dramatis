@@ -96,9 +96,9 @@ class TestLookingCostsNothing:
         with Store(store_path) as store:
             assert store.structure_map(str(corpus.resolve())) == {}
 
-    def test_a_missing_folder_exits_one(self, tmp_path: Path, capsys) -> None:
+    def test_a_missing_path_exits_one(self, tmp_path: Path, capsys) -> None:
         assert main(["structure", str(tmp_path / "absent")]) == 1
-        assert "no such folder" in capsys.readouterr().err
+        assert "no such file or folder" in capsys.readouterr().err
 
     def test_json_stays_parseable_while_notes_go_to_stderr(self, corpus: Path, capsys) -> None:
         assert main(["structure", str(corpus), "--json"]) == 0

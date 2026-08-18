@@ -452,7 +452,9 @@ graph.
       **4.2** proposed, so a critical preface can be excluded from analysis before a token
       is spent on it. Creation ingests and records settings; it never calls a model, which
       remains `analyse`'s job alone. Prompt selection is deliberately absent — it belongs to
-      **7.4**–**7.5**, where prompts become versioned artefacts. *(**D31**.)*
+      **7.4**–**7.5**, where prompts become versioned artefacts. *(**D31**. Depends on
+      **4.11**, which makes an excluded region actually reduce the cast; done first, as
+      **3.6** was.)*
 - [ ] **4.10** — Postgres as an alternative store. The `Store` interface is unchanged; a
       driver behind it speaks either SQLite or Postgres, chosen by the store URL. This is
       larger than it looks: `rowid` tie-breaking (added by **3.2** and **3.4** to keep
@@ -460,6 +462,13 @@ graph.
       monotonic column with a migration, and every `?` placeholder and `PRAGMA` is
       SQLite-specific. Tested against a real Postgres, never a mock. *(Split from **4.7**; see
       **D45**.)*
+- [x] **4.11** — **Analysis honours an excluded region.** A region a person marks `excluded`
+      in the structure map is dropped from the document at ingest, so its characters never
+      reach extraction — the mechanism **4.9** confirms in the browser and **D31**'s preface
+      finding needs. Mechanical, not a prompt instruction: the text is not sent rather than
+      sent with an ask to ignore it, matching **4.3**'s "split before reading" and keeping
+      exclusion a configuration rather than a model behaviour. *(Split from **4.9**; see
+      **D47**.)*
 
 **Acceptance:** Fixture **C** ingests without any code specific to its filing conventions.
 The structure map is editable and persists. A relation asserted in reference material and

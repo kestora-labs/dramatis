@@ -276,25 +276,37 @@ def propose_structure(root: Path | str) -> StructureMap:
     Reads text only to compare documents with each other; it calls no model and reaches no
     network, so a user can look at the proposal before deciding whether to spend anything.
     """
-    # Resolved, because the folder is the key a confirmed map is saved under: `corpus` and
+    # Resolved, because the root is the key a confirmed map is saved under: `corpus` and
     # `./corpus` and the same folder reached from a parent directory are one folder, and a
     # user who moved between them would be asked the same questions again.
     root = Path(root).resolve()
     if not root.exists():
-        raise IngestError(f"no such folder: {root}")
-    if not root.is_dir():
-        raise IngestError(f"{root} is a file; a structure map describes a folder")
+        raise IngestError(f"no such file or folder: {root}")
 
-    found = sorted(
-        (path for path in root.rglob("*") if path.is_file()),
-        key=lambda path: path.relative_to(root).as_posix(),
-    )
+    # A single file is a corpus of one, so the same map, exclusion and confirmation machinery
+    # reaches it. **4.9** offers "a single file, a folder, or a folder tree" as equals, and
+    # the commonest preface to exclude — a public-domain novel with a critical introduction
+    # bound in — arrives as exactly one file. The file is its own root, a path distinct from
+    # any folder's, and holds one document named for the file.
+    if root.is_dir():
+        found = sorted(
+            (path for path in root.rglob("*") if path.is_file()),
+            key=lambda path: path.relative_to(root).as_posix(),
+        )
+
+        def relative_of(path: Path) -> str:
+            return path.relative_to(root).as_posix()
+    else:
+        found = [root]
+
+        def relative_of(path: Path) -> str:
+            return path.name
 
     texts: dict[str, str] = {}
     skipped: list[tuple[str, str]] = []
 
     for path in found:
-        relative = path.relative_to(root).as_posix()
+        relative = relative_of(path)
         if path.suffix.lower() not in TEXT_SUFFIXES:
             skipped.append((relative, f"not a text file ({path.suffix or 'no suffix'})"))
             continue

@@ -658,3 +658,205 @@ class TestDiffEndpoint:
 
         assert payload["weights_comparable"] is True
         assert payload["weight_basis"]
+
+
+class TestTheOriginGuard:
+    """The guard that makes writing from a browser safe (4.8, D31).
+
+    A page open on any site can POST to 127.0.0.1 from the user's browser; it cannot read
+    the reply, but a write's side effect would land. The browser stamps such a request with
+    an Origin that is not the server's own, and the guard refuses it before the write.
+
+    Starlette's TestClient sends requests to `http://testserver`, so its Host header is
+    `testserver`; a same-origin write carries `Origin: http://testserver`, and a cross-origin
+    one carries anything else.
+    """
+
+    def _created(self, tmp_path: Path):
+        client = TestClient(create_app(tmp_path / "project.sqlite"))
+        client.post("/api/store", headers={"origin": "http://testserver"})
+        return client
+
+    def test_a_cross_origin_write_is_refused(self, tmp_path: Path) -> None:
+        client = self._created(tmp_path)
+        response = client.put(
+            "/api/settings",
+            json={"collectives_are_actors": True},
+            headers={"origin": "http://evil.example"},
+        )
+        assert response.status_code == 403
+
+    def test_the_refused_write_never_happened(self, tmp_path: Path) -> None:
+        """The point of a dependency rather than a check inside the handler: the side effect
+        must not land, not merely go unreported."""
+        client = self._created(tmp_path)
+        client.put(
+            "/api/settings",
+            json={"collectives_are_actors": True},
+            headers={"origin": "http://evil.example"},
+        )
+        assert client.get("/api/settings").json() == {}
+
+    def test_a_cross_origin_store_creation_creates_nothing(self, tmp_path: Path) -> None:
+        store_path = tmp_path / "project.sqlite"
+        client = TestClient(create_app(store_path))
+
+        response = client.post("/api/store", headers={"origin": "http://evil.example"})
+
+        assert response.status_code == 403
+        assert not store_path.is_file(), "the file was created despite the refusal"
+
+    def test_a_same_origin_write_is_allowed(self, tmp_path: Path) -> None:
+        client = self._created(tmp_path)
+        response = client.put(
+            "/api/settings",
+            json={"collectives_are_actors": True},
+            headers={"origin": "http://testserver"},
+        )
+        assert response.status_code == 200
+        assert response.json()["collectives_are_actors"] is True
+
+    def test_a_write_with_no_origin_is_allowed(self, tmp_path: Path) -> None:
+        # A non-browser client — curl, the CLI — sends no Origin and is not a cross-site
+        # vector. A browser cannot suppress the header on a cross-origin write, so absence
+        # is not a page hiding.
+        client = self._created(tmp_path)
+        response = client.put("/api/settings", json={"collectives_are_actors": True})
+        assert response.status_code == 200
+
+    def test_a_cross_origin_read_is_not_refused(self, tmp_path: Path) -> None:
+        # Reads change nothing, and the browser's own same-origin policy already stops the
+        # page reading the reply. Guarding them would only break non-browser tooling.
+        client = self._created(tmp_path)
+        response = client.get("/api/settings", headers={"origin": "http://evil.example"})
+        assert response.status_code == 200
+
+    def test_the_port_is_part_of_the_origin(self, tmp_path: Path) -> None:
+        # Another server on the same host but a different port is a different origin. netloc,
+        # not hostname, is what is compared.
+        client = self._created(tmp_path)
+        response = client.put(
+            "/api/settings",
+            json={"collectives_are_actors": True},
+            headers={"origin": "http://testserver:9999"},
+        )
+        assert response.status_code == 403
+
+    def test_every_mutating_verb_is_guarded(self, tmp_path: Path) -> None:
+        # The guard is on the method, not one endpoint: POST, PUT and DELETE all refuse.
+        client = self._created(tmp_path)
+        evil = {"origin": "http://evil.example"}
+
+        assert client.post("/api/store", headers=evil).status_code == 403
+        assert client.put("/api/settings", json={}, headers=evil).status_code == 403
+        assert (
+            client.put("/api/structure", json={"root": "/x", "plans": {}}, headers=evil).status_code
+            == 403
+        )
+        assert client.delete("/api/structure?root=/x", headers=evil).status_code == 403
+
+
+class TestTheWriteEndpoints:
+    """What the guard protects: a store's existence, its settings, its structure map. None
+    calls a model or touches the author's text."""
+
+    def _client(self, tmp_path: Path):
+        return TestClient(create_app(tmp_path / "project.sqlite"))
+
+    def test_creating_a_store_that_was_absent(self, tmp_path: Path) -> None:
+        store_path = tmp_path / "project.sqlite"
+        client = TestClient(create_app(store_path))
+
+        response = client.post("/api/store")
+
+        assert response.status_code == 201
+        assert response.json()["created"] is True
+        assert store_path.is_file()
+
+    def test_creating_a_store_that_already_exists_is_a_no_op(self, tmp_path: Path) -> None:
+        client = self._client(tmp_path)
+        client.post("/api/store")
+
+        again = client.post("/api/store")
+
+        assert again.status_code == 200
+        assert again.json()["created"] is False
+
+    def test_settings_merge_rather_than_replace(self, tmp_path: Path) -> None:
+        client = self._client(tmp_path)
+        client.post("/api/store")
+
+        client.put("/api/settings", json={"collectives_are_actors": True})
+        client.put("/api/settings", json={"preface_excluded": False})
+
+        assert client.get("/api/settings").json() == {
+            "collectives_are_actors": True,
+            "preface_excluded": False,
+        }
+
+    def test_a_setting_can_be_overwritten(self, tmp_path: Path) -> None:
+        client = self._client(tmp_path)
+        client.post("/api/store")
+
+        client.put("/api/settings", json={"collectives_are_actors": True})
+        client.put("/api/settings", json={"collectives_are_actors": False})
+
+        assert client.get("/api/settings").json()["collectives_are_actors"] is False
+
+    def test_settings_must_be_an_object(self, tmp_path: Path) -> None:
+        client = self._client(tmp_path)
+        client.post("/api/store")
+
+        assert client.put("/api/settings", json=["not", "an", "object"]).status_code == 422
+
+    def test_saving_and_reading_a_structure_map(self, tmp_path: Path) -> None:
+        client = self._client(tmp_path)
+        client.post("/api/store")
+        plan = {"role": {"value": "narrative"}}
+
+        saved = client.put("/api/structure", json={"root": "/corpus", "plans": {"one.md": plan}})
+
+        assert saved.status_code == 200
+        assert saved.json()["saved"] == 1
+        assert client.get("/api/structure", params={"root": "/corpus"}).json() == {"one.md": plan}
+
+    def test_the_server_stamps_the_confirmation_time_not_the_client(self, tmp_path: Path) -> None:
+        # confirmed_at records when the server accepted the answer, so a client-supplied one
+        # is ignored rather than trusted.
+        client = self._client(tmp_path)
+        client.post("/api/store")
+
+        response = client.put(
+            "/api/structure",
+            json={"root": "/corpus", "plans": {"one.md": {}}, "confirmed_at": "1999-01-01"},
+        )
+
+        assert response.status_code == 200
+
+    def test_forgetting_a_structure_map(self, tmp_path: Path) -> None:
+        client = self._client(tmp_path)
+        client.post("/api/store")
+        client.put("/api/structure", json={"root": "/corpus", "plans": {"one.md": {}}})
+
+        forgotten = client.delete("/api/structure", params={"root": "/corpus"})
+
+        assert forgotten.json()["forgotten"] == 1
+        assert client.get("/api/structure", params={"root": "/corpus"}).json() == {}
+
+    def test_a_structure_map_needs_a_root(self, tmp_path: Path) -> None:
+        client = self._client(tmp_path)
+        client.post("/api/store")
+
+        assert client.put("/api/structure", json={"plans": {}}).status_code == 422
+
+    def test_a_structure_map_needs_plans(self, tmp_path: Path) -> None:
+        client = self._client(tmp_path)
+        client.post("/api/store")
+
+        assert client.put("/api/structure", json={"root": "/x", "plans": "no"}).status_code == 422
+
+    def test_writing_settings_to_an_uncreated_store_is_a_404(self, tmp_path: Path) -> None:
+        # open_store 404s on a missing file; only POST /api/store may bring it into being.
+        client = self._client(tmp_path)
+
+        assert client.put("/api/settings", json={"a": 1}).status_code == 404

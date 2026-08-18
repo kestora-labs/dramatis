@@ -2066,3 +2066,79 @@ running server.
 
 *Reversible.* The provider is additive and reached only through `--provider ollama`; deleting
 the module and the flag leaves Anthropic exactly as it was.
+
+## D45 — A container image, and the Postgres store split out of it
+
+**Phase 4.7.** The bullet read *"Docker image; Postgres as an alternative store."* Those are
+two deliverables of very different size, and bundling them would have produced a commit whose
+Postgres half could not be honestly tested here.
+
+### Why the split
+
+A Docker image is self-contained: a Dockerfile, a `.dockerignore`, and a structural test.
+A Postgres backend is not. `store.py` is 835 lines with ninety `?` placeholders that Postgres
+spells `%s`, a `PRAGMA` and a `sqlite3.Row` factory, and — the real work — three queries that
+order by `created_at, rowid` to break ties stably. That `rowid` tie-break was added by **3.2**
+and **3.4** to fix real bugs: without it a diff could run backwards and report every
+strengthening as a weakening. Postgres has no `rowid`, so honouring those decisions means an
+explicit monotonic column and a migration at `STORE_VERSION`.
+
+And it cannot be tested against a mock. **4.6** had just finished teaching this: an adapter
+written to a contract rather than to a running server shipped a bug that a fake could not
+catch. Writing a Postgres backend against no Postgres would repeat that a bullet later. So
+Postgres became **4.10**, to be done against a real server — appended rather than renumbered,
+because **4.8** and **4.9** are cited by number here and the governance test checks those
+references.
+
+### Three stages, so the runtime carries none of its toolchain
+
+Node and `tsc` build the client and stay in the web stage; the source tree and build backend
+build a wheel and stay in the wheel stage; the runtime is a slim Python image with a wheel and
+a folder of static files. The result is 194 MB and contains no compiler. The wheel carries the
+prompts and the schema as package data — verified by unzipping it before trusting it — so a
+clean install has everything `analyse` needs.
+
+### The client location is configuration, not a constant
+
+`server.py` computed the client path relative to its own source file: correct in a checkout,
+wrong for a wheel in `site-packages`, three directories below a `web/dist` that is not there.
+Left alone, the image would have served the "not built" 503 for a client it was holding. The
+constant became `web_root()`, reading `DRAMATIS_WEB_ROOT`, defaulting to the old path — the
+same reasoning as `OLLAMA_HOST`: a path right in one deployment is wrong in another, and the
+deployment is what knows. The image sets the variable to where it copied the client.
+
+### The container binds `0.0.0.0`; `serve` still binds loopback
+
+Inside a container, loopback is unreachable from the host, so an image keeping the
+`127.0.0.1` default would never answer. Only the image overrides it. The `serve` default is
+unchanged, because a manuscript should not reach the LAN because somebody ran a command, and
+the boundary moves to the user's `docker run -p`: publish to `127.0.0.1` to stay private, or
+to `0.0.0.0` knowingly.
+
+### The find only a real build could surface: a name collision on PyPI
+
+The first image built, and its container exited 127: `dramatis: executable file not found`.
+`pip show` inside it read **version 0.1.1**, which this project has never produced. There is an
+unrelated package named `dramatis` on PyPI, and installing by name — even with `--find-links`
+pointing at our wheel — let pip prefer the stranger's higher version number and install it
+instead. The image had been shipping someone else's code.
+
+The fix installs the wheel by file path, `"$(ls /tmp/wheels/*.whl)[serve]"`, which leaves pip
+no name to resolve for the application while still pulling the `[serve]` extra's dependencies
+from the index. After it, the container serves version `0.1.0.dev0` — ours. A structural test
+now fails if the Dockerfile reintroduces the install-by-name form.
+
+### Verified for real, not only structurally
+
+The proof of a Dockerfile is a build and a run, and both were done. The image builds; the
+container starts healthy; `/api/health` reports the mounted store present; `/api/works` returns
+a work ingested on the host through the mounted volume; and `/` serves the client's
+`<title>Dramatis</title>` rather than the 503. `tests/test_docker.py` reads the file and holds
+its load-bearing properties between such runs, in the manner `test_ci_workflow.py` guards CI.
+A CI job that builds the image on every push was considered and left for later: it needs Docker
+in the runner and adds minutes, and the structural test plus a recorded manual build is the
+same gate this project already accepts for its other infrastructure config.
+
+*Reversible.* The image, its ignore file, and its test are additive; `web_root()` defaults to
+the previous behaviour when the variable is unset. Deleting all of it returns the project to a
+checkout-only server with no change to how it runs from source.

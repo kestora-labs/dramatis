@@ -42,6 +42,22 @@ dramatis analyse rev:abc123 --provider ollama
 `analyse` calls a model, and `structure --ask` does when you ask it to. `ingest`, `status`,
 `validate`, `characters`, and `serve` never do, and work with no credential and no network.
 
+### In a container
+
+The image builds the client and bundles it with the API. Mount a directory to hold the
+project store, and publish the port to `127.0.0.1` so the server stays on your machine —
+inside the container it binds `0.0.0.0`, because a container's loopback is unreachable from
+the host, so the published address is where you decide who can reach it.
+
+```bash
+docker build -t dramatis .
+docker run --rm -p 127.0.0.1:7373:7373 -v "$PWD/project:/data" dramatis
+# the store lives at ./project/dramatis.sqlite; open http://127.0.0.1:7373
+```
+
+Analysis still runs wherever you point it: pass `-e ANTHROPIC_API_KEY=...` for a hosted
+model, or reach an Ollama on the host for a fully local one.
+
 ## The project file
 
 A project is one SQLite file — texts, character registry, and every snapshot. Copy it and

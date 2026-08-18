@@ -159,6 +159,51 @@ class TestBinding:
         assert DEFAULT_PORT == 7373
 
 
+class TestServingTheClient:
+    """Where the built client is found. The default assumes a source checkout; the Docker
+    image installs a wheel and points `DRAMATIS_WEB_ROOT` at the client it copied in."""
+
+    def test_it_defaults_to_the_source_checkout_layout(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from dramatis.server import DEFAULT_WEB_ROOT, web_root
+
+        monkeypatch.delenv("DRAMATIS_WEB_ROOT", raising=False)
+        assert web_root() == DEFAULT_WEB_ROOT
+
+    def test_it_honours_the_override(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        from dramatis.server import web_root
+
+        monkeypatch.setenv("DRAMATIS_WEB_ROOT", str(tmp_path / "elsewhere"))
+        assert web_root() == tmp_path / "elsewhere"
+
+    def test_a_built_client_is_served_from_the_override(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # A wheel install puts server.py three directories above a `web/dist` that is not
+        # there; without the override the container would serve the 503 for a client it holds.
+        dist = tmp_path / "dist"
+        (dist / "assets").mkdir(parents=True)
+        (dist / "index.html").write_text("<!doctype html><title>Dramatis</title>", "utf-8")
+        monkeypatch.setenv("DRAMATIS_WEB_ROOT", str(dist))
+
+        client = TestClient(create_app(tmp_path / "project.sqlite"))
+        response = client.get("/")
+
+        assert response.status_code == 200
+        assert "Dramatis" in response.text
+
+    def test_the_api_still_answers_when_the_client_is_absent(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setenv("DRAMATIS_WEB_ROOT", str(tmp_path / "nothing-here"))
+
+        client = TestClient(create_app(tmp_path / "project.sqlite"))
+
+        assert client.get("/api/health").status_code == 200
+        assert client.get("/").status_code == 503
+
+
 class TestOptionalDependency:
     def test_the_framework_is_not_required_to_use_dramatis(self) -> None:
         """Invariant 6: reading and validating a project must work without the server."""

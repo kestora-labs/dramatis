@@ -19,6 +19,7 @@ project keeps working without it (Invariant 6).
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 from typing import Any
 
@@ -39,8 +40,25 @@ from dramatis.store import Store
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 7373
 
-WEB_ROOT = Path(__file__).resolve().parents[2] / "web" / "dist"
-"""Where the built client lives. Absent until `npm run build` has been run in web/."""
+DEFAULT_WEB_ROOT = Path(__file__).resolve().parents[2] / "web" / "dist"
+"""Where the built client lives in a source checkout: `web/dist` beside `src`, which is
+where `npm run build` writes it. Absent until that has been run."""
+
+WEB_ROOT_ENV = "DRAMATIS_WEB_ROOT"
+
+
+def web_root() -> Path:
+    """Where to serve the built client from, read at call time rather than at import.
+
+    The default is computed from this file's location, which is correct only in a source
+    checkout: a wheel installed into `site-packages` puts `server.py` three directories
+    below a `web/dist` that is not there. `DRAMATIS_WEB_ROOT` overrides it, so an installed
+    layout — the Docker image most of all — can point at the client it placed, for the same
+    reason `OLLAMA_HOST` is not hardcoded: a path that is right in one deployment is wrong in
+    another, and the deployment is what knows.
+    """
+    override = os.environ.get(WEB_ROOT_ENV)
+    return Path(override) if override else DEFAULT_WEB_ROOT
 
 
 class ServerError(Exception):
@@ -431,15 +449,18 @@ def create_app(store_path: Path | str):
         finally:
             store.close()
 
-    if WEB_ROOT.is_dir():
-        app.mount("/assets", StaticFiles(directory=WEB_ROOT / "assets"), name="assets")
+    # Resolved once, when the app is built, so a single request cannot see the client half
+    # mounted. A server that starts without a built client stays a working API either way.
+    root = web_root()
+    if root.is_dir():
+        app.mount("/assets", StaticFiles(directory=root / "assets"), name="assets")
 
         @app.get("/{full_path:path}")
         def client(full_path: str) -> Any:
-            candidate = WEB_ROOT / full_path
+            candidate = root / full_path
             if full_path and candidate.is_file():
                 return FileResponse(candidate)
-            return FileResponse(WEB_ROOT / "index.html")
+            return FileResponse(root / "index.html")
     else:
 
         @app.get("/")

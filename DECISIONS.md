@@ -1961,3 +1961,108 @@ whenever the client wants it.
 *Reversible.* `registry.py` reads and writes nothing; deleting it and its two call sites
 returns the project to 4.4, with the cross-work behaviour it always had and the tests that
 now describe it.
+
+## D44 — A local provider must be checkably local, and must not pretend to knobs it has not got
+
+**Phase 4.6.** Ollama runs a model on the user's own computer, which makes the phase's
+acceptance sentence reachable: *a full analysis completes against a local model with the
+machine offline*. That sentence is now a test — the whole pipeline through a transport that
+raises if it is ever pointed anywhere but loopback.
+
+### No SDK, and no new dependency
+
+Ollama speaks JSON over HTTP and the standard library posts JSON over HTTP. A provider whose
+entire purpose is that nothing leaves the machine, and which first required a package be
+fetched from the internet, would be a joke at its own expense. The smaller transport is also
+the more auditable one: Invariant 7 is a claim about where bytes go, and `urllib` in one
+function is a claim a reviewer can finish checking.
+
+The `ollama` extra therefore does not exist. There is nothing to install.
+
+### The host is checked, and the answer is said out loud
+
+`OLLAMA_HOST` can point anywhere, and a remote Ollama is a perfectly reasonable thing to run
+— but it means the manuscript leaves the machine, which is the one promise this provider
+exists to keep. `is_local` answers it and `analyse` prints a note when the answer is no.
+
+Not an error: refusing to run against a model on a machine down the hall would be presuming
+about somebody's network. But not silent either, because the alternative is a user relying on
+a promise that an environment variable they set months ago has quietly withdrawn.
+
+### Effort is not honoured, and the provider says so rather than dropping it
+
+Anthropic takes a reasoning-effort dial; Ollama has none. Three options existed, and two are
+worse than they look. *Silently ignoring it* lets two runs record different configurations
+while making byte-identical calls — the mirror of the fault **D35** found in
+`resolution_prompt_version`, where a run recorded what happened to it rather than what it was
+asked to do. *Inventing a field* the server ignores is the same lie with more steps.
+
+So `honours_effort` is False, `analyse` reports it when an effort was given, and the run
+parameters go on recording the effort because they record what a run was **asked** to do and a
+provider ignoring a setting does not unmake the choice. There is a test that two efforts
+produce the same request body, and one that no `effort` key appears anywhere in it.
+
+### Translating the vocabulary rather than passing it through
+
+Ollama's `done_reason` says `length`; `ModelResponse.truncated` reads `max_tokens`. Left
+untranslated, a reply cut off by the token budget arrives at `response.json()` as *the model
+emitted malformed JSON*, which sends the reader to the prompt rather than to the budget that
+actually ran out — the exact failure `ModelResponse.json` was written to prevent.
+
+Ollama has no refusal signal, so `refused` is never true here. A local model that declines
+returns prose, which fails validation as it should, rather than being mistaken for an empty
+reading.
+
+### A 404 is decided on the status, not on the wording
+
+A missing model is the overwhelmingly common first-run failure — somebody installs Ollama and
+has not pulled anything — and `ollama pull` is the whole of the fix. The first version matched
+on the body text and a 404 with an unreadable body fell through to a generic message, which a
+test caught. The status alone now decides it: `/api/chat` is answered whenever Ollama is
+running at all, so a 404 from it is about the model.
+
+### What the fakes could not catch, and a real server found in a minute
+
+The adapter was written from Ollama's API contract, and the commit said so. Ollama was then
+installed on the development machine, and the first thing it found was a bug the fakes were
+structurally incapable of catching: **`available()` posted to `/api/tags`, which is GET-only.**
+Ollama answers 405, so the adapter reported a perfectly healthy server as absent.
+
+The harm was not cosmetic. `available()` is what gates the live test, so the live test would
+have skipped itself forever on exactly the machines able to run it — green, and never
+executed. The fake transports took `(url, payload, timeout)` and never modelled the verb, so
+no test could have failed. `Transport` now carries the method, and four tests pin it, including
+one asserting that a running server with **no models installed** still reads as available —
+the state that exposed it.
+
+Two things designed blind turned out right: a real 404 from a machine with no models produced
+exactly the intended `ollama pull` sentence, and every field of a real reply mapped as
+expected.
+
+`models()` was added alongside, so the live test runs against whatever the machine actually
+has rather than a name compiled in. A live test that fails because the developer pulled a
+different model is a live test people switch off.
+
+### What a real local run showed about the gate
+
+A full `dramatis analyse --provider ollama` on a short scene completed in 45 seconds on a
+four-core laptop with no GPU, and produced three characters and **no relations**: the model
+returned the quotation `You are late.` where the source reads `You are late,`. One character
+of punctuation, silently corrected, and **Invariant 3 refused it**.
+
+That is the gate doing its job rather than a defect, and it is worth recording as the shape of
+local analysis on small models: they paraphrase, `verify` rejects, and past
+`DEFAULT_MAX_REJECTION_RATE` the whole extraction is refused rather than a thin graph shipped.
+The same scene verified on other attempts, so the behaviour is a coin-flip rather than a wall.
+A local model worth analysing a manuscript with wants hardware this laptop has not got; what
+this machine proves is the adapter, which is what it was installed for.
+
+### What was not built
+
+**No cassette support specific to Ollama**, because none is needed: `CheckpointProvider` wraps
+any provider. The `live` marker, whose description said *billable* and *needs a credential*,
+now covers both kinds of real provider — a hosted one needing a key and a local one needing a
+running server.
+
+*Reversible.* The provider is additive and reached only through `--provider ollama`; deleting
+the module and the flag leaves Anthropic exactly as it was.

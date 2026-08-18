@@ -436,7 +436,7 @@ graph.
       declared but never enacted, and enacted but never declared. *(See **D42**.)*
 - [x] **4.5** — Character registry scoped to a collection so characters may span multiple
       works. *(See **D43**.)*
-- [ ] **4.6** — Ollama provider adapter for fully local analysis.
+- [x] **4.6** — Ollama provider adapter for fully local analysis. *(See **D44**.)*
 - [ ] **4.7** — Docker image; Postgres as an alternative store.
 - [ ] **4.8** — The server's first **mutating endpoints**, and the guard they need. Writes
       are confined to project metadata — settings, the structure map, and creating a store —

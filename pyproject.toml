@@ -53,10 +53,11 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Live tests are deselected by default and never run in CI: they cost money, need a
-# credential, and would make the suite depend on a network. Run them deliberately with
-# `pytest -m live` when re-recording cassettes.
+# Live tests are deselected by default and never run in CI: they need a provider that is
+# actually there — a credential and a billable API, or a running local server — and would
+# make the suite depend on something no checkout can promise. Run them deliberately with
+# `pytest -m live` when re-recording cassettes or checking an adapter against the real thing.
 addopts = "-q --strict-markers -m 'not live'"
 markers = [
-    "live: makes a real, billable provider call. Deselected by default; needs a credential.",
+    "live: makes a real provider call. Deselected by default; needs a credential for a hosted provider, or a running server for a local one.",
 ]

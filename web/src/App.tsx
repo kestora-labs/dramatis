@@ -49,6 +49,15 @@ import {
   type Comparison,
   type FindingEntry,
 } from "./declared.js";
+import {
+  describePlan,
+  initialChoices,
+  isReady,
+  plansFor,
+  type Choice,
+  type ProposedStructure,
+  type Role,
+} from "./create.js";
 import { describeAnchor, passageUrl, splitPassage, type PassageResponse } from "./passage.js";
 
 interface SnapshotSummary {
@@ -457,6 +466,189 @@ function DeclaredPanel({
   );
 }
 
+/**
+ * Creating a project: choose a source, say what each document is, and ingest.
+ *
+ * The whole of 4.9's browser half. It calls no model — proposing reads the folder, and
+ * analysing stays a separate act — so opening this costs nothing and can be abandoned
+ * freely.
+ *
+ * The one screen that matters is the document list: a role for each, and, where a critical
+ * preface is bound into the same file, the line the narrative begins at. That line is what
+ * lets the preface be dropped before a token is spent on it, which is the finding D31
+ * measured and the reason this flow exists at all.
+ */
+function CreateProject({ onCreated }: { onCreated: () => void }) {
+  const [source, setSource] = useState("");
+  const [title, setTitle] = useState("");
+  const [collectives, setCollectives] = useState(false);
+  const [structure, setStructure] = useState<ProposedStructure | null>(null);
+  const [choices, setChoices] = useState<Record<string, Choice>>({});
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+
+  const look = async () => {
+    setProblem(null);
+    setDone(null);
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/structure/propose?source=${encodeURIComponent(source)}`);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail ?? "could not read that path");
+      setStructure(payload);
+      setChoices(initialChoices(payload));
+    } catch (reason) {
+      setStructure(null);
+      setProblem(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const create = async () => {
+    if (!structure) return;
+    setProblem(null);
+    setBusy(true);
+    try {
+      // The store first: everything after it writes into a project that must exist.
+      const created = await fetch("/api/store", { method: "POST" });
+      if (!created.ok) throw new Error("could not create the project file");
+
+      await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ collectives_are_actors: collectives }),
+      });
+
+      // The confirmed map before the ingest, because the ingest is what acts on it: a role
+      // decides how each document is read, and an excluded region is dropped as it is stored.
+      const saved = await fetch("/api/structure", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ root: structure.root, plans: plansFor(structure, choices) }),
+      });
+      if (!saved.ok) throw new Error("could not save the structure map");
+
+      const ingested = await fetch("/api/ingest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: source, work_title: title || null }),
+      });
+      const result = await ingested.json();
+      if (!ingested.ok) throw new Error(result.detail ?? "could not ingest");
+
+      setDone(result.summary);
+      onCreated();
+    } catch (reason) {
+      setProblem(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const setChoice = (path: string, patch: Partial<Choice>) =>
+    setChoices((current) => ({ ...current, [path]: { ...current[path], ...patch } }));
+
+  return (
+    <section className="detail">
+      <div className="detail-head">
+        <h2>New project</h2>
+      </div>
+
+      <label htmlFor="source">A file, a folder, or a folder tree</label>
+      <input
+        id="source"
+        type="text"
+        value={source}
+        placeholder="/path/to/novel.txt"
+        onChange={(event) => setSource(event.target.value)}
+      />
+      <button type="button" className="clear" disabled={!source || busy} onClick={look}>
+        {busy ? "Reading..." : "Read it"}
+      </button>
+
+      {problem && <p className="error">{problem}</p>}
+      {done && <p className="tally">{done}</p>}
+
+      {structure && (
+        <>
+          <label htmlFor="work-title">Work title</label>
+          <input
+            id="work-title"
+            type="text"
+            value={title}
+            placeholder="taken from the filename"
+            onChange={(event) => setTitle(event.target.value)}
+          />
+
+          <label>
+            <input
+              type="checkbox"
+              checked={collectives}
+              onChange={(event) => setCollectives(event.target.checked)}
+            />{" "}
+            Count collectives as actors
+          </label>
+          {/* Said here because it is a term the whole study is conducted under, not a view
+              option: snapshots either side of a change answer different questions. */}
+          <p className="note">
+            A faction reported beside its own members counts their contacts twice. Turn this on only
+            for corpora where a group really acts.
+          </p>
+
+          <h3>What is in it</h3>
+          <ul className="changes">
+            {structure.documents.map((document) => (
+              <li key={document.path}>
+                <span className="change-subject">{document.path}</span>
+                <span className="change-detail">
+                  {(["narrative", "reference"] as Role[]).map((role) => (
+                    <button
+                      key={role}
+                      type="button"
+                      className={choices[document.path]?.role === role ? "cell compared" : "clear"}
+                      onClick={() => setChoice(document.path, { role })}
+                    >
+                      {role}
+                    </button>
+                  ))}
+                  <input
+                    type="text"
+                    value={choices[document.path]?.excludeBefore ?? ""}
+                    placeholder="drop everything before this line (optional)"
+                    onChange={(event) =>
+                      setChoice(document.path, { excludeBefore: event.target.value })
+                    }
+                  />
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          {structure.skipped.length > 0 && (
+            <p className="note">{structure.skipped.length} file(s) skipped as not text.</p>
+          )}
+
+          <p className="tally">{describePlan(structure, choices)}</p>
+          <button
+            type="button"
+            className="pin"
+            disabled={!isReady(structure, choices) || busy}
+            onClick={create}
+          >
+            {busy ? "Creating..." : "Create the project"}
+          </button>
+          <p className="note">
+            Creating reads the text into the project and records the settings. It calls no model;
+            analysing is a separate step.
+          </p>
+        </>
+      )}
+    </section>
+  );
+}
+
 /** Every node's position, as the graph currently has them. */
 function positionsOf(instance: cytoscape.Core): Positions {
   const positions: Positions = {};
@@ -774,19 +966,36 @@ export function App() {
     null,
   );
   const [declared, setDeclared] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Held in a ref as well as in state: the pin button and the drag handler need the live
   // instance, and they are not part of what makes the graph rebuild.
   const graph = useRef<cytoscape.Core | null>(null);
 
-  useEffect(() => {
+  /**
+   * What the project holds, tolerant of it holding nothing yet.
+   *
+   * `/api/snapshots` answers 404 before the project file exists, and that is a normal state
+   * now that a project can be created from here (4.9). Reading the body as an array
+   * regardless crashed the whole client to a blank page on a fresh install — the exact case
+   * this flow is for.
+   */
+  const loadSnapshots = ({ openCreationWhenEmpty = false } = {}) =>
     fetch("/api/snapshots")
-      .then((response) => response.json())
-      .then((found: SnapshotSummary[]) => {
-        setSnapshots(found);
-        if (found.length > 0) setSelected(found[0].id);
+      .then(async (response) => (response.ok ? await response.json() : []))
+      .then((found: unknown) => {
+        const summaries = Array.isArray(found) ? (found as SnapshotSummary[]) : [];
+        setSnapshots(summaries);
+        if (summaries.length > 0) setSelected(summaries[0].id);
+        else if (openCreationWhenEmpty) setCreating(true);
       })
       .catch(() => setError("could not reach the Dramatis server"));
+
+  useEffect(() => {
+    loadSnapshots({ openCreationWhenEmpty: true });
+    // Run once, on mount. `loadSnapshots` is stable enough for this purpose and pulling it
+    // into the dependency list would re-fetch on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // The lineage follows the work, not the snapshot: switching between two snapshots of one
@@ -1044,6 +1253,21 @@ export function App() {
       <aside>
         <h1>Dramatis</h1>
         {error && <p className="error">{error}</p>}
+
+        {/* Offered always, and opened by default when the project holds nothing: a fresh
+            install lands on an empty graph, and the first thing to do there is make one. */}
+        <button type="button" className="clear" onClick={() => setCreating(!creating)}>
+          {creating ? "Close" : "New project"}
+        </button>
+        {creating && (
+          <CreateProject
+            onCreated={() => {
+              // Re-read what the project holds rather than guessing: the ingest may have
+              // added a revision to a work already there.
+              loadSnapshots();
+            }}
+          />
+        )}
 
         <label htmlFor="snapshot">Snapshot</label>
         <select

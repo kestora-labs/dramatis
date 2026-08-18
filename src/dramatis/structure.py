@@ -784,5 +784,12 @@ def structure_for(root: Path | str, store: Any) -> StructureMap:
     saved = store.structure_map(structure.root)
     if not saved:
         return structure
-    texts = {plan.path: read_text(Path(root) / plan.path) for plan in structure.documents}
+    # A single file is its own root (**4.11**), and its one document is named for the file —
+    # so joining root to the document path would look for `novel.txt/novel.txt`. The root is
+    # the file itself in that case.
+    base = Path(structure.root)
+    texts = {
+        plan.path: read_text(base if base.is_file() else base / plan.path)
+        for plan in structure.documents
+    }
     return restore(structure, saved, texts)

@@ -36,6 +36,7 @@ from urllib.parse import urlparse
 
 from dramatis import __version__
 from dramatis.diff import DiffError, diff_snapshots
+from dramatis.ingest import IngestError
 from dramatis.passage import (
     PassageNotFound,
     StructureNotReproducible,
@@ -523,6 +524,98 @@ def create_app(store_path: Path | str):
             {"store": str(path), "created": not existed},
             status_code=200 if existed else 201,
         )
+
+    @app.get("/api/structure/propose")
+    def propose(source: str) -> JSONResponse:
+        """Read a file or folder and propose what it holds, for the browser to confirm.
+
+        Calls no model and reaches no network (**4.9** never does; that stays `analyse`'s
+        job), so opening the creation flow costs nothing. Anything already confirmed for this
+        path is put back, so a map built earlier at the command line shows as settled rather
+        than being asked again.
+
+        The store may not exist yet — creating it is a later step of the same flow — so this
+        proposes without one rather than 404ing the first screen of project creation.
+        """
+        from dramatis.structure import as_json as structure_json
+        from dramatis.structure import propose_structure, structure_for
+
+        if not Path(source).exists():
+            raise HTTPException(status_code=404, detail=f"no such file or folder: {source}")
+
+        try:
+            # `path` here is the *store*, from the enclosing create_app. When it does not
+            # exist yet — creating it comes later in this same flow — propose without a
+            # store rather than 404ing the first screen of project creation.
+            if not path.is_file():
+                return JSONResponse(structure_json(propose_structure(source)))
+            store = open_store()
+            try:
+                return JSONResponse(structure_json(structure_for(source, store)))
+            finally:
+                store.close()
+        except IngestError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @app.post("/api/ingest", status_code=201)
+    def ingest(payload: dict[str, Any]) -> JSONResponse:
+        """Read a chosen file or folder into the project.
+
+        The write that project creation ends with. A folder and a file are both accepted and
+        told apart here rather than by the caller, because which one a path is, is a fact
+        about the filesystem rather than a choice the browser should have to get right.
+
+        Any structure map confirmed first is honoured: document roles decide what is read as
+        narrative and what as reference (**4.3**), and a region confirmed `excluded` is
+        dropped before the text is stored (**4.11**) — which is how a preface is excluded
+        before a token is spent on it. No model is called.
+        """
+        from dramatis.ingest import ingest_file, ingest_folder
+
+        source = payload.get("path")
+        if not isinstance(source, str) or not source:
+            raise HTTPException(status_code=422, detail="an ingest needs a 'path' string")
+        chosen = Path(source)
+        if not chosen.exists():
+            raise HTTPException(status_code=404, detail=f"no such file or folder: {source}")
+
+        collectives = payload.get("collectives_are_actors")
+        options: dict[str, Any] = {
+            "work_title": payload.get("work_title") or None,
+            "collection_name": payload.get("collection_name") or None,
+            "label": payload.get("label") or None,
+        }
+        if collectives is not None:
+            options["collectives_are_actors"] = bool(collectives)
+
+        store = open_store()
+        try:
+            if chosen.is_dir():
+                result = ingest_folder(store, chosen, **options)
+                excluded = list(result.excluded)
+                documents = len(result.documents)
+            else:
+                result = ingest_file(store, chosen, **options)
+                excluded = [chosen.name] if result.excluded else []
+                documents = 1
+            return JSONResponse(
+                {
+                    "collection_id": result.collection_id,
+                    "work_id": result.work_id,
+                    "revision_id": result.revision_id,
+                    "sha256": result.sha256,
+                    "documents": documents,
+                    "characters": result.characters,
+                    "already_present": result.already_present,
+                    "excluded": excluded,
+                    "summary": result.summary,
+                },
+                status_code=200 if result.already_present else 201,
+            )
+        except IngestError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        finally:
+            store.close()
 
     @app.get("/api/settings")
     def get_settings() -> dict[str, Any]:

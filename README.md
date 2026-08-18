@@ -39,6 +39,17 @@ ollama pull llama3.1
 dramatis analyse rev:abc123 --provider ollama
 ```
 
+Or start with nothing and build the project in the browser — point `serve` at a file that
+does not exist yet, open it, and choose a source, a role for each document, and any front
+matter to leave out:
+
+```bash
+dramatis serve --store my-novel.sqlite     # creates nothing until you ask it to
+```
+
+Excluding a preface there means its characters never reach the model, so it costs nothing to
+analyse a book without the critic who introduced it.
+
 `analyse` calls a model, and `structure --ask` does when you ask it to. `ingest`, `status`,
 `validate`, `characters`, and `serve` never do, and work with no credential and no network.
 

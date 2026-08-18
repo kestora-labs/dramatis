@@ -17,7 +17,7 @@ from dramatis.pipeline import analyse
 from dramatis.providers.scripted import ScriptedProvider
 from dramatis.schema import DOCUMENT_VERSION
 from dramatis.server import DEFAULT_HOST, DEFAULT_PORT, create_app
-from dramatis.store import Store
+from dramatis.store import NARRATIVE, Store
 
 fastapi = pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
@@ -860,3 +860,243 @@ class TestTheWriteEndpoints:
         client = self._client(tmp_path)
 
         assert client.put("/api/settings", json={"a": 1}).status_code == 404
+
+
+class TestProjectCreationInTheBrowser:
+    """4.9 end to end, through the HTTP the browser actually speaks.
+
+    The value of this over the client's own unit tests is the seam: `create.plansFor` emits
+    JSON, and `ingest.kept_text` reads it. Nothing but a test crossing both languages can
+    catch the two drifting apart, and drifting apart means a confirmed preface silently
+    staying in the analysis.
+    """
+
+    PREFACE = (
+        "PREFACE\n\nThis edition is introduced by a critic who admired Coleridge "
+        "and could not resist saying so.\n\n"
+    )
+    NOVEL = (
+        "It is a truth universally acknowledged, that a single man in possession of a good "
+        "fortune must be in want of a wife.\n\nAda met Bram at the gate.\n"
+    )
+
+    def _plan_as_the_browser_builds_it(self, path: str, characters: int, boundary: str) -> dict:
+        """Exactly what `create.plansFor` emits for an excluded document.
+
+        Kept literal rather than imported, because the point is to fail when the client's
+        shape changes without the server's noticing.
+        """
+        confirmed = lambda value: {  # noqa: E731 - mirrors the client's helper
+            "value": value,
+            "basis": "confirmed in the browser",
+            "settled": True,
+        }
+        return {
+            "path": path,
+            "characters": characters,
+            "role": confirmed("narrative"),
+            "addressing": {"value": "section", "basis": "D27", "settled": True},
+            "revision_of": {"value": None, "basis": "none", "settled": False},
+            "regions": [
+                {
+                    "label": "before the narrative",
+                    "role": confirmed("excluded"),
+                    "starts_at": 0,
+                    "ends_at": None,
+                    "begins_with": "",
+                    "ends_with": "",
+                },
+                {
+                    "label": "narrative",
+                    "role": confirmed("narrative"),
+                    "starts_at": 0,
+                    "ends_at": None,
+                    "begins_with": boundary,
+                    "ends_with": "",
+                },
+            ],
+        }
+
+    def test_a_project_is_created_from_the_browser_alone(self, tmp_path: Path) -> None:
+        """Phase 4's acceptance sentence, minus the model: a project created without touching
+        the command line, and a preface excluded there producing a cast free of it."""
+        source = tmp_path / "novel.txt"
+        source.write_text(self.PREFACE + self.NOVEL, encoding="utf-8", newline="")
+        client = TestClient(create_app(tmp_path / "project.sqlite"))
+
+        # 1. Look at what was chosen. No store yet, and no model.
+        proposed = client.get("/api/structure/propose", params={"source": str(source)})
+        assert proposed.status_code == 200
+        assert [d["path"] for d in proposed.json()["documents"]] == ["novel.txt"]
+
+        # 2. Create the store.
+        assert client.post("/api/store").status_code == 201
+
+        # 3. Record the setting the study is conducted under.
+        client.put("/api/settings", json={"collectives_are_actors": False})
+
+        # 4. Confirm the map, marking the preface excluded.
+        plan = self._plan_as_the_browser_builds_it(
+            "novel.txt",
+            proposed.json()["documents"][0]["characters"],
+            "It is a truth universally acknowledged",
+        )
+        saved = client.put(
+            "/api/structure", json={"root": str(source.resolve()), "plans": {"novel.txt": plan}}
+        )
+        assert saved.status_code == 200
+
+        # 5. Ingest.
+        ingested = client.post("/api/ingest", json={"path": str(source), "work_title": "A Novel"})
+        assert ingested.status_code == 201
+        assert ingested.json()["excluded"] == ["novel.txt"]
+
+        # The text a later analysis would read no longer holds the preface.
+        with Store(tmp_path / "project.sqlite") as store:
+            narrative = store.revision_text(ingested.json()["revision_id"], roles=[NARRATIVE])
+
+        assert "Coleridge" not in narrative
+        assert "Ada met Bram" in narrative
+
+    def test_creating_without_excluding_keeps_the_whole_document(self, tmp_path: Path) -> None:
+        source = tmp_path / "novel.txt"
+        source.write_text(self.PREFACE + self.NOVEL, encoding="utf-8", newline="")
+        client = TestClient(create_app(tmp_path / "project.sqlite"))
+        client.post("/api/store")
+
+        ingested = client.post("/api/ingest", json={"path": str(source), "work_title": "A Novel"})
+
+        assert ingested.json()["excluded"] == []
+        with Store(tmp_path / "project.sqlite") as store:
+            assert "Coleridge" in store.revision_text(ingested.json()["revision_id"])
+
+    def test_a_folder_is_ingested_as_one_revision(self, tmp_path: Path) -> None:
+        root = tmp_path / "corpus"
+        root.mkdir()
+        (root / "one.md").write_text(self.NOVEL, encoding="utf-8", newline="")
+        (root / "two.md").write_text("Cai waited by the water.\n", encoding="utf-8", newline="")
+        client = TestClient(create_app(tmp_path / "project.sqlite"))
+        client.post("/api/store")
+
+        ingested = client.post("/api/ingest", json={"path": str(root), "work_title": "A Serial"})
+
+        assert ingested.status_code == 201
+        assert ingested.json()["documents"] == 2
+
+    def test_the_flow_calls_no_model(self, tmp_path: Path) -> None:
+        """4.9 never calls a model; that stays `analyse`'s job. Proven by refusing the import
+        the providers would need — if any step reached for one, this would raise."""
+        import builtins
+
+        source = tmp_path / "novel.txt"
+        source.write_text(self.NOVEL, encoding="utf-8", newline="")
+        client = TestClient(create_app(tmp_path / "project.sqlite"))
+
+        real_import = builtins.__import__
+
+        def refuse(name: str, *args, **kwargs):
+            if name in ("anthropic", "dramatis.providers.anthropic_provider"):
+                raise AssertionError(f"project creation reached for a model: {name}")
+            return real_import(name, *args, **kwargs)
+
+        builtins.__import__ = refuse
+        try:
+            client.get("/api/structure/propose", params={"source": str(source)})
+            client.post("/api/store")
+            client.put("/api/settings", json={"collectives_are_actors": True})
+            ingested = client.post("/api/ingest", json={"path": str(source)})
+        finally:
+            builtins.__import__ = real_import
+
+        assert ingested.status_code == 201
+
+    def test_proposing_needs_no_store(self, tmp_path: Path) -> None:
+        # The first screen of creation runs before the project exists; 404ing it would make
+        # the flow impossible to start.
+        source = tmp_path / "novel.txt"
+        source.write_text(self.NOVEL, encoding="utf-8", newline="")
+        client = TestClient(create_app(tmp_path / "absent.sqlite"))
+
+        assert (
+            client.get("/api/structure/propose", params={"source": str(source)}).status_code == 200
+        )
+
+    def test_proposing_shows_back_what_was_already_confirmed(self, tmp_path: Path) -> None:
+        source = tmp_path / "novel.txt"
+        source.write_text(self.NOVEL, encoding="utf-8", newline="")
+        client = TestClient(create_app(tmp_path / "project.sqlite"))
+        client.post("/api/store")
+        plan = self._plan_as_the_browser_builds_it("novel.txt", 100, "It is a truth")
+        client.put(
+            "/api/structure", json={"root": str(source.resolve()), "plans": {"novel.txt": plan}}
+        )
+
+        again = client.get("/api/structure/propose", params={"source": str(source)}).json()
+
+        assert again["documents"][0]["role"]["value"] == "narrative"
+        assert again["documents"][0]["role"]["settled"] is True
+
+    def test_an_unfindable_boundary_is_refused_rather_than_silently_kept(
+        self, tmp_path: Path
+    ) -> None:
+        source = tmp_path / "novel.txt"
+        source.write_text(self.PREFACE + self.NOVEL, encoding="utf-8", newline="")
+        client = TestClient(create_app(tmp_path / "project.sqlite"))
+        client.post("/api/store")
+        plan = self._plan_as_the_browser_builds_it("novel.txt", 100, "a line that is not there")
+        client.put(
+            "/api/structure", json={"root": str(source.resolve()), "plans": {"novel.txt": plan}}
+        )
+
+        refused = client.post("/api/ingest", json={"path": str(source)})
+
+        assert refused.status_code == 422
+        assert "not in the document" in refused.json()["detail"]
+
+    def test_a_path_that_is_not_there_is_a_404(self, tmp_path: Path) -> None:
+        client = TestClient(create_app(tmp_path / "project.sqlite"))
+        client.post("/api/store")
+
+        assert (
+            client.get(
+                "/api/structure/propose", params={"source": str(tmp_path / "absent")}
+            ).status_code
+            == 404
+        )
+        assert (
+            client.post("/api/ingest", json={"path": str(tmp_path / "absent")}).status_code == 404
+        )
+
+    def test_ingest_needs_a_path(self, tmp_path: Path) -> None:
+        client = TestClient(create_app(tmp_path / "project.sqlite"))
+        client.post("/api/store")
+
+        assert client.post("/api/ingest", json={}).status_code == 422
+
+    def test_ingesting_is_a_write_and_is_guarded(self, tmp_path: Path) -> None:
+        # 4.8's guard covers it by virtue of being a POST, with nothing to opt in.
+        source = tmp_path / "novel.txt"
+        source.write_text(self.NOVEL, encoding="utf-8", newline="")
+        client = TestClient(create_app(tmp_path / "project.sqlite"))
+        client.post("/api/store", headers={"origin": "http://testserver"})
+
+        refused = client.post(
+            "/api/ingest", json={"path": str(source)}, headers={"origin": "http://evil.example"}
+        )
+
+        assert refused.status_code == 403
+        with Store(tmp_path / "project.sqlite") as store:
+            assert store.list_works() == []
+
+    def test_proposing_is_a_read_and_is_not_guarded(self, tmp_path: Path) -> None:
+        source = tmp_path / "novel.txt"
+        source.write_text(self.NOVEL, encoding="utf-8", newline="")
+        client = TestClient(create_app(tmp_path / "project.sqlite"))
+
+        allowed = client.get(
+            "/api/structure/propose",
+            params={"source": str(source)},
+            headers={"origin": "http://evil.example"},
+        )
+
+        assert allowed.status_code == 200

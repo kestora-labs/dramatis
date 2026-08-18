@@ -437,7 +437,9 @@ graph.
 - [x] **4.5** — Character registry scoped to a collection so characters may span multiple
       works. *(See **D43**.)*
 - [x] **4.6** — Ollama provider adapter for fully local analysis. *(See **D44**.)*
-- [ ] **4.7** — Docker image; Postgres as an alternative store.
+- [x] **4.7** — Docker image: a multi-stage build that ships the API, the built client, and
+      every prompt in one container running `dramatis serve` against a mounted store. *(Split
+      from Postgres, which became **4.10**; see **D45**.)*
 - [ ] **4.8** — The server's first **mutating endpoints**, and the guard they need. Writes
       are confined to project metadata — settings, the structure map, and creating a store —
       and every one of them refuses a request whose `Origin` is not the server's own. A
@@ -451,6 +453,13 @@ graph.
       is spent on it. Creation ingests and records settings; it never calls a model, which
       remains `analyse`'s job alone. Prompt selection is deliberately absent — it belongs to
       **7.4**–**7.5**, where prompts become versioned artefacts. *(**D31**.)*
+- [ ] **4.10** — Postgres as an alternative store. The `Store` interface is unchanged; a
+      driver behind it speaks either SQLite or Postgres, chosen by the store URL. This is
+      larger than it looks: `rowid` tie-breaking (added by **3.2** and **3.4** to keep
+      snapshot and revision ordering stable) has no Postgres equivalent and needs an explicit
+      monotonic column with a migration, and every `?` placeholder and `PRAGMA` is
+      SQLite-specific. Tested against a real Postgres, never a mock. *(Split from **4.7**; see
+      **D45**.)*
 
 **Acceptance:** Fixture **C** ingests without any code specific to its filing conventions.
 The structure map is editable and persists. A relation asserted in reference material and

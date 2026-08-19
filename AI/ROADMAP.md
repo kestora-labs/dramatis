@@ -483,13 +483,16 @@ graph.
       on exactly that, so this is a refactor with no behaviour change and a test that says so.
       *(Depends on nothing. It is what stops the next three bullets touching `ingest`.
       See **D57**.)*
-- [ ] **4.13** — **A Google Drive source**: walk a folder tree, export each Google Doc to
+- [x] **4.13** — **A Google Drive source**: walk a folder tree, export each Google Doc to
       Markdown — which keeps the headings that structure inference reads — and download
       native text files as they are. Anything it cannot read is skipped *with its reason*,
       as a folder's non-text files already are. Identity is unchanged: **D32**'s hash is
       taken over the exported text, so an edited Doc becomes a new document and a new
       revision exactly as an edited file does. Tested against recorded traffic, never a
       live Drive.
+      *(The committed traffic is written to the API's documented shape rather than captured,
+      since the credential flow that would capture it is **4.14**; the recorder and a live
+      test are in place, and the file says which it is. See **D58**.)*
 - [ ] **4.14** — **Authentication, and `dramatis ingest` against a Drive folder.** An OAuth
       installed-app flow: the user brings a client secret, consents in a browser once, and
       the refresh token is cached outside the project file — a project store is a thing

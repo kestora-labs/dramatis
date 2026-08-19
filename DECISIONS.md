@@ -3180,3 +3180,109 @@ its network exists. The whole suite is otherwise untouched: 1,207 tests, none am
 
 *Reversible.* No stored data and no schema changed. Inlining `FileSystemSource.read` back into
 its two callers and deleting the module returns the project to exactly the code before it.
+
+---
+
+## D58 — A Google Drive folder is a corpus, and its traffic is written rather than captured
+
+**Phase 4.13.** The second implementation of **4.12**'s interface, and the first test of the
+claim that there could be one. `DriveSource` answers the same two questions and nothing else;
+no code downstream of it knows a network was involved.
+
+### The root is `gdrive:folder/<id>`, and three spellings reduce to it
+
+The Drive parallel of `Path.resolve()`, load-bearing for the same reason: the root keys a
+confirmed structure map. A browser address, a bare identifier and the `gdrive:` form a stored
+project reports back all reduce to one string, or somebody who confirmed a map from a pasted
+URL would be asked again the next time they pasted the id. The prefix is there so a root
+always says which kind of source it came from and can never be read as a path somebody once
+had on a laptop.
+
+The identifier is checked against `[A-Za-z0-9_-]+` at construction rather than trusted. It is
+interpolated into the `q` expression Drive parses, so a quote in one would be a query
+injection in a request Dramatis composes — and checking it at construction means a typo is a
+message rather than a request.
+
+### Markdown, and `.md` appended
+
+**D56** settled the format; the reasoning is worth keeping. Markdown keeps the headings
+structure inference reads. Plain text does not. HTML would be worse than either: Invariant 3
+rejects an extraction whose quotation is not found verbatim in the source, and every tag
+between the text and the quotation is a verification failure waiting to happen.
+
+A Google Doc has no suffix — Drive keeps the type out of band — so the exported document
+takes `.md`, which is what it now is and what makes every suffix rule downstream apply to it
+unchanged. A Doc somebody named `notes.txt` becomes `notes.txt.md` rather than keeping a
+suffix that would misdescribe its contents. An uploaded file is judged by *its* suffix, the
+same rule a folder uses, so `cover.png` is skipped with the same sentence in both places.
+
+### Six ways a document is skipped, each one a real thing in a real folder
+
+A shortcut, which is not followed. A Google Sheet or Form, which has no text. An upload whose
+suffix is not a text suffix. A Doc that exports to nothing. A Doc too large for Drive to
+export. And two documents landing on one path.
+
+That last one needed a decision. Drive lets two things in one folder share a name, and an
+exported Doc named `notes` collides with an uploaded `notes.md`. Downstream keys documents by
+path — roles, previous revisions, structure maps — so two documents at one path would
+silently become one. They are separated instead, and the loser is *named* rather than merged.
+Which one loses is settled by sorting on `(path, identifier)` before anything is read, because
+the order Drive returns pages in is not a promise and "whichever came back first" would make
+the composition of a revision depend on it.
+
+### The root is verified before the walk, and that is not a spare request
+
+`files.list` answers a query about a nonexistent parent with an empty list. Without a
+preceding `files.get`, a mistyped identifier reads as a folder holding nothing, and the
+message a person gets is about their corpus being empty rather than about their typo. One
+request buys a correct sentence and the check that the thing named is a folder at all.
+
+### One host, one verb, checked rather than promised
+
+Invariant 7 is a claim about where bytes go, so `_send` refuses any host but
+`www.googleapis.com` and any method but GET. A bug in this module cannot become egress
+somewhere else. Constructing a source contacts nothing — every request happens inside `read`
+-- which is what makes "never contacted unless a person named it in that run" a property of
+the source rather than of the caller.
+
+No SDK and no new dependency, for **D44**'s reason: `google-api-python-client` would pull in a
+large transitive tree to save a hundred lines of `urlencode`, and the smaller the transport,
+the cheaper it is for somebody to check the claim.
+
+Authentication is **4.14** and is not here. `credentials` takes a bearer token or something
+that produces one when asked, so 4.14 adds a credential and changes nothing in this module.
+
+### The traffic is written to the API's documented shape, not captured from an account
+
+This is the part to read before trusting the bullet. 4.13 says *tested against recorded
+traffic, never a live Drive*, and what is committed is traffic **written to Google's published
+Drive v3 contract rather than captured from a real folder** — because the credential flow that
+would let anybody capture it is the *next* bullet. The alternative was to build 4.14 first and
+take the bullets out of order, which was rejected: 4.14 depends on this module existing, and
+the dependency does not run the other way.
+
+The note under **0.6** is the standard being applied here — *a fixture nobody genuinely
+verified is worse than none, because it launders a guess into a reference* — so the file is
+not allowed to pass for something it is not:
+
+- it carries `"recorded": false` and a note saying so in its own first lines;
+- `Recorder` is built and wired to a `live`-marked test, so re-recording against a real folder
+  is one command rather than a project;
+- a test asserts `recorded is False` and fails the day somebody re-records it, with the
+  instruction to delete the test and the paragraph that made the claim.
+
+**The fixture is not worthless in the meantime, and it already earned its place.** Its URLs and
+its response bodies are written out by hand from the published reference, not derived from the
+module under test, so it is an independent statement of the request contract — and it caught a
+real defect on the first run: Drive puts the prose of an error in `error.message` and the
+machine-readable cause in `error.errors[].reason`, and reading only the first made
+`exportSizeLimitExceeded` come back as a bare *refused access*, which sends somebody to check
+their sharing settings over a size limit.
+
+What it cannot prove is that the real API behaves as documented. Until it is re-recorded, that
+is unverified, and the acceptance sentence *"a corpus held in a cloud drive is ingested from
+where it lives"* is not yet met by evidence.
+
+*Reversible.* Nothing stored and no schema changed; the module is additive and nothing else
+imports it. Deleting `drive.py`, its tests and its traffic returns the project to a
+local-disk-only tool with **4.12**'s interface still in place.

@@ -2525,3 +2525,118 @@ not a side effect of this one.
 *Reversible.* Everything is additive: one table, one module, one endpoint pair, one CLI verb,
 one client module. Dropping `reviews` returns the project to where 4.11 left it, since nothing
 else reads it and no stored snapshot changed shape.
+
+---
+
+## D51 — A correction is applied when a snapshot is built, and the reading it overrules is written down
+
+**Phase 5.2.** **5.1** let a person say *this is wrong*. This lets them say *what it should
+be*, and makes the answer stick across re-analysis. A correction replaces one field of one
+node or edge, is recorded beside the reading it was made on, and is written into every
+snapshot built afterwards.
+
+### Applied at build time, not to the snapshot on screen
+
+Snapshots are immutable (Invariant 4), so a correction made against snapshot *n* cannot change
+*n*. It is applied in `pipeline.analyse`, between `build_document` and `save_snapshot`, so
+*n+1* is rendered with it. That ordering is deliberate in a second way: the corrected document
+is what the schema validates, so a correction that would produce an invalid graph fails at the
+run that introduced it rather than being found later by a reader.
+
+The cost is that correcting a name does not rename the node on screen. The alternative —
+having the client apply corrections over the archived document before drawing it — was
+considered and declined. It would mean the browser rendering a graph that no stored document
+says, and it would have to be replicated in TypeScript, which is the one piece of logic that
+must not have two implementations. What the panel does instead is show the correction beside
+the claim, with what it replaces, and say plainly that it applies at the next analysis. The
+same line disappears once a reading carries it — a distinction the first browser run got
+wrong and which `appliedIn` now decides.
+
+### The reading is overruled, and the overruling is recorded
+
+Every correction stores `was`: what the reading said at the moment it was made. When a later
+analysis proposes something different, the person's value still stands — but the run's
+competing claim is written to `correction_conflicts` and reported in the run's warnings, in
+`dramatis correct`, and in the panel.
+
+This is the second half of *never silently overwritten*, and it cuts both ways. Without the
+correction winning, re-analysis discards a person's work. Without the conflict being recorded,
+re-analysis discards the model's finding — the same failure with the roles swapped. A
+correction that is merely *applied* where the reading still agrees raises nothing, because a
+report that fires on every correction is a report nobody reads by the tenth one.
+
+A correction whose subject a later reading does not contain at all is reported and **not**
+resurrected. Putting the character back would invent a node with no evidence behind it, which
+Invariant 3 exists to prevent; what is owed is telling somebody their work has nothing left to
+attach to.
+
+### Corrected is `human`, with a consequence that is intended
+
+Invariant 5 defines `human` as *entered or corrected in the app*, so a corrected node or edge
+carries that provenance and there was nothing to decide. The consequence is real: a corrected
+relation leaves **4.4**'s declared-against-enacted comparison. It is not lost — 4.4 already
+counts a third bucket and says "n relation(s) were entered by hand and are neither declared nor
+enacted" — but a corrected edge stops being evidence about the corpus disagreeing with itself,
+which is right. A person's edit is not a finding about the text. The relation's original
+provenance is not stored a second time: the previous snapshot is immutable and still says it.
+
+### Only what a person can actually judge
+
+Correctable: a character's `name`, `kind`, `aliases`, `notes`; a relation's `types`,
+`valence`, `directed`, `notes`. Refused, each with its reason rather than "unknown field":
+
+- **`weight` and `weight_basis`** — a weight is a count on a declared basis, not an opinion.
+  Correcting the types or the tone says what somebody means without claiming a tally the
+  evidence does not show.
+- **`evidence`** — verified against the source text or not stored at all (Invariant 3), so it
+  cannot be typed in.
+- **`id`, `source`, `target`** — identity, which is **5.3**'s merge and split.
+- **`provenance`, `review_status`** — set by the act of correcting, and by **5.1**.
+- **`confidence`, `salience`** — a reading's estimate of itself, on a scale a person's
+  judgement is not on.
+
+The reasons are the point, and they survive all the way to the command line: `--field` has
+deliberately no `choices` list, because argparse would replace every one of those explanations
+with "invalid choice", which is the single answer that teaches nothing.
+
+### One row per field, and 5.1's rule relaxed
+
+Corrections are keyed by (work, subject, **field**). Correcting a name and correcting a note
+are two decisions, and one row per subject would let the second silently discard the first —
+the failure this bullet is named after, committed against itself.
+
+Recording a correction also sets the subject's review status to `corrected`, because the two
+are one act. That status previously demanded a note; it now accepts a recorded correction as
+the explanation instead, which is what **5.1** was asking for and could not yet have. What is
+still refused is the empty claim, not the missing sentence.
+
+### Values keep their types, in three places
+
+`types` is a list, `valence` is a number, `directed` is a boolean — and a shell, a text box
+and a JSON column all naturally flatten them to strings. The CLI parses per field, the client
+parses per field, and the store writes JSON rather than text. A value flattened anywhere would
+reach the schema as the wrong type and be rejected there, where the message names a JSON
+pointer instead of the mistake.
+
+### Verified on a real corpus, with a re-analysis that cost nothing
+
+The 1,125-test suite runs against SQLite and a live Postgres. Beyond that: a correction was
+made in the browser against the full *Pride and Prejudice* snapshot — removing `madam`, `you`
+and the misspelled `Lizzie` from Elizabeth Bennet's aliases — and the novel was then
+re-analysed in full, replayed from the existing checkpoint at 63 served calls and **zero live
+ones**, which is what made an end-to-end acceptance test of a 240-relation corpus free. The
+new snapshot carries the corrected alias list with `provenance: human` and
+`review_status: corrected`; the old one is byte-identical to what it was.
+
+### What is deliberately not here
+
+**Correcting the registry.** A corrected name changes what the snapshot says, not what the
+collection's registry holds, so resolution still matches the old canonical form next time.
+Renaming in the registry would apply the correction to every work in the collection, which is
+not what was asked for and is close to **5.3**'s territory.
+
+**Bulk correction**, and **the manual**, which stays as it is until its next rebuild.
+
+*Reversible.* Two tables, one module, one endpoint pair, one CLI verb, one client module, and
+four lines in `analyse`. Dropping `corrections` returns snapshots to being rendered exactly as
+5.1 left them.

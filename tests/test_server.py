@@ -1242,3 +1242,173 @@ class TestReviews:
         assert refused.status_code == 403
         standing = self._subjects(client, snapshot_id)
         assert standing[("character", identifier)]["status"] == "proposed"
+
+
+class TestCorrections:
+    """Correcting a node or an edge over the API (5.2).
+
+    Served alongside the snapshot rather than inside it, for the reason reviews are: a
+    correction is made after the document was archived and changes no stored snapshot.
+    """
+
+    def test_a_fresh_project_has_nothing_corrected(self, client, analysed) -> None:
+        _, snapshot_id, _ = analysed
+
+        payload = client.get(f"/api/snapshots/{snapshot_id}/corrections").json()
+
+        assert payload["corrections"] == []
+        assert payload["conflicts"] == []
+
+    def test_it_names_the_correctable_fields_so_a_client_need_not_hardcode_them(
+        self, client, analysed
+    ) -> None:
+        _, snapshot_id, _ = analysed
+
+        payload = client.get(f"/api/snapshots/{snapshot_id}/corrections").json()
+
+        assert payload["correctable"]["character"] == ["name", "kind", "aliases", "notes"]
+        assert payload["correctable"]["relation"] == ["types", "valence", "directed", "notes"]
+
+    def test_a_correction_is_recorded_and_read_back(self, client, analysed) -> None:
+        _, snapshot_id, document = analysed
+        identifier = document["characters"][0]["id"]
+
+        recorded = client.post(
+            f"/api/snapshots/{snapshot_id}/corrections",
+            json={"kind": "character", "id": identifier, "field": "name", "value": "Ada Mbeki"},
+        )
+
+        assert recorded.status_code == 201
+        assert recorded.json()["value"] == "Ada Mbeki"
+        assert recorded.json()["was"] == document["characters"][0]["name"]
+
+        served = client.get(f"/api/snapshots/{snapshot_id}/corrections").json()
+        assert [entry["field"] for entry in served["corrections"]] == ["name"]
+
+    def test_a_list_valued_field_survives_the_round_trip_as_a_list(self, client, analysed) -> None:
+        # JSON keeps the type; a value flattened to a string here would reach the schema as a
+        # string and be rejected there instead.
+        _, snapshot_id, document = analysed
+
+        recorded = client.post(
+            f"/api/snapshots/{snapshot_id}/corrections",
+            json={
+                "kind": "relation",
+                "id": document["relations"][0]["id"],
+                "field": "types",
+                "value": ["kinship", "estrangement"],
+            },
+        )
+
+        assert recorded.json()["value"] == ["kinship", "estrangement"]
+
+    def test_the_snapshot_it_was_made_on_is_served_unchanged(self, client, analysed) -> None:
+        _, snapshot_id, document = analysed
+
+        client.post(
+            f"/api/snapshots/{snapshot_id}/corrections",
+            json={
+                "kind": "character",
+                "id": document["characters"][0]["id"],
+                "field": "name",
+                "value": "Ada Mbeki",
+            },
+        )
+
+        assert client.get(f"/api/snapshots/{snapshot_id}").json() == document
+
+    def test_correcting_also_marks_the_subject_corrected(self, client, analysed) -> None:
+        _, snapshot_id, document = analysed
+        identifier = document["characters"][0]["id"]
+
+        client.post(
+            f"/api/snapshots/{snapshot_id}/corrections",
+            json={"kind": "character", "id": identifier, "field": "name", "value": "Ada Mbeki"},
+        )
+
+        reviews = client.get(f"/api/snapshots/{snapshot_id}/reviews").json()
+        standing = {(entry["kind"], entry["id"]): entry for entry in reviews["subjects"]}
+        assert standing[("character", identifier)]["status"] == "corrected"
+
+    def test_a_field_that_may_not_be_corrected_says_why(self, client, analysed) -> None:
+        _, snapshot_id, document = analysed
+
+        refused = client.post(
+            f"/api/snapshots/{snapshot_id}/corrections",
+            json={
+                "kind": "relation",
+                "id": document["relations"][0]["id"],
+                "field": "weight",
+                "value": 99,
+            },
+        )
+
+        assert refused.status_code == 422
+        assert "count on a declared basis" in refused.json()["detail"]
+
+    def test_a_value_of_the_wrong_shape_is_refused(self, client, analysed) -> None:
+        _, snapshot_id, document = analysed
+
+        refused = client.post(
+            f"/api/snapshots/{snapshot_id}/corrections",
+            json={
+                "kind": "character",
+                "id": document["characters"][0]["id"],
+                "field": "kind",
+                "value": "protagonist",
+            },
+        )
+
+        assert refused.status_code == 422
+
+    def test_a_body_missing_the_value_is_refused(self, client, analysed) -> None:
+        # Distinct from a value of null, which is a value and is refused by its shape.
+        _, snapshot_id, document = analysed
+
+        refused = client.post(
+            f"/api/snapshots/{snapshot_id}/corrections",
+            json={
+                "kind": "character",
+                "id": document["characters"][0]["id"],
+                "field": "name",
+            },
+        )
+
+        assert refused.status_code == 422
+
+    def test_a_subject_the_reading_never_proposed_is_refused(self, client, analysed) -> None:
+        _, snapshot_id, _ = analysed
+
+        refused = client.post(
+            f"/api/snapshots/{snapshot_id}/corrections",
+            json={"kind": "character", "id": "char:nobody", "field": "name", "value": "Nobody"},
+        )
+
+        assert refused.status_code == 422
+        assert "nothing there to correct" in refused.json()["detail"]
+
+    def test_an_unknown_snapshot_is_a_404_either_way(self, client) -> None:
+        assert client.get("/api/snapshots/snap:nothing/corrections").status_code == 404
+        refused = client.post(
+            "/api/snapshots/snap:nothing/corrections",
+            json={"kind": "character", "id": "char:a", "field": "name", "value": "A"},
+        )
+        assert refused.status_code == 404
+
+    def test_a_cross_origin_correction_is_refused(self, client, analysed) -> None:
+        """Guarded by being a POST, like every other write since 4.8."""
+        _, snapshot_id, document = analysed
+
+        refused = client.post(
+            f"/api/snapshots/{snapshot_id}/corrections",
+            json={
+                "kind": "character",
+                "id": document["characters"][0]["id"],
+                "field": "name",
+                "value": "Ada Mbeki",
+            },
+            headers={"origin": "http://evil.example"},
+        )
+
+        assert refused.status_code == 403
+        assert client.get(f"/api/snapshots/{snapshot_id}/corrections").json()["corrections"] == []

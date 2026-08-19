@@ -35,6 +35,9 @@ from typing import Any
 from urllib.parse import urlparse
 
 from dramatis import __version__
+from dramatis.correction import CorrectionError, correction_as_json
+from dramatis.correction import as_json as corrections_as_json
+from dramatis.correction import record as record_correction_decision
 from dramatis.diff import DiffError, diff_snapshots
 from dramatis.ingest import IngestError
 from dramatis.passage import (
@@ -527,12 +530,31 @@ def create_app(store_path: Path | str):
         finally:
             store.close()
 
+    @app.get("/api/snapshots/{snapshot_id}/corrections")
+    def corrections(snapshot_id: str) -> JSONResponse:
+        """What a person has corrected in this work, and what this reading made of it (**5.2**).
+
+        The corrections are the work's, not the snapshot's — they outlive any one reading, and
+        that is the point of them. The conflicts are this snapshot's: places where this
+        particular analysis proposed something a correction overruled.
+        """
+        store = open_store()
+        try:
+            found = store.get_snapshot(snapshot_id)
+            if found is None:
+                raise HTTPException(status_code=404, detail=f"no snapshot {snapshot_id!r}")
+            return JSONResponse(corrections_as_json(store, found.id, found.work_id))
+        finally:
+            store.close()
+
     # -- writes -----------------------------------------------------------------------------
     # The server's first mutating endpoints (4.8). The same-origin middleware above guards
     # every one by virtue of their method — none has to opt in. Most are confined to project
-    # metadata — a store's existence, its settings, its structure map — and the one that is not,
-    # `POST .../reviews`, records a person's judgement beside the graph rather than altering it.
-    # None calls a model or touches the author's text (D31).
+    # metadata — a store's existence, its settings, its structure map. The two that are not,
+    # `POST .../reviews` and `POST .../corrections`, record a person's judgement and their
+    # replacement *beside* the graph; neither alters a stored snapshot, and a correction reaches
+    # the graph only when the next one is built. None calls a model or touches the author's
+    # text (D31).
 
     @app.post("/api/store", status_code=201)
     def create_store() -> JSONResponse:
@@ -756,6 +778,53 @@ def create_app(store_path: Path | str):
             entry = review_overlay(store, found).entry_for(str(kind), str(identifier))
             assert entry is not None  # `record` refuses a subject the snapshot lacks
             return JSONResponse(review_subject_as_json(entry), status_code=201)
+        finally:
+            store.close()
+
+    @app.post("/api/snapshots/{snapshot_id}/corrections", status_code=201)
+    def record_correction(snapshot_id: str, payload: dict[str, Any]) -> JSONResponse:
+        """Correct one field of one node or edge.
+
+        Changes no stored snapshot: the correction is recorded against the reading it was made
+        on, and is written into the graph by the next analysis. What comes back is the
+        correction as stored, so a client can show what it will replace without re-reading.
+        """
+        kind = payload.get("kind")
+        identifier = payload.get("id")
+        name = payload.get("field")
+        note = payload.get("note")
+        for label, value in (("kind", kind), ("id", identifier), ("field", name)):
+            if not isinstance(value, str) or not value:
+                raise HTTPException(
+                    status_code=422, detail=f"a correction needs a non-empty {label!r} string"
+                )
+        if "value" not in payload:
+            raise HTTPException(status_code=422, detail="a correction needs a 'value'")
+        if note is not None and not isinstance(note, str):
+            raise HTTPException(status_code=422, detail="'note' must be a string when given")
+
+        store = open_store()
+        try:
+            try:
+                recorded = record_correction_decision(
+                    store,
+                    snapshot_id=snapshot_id,
+                    subject_kind=str(kind),
+                    subject_id=str(identifier),
+                    field=str(name),
+                    value=payload["value"],
+                    note=note,
+                )
+            except (CorrectionError, ReviewError) as error:
+                # 404 only when the snapshot itself is absent; everything else is the
+                # correction being at fault, and a client that sent a bad field should not be
+                # sent looking for a missing snapshot.
+                missing = store.get_snapshot(snapshot_id) is None
+                raise HTTPException(
+                    status_code=404 if missing else 422, detail=str(error)
+                ) from error
+
+            return JSONResponse(correction_as_json(recorded), status_code=201)
         finally:
             store.close()
 

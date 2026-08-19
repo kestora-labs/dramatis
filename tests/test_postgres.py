@@ -387,3 +387,109 @@ class TestAgainstARealPostgres:
 
         assert [decision.status for decision in recorded] == ["accepted", "rejected", "accepted"]
         assert store.current_reviews("work:a")[("character", "char:a")].status == "accepted"
+
+    def _a_snapshot(self, store: Store, identifier: str = "snap:a") -> None:
+        """The rows a correction's foreign keys need. Postgres enforces them; SQLite has to
+        be asked to, and both do here."""
+        from dramatis.store import StoredSnapshot
+
+        store.upsert_collection("col:a", "A Set")
+        store.upsert_work("work:a", "col:a", "A Work", segment_types=[])
+        store.upsert_text_revision(
+            TextRevision(
+                id="rev:1",
+                work_id="work:a",
+                label=None,
+                sha256="d",
+                created_at="2026-01-01T00:00:00Z",
+                document_ids=(),
+            )
+        )
+        store.upsert_analysis_run(
+            {"id": "run:1", "model": "m", "prompt_version": "p", "parameters": {}}
+        )
+        store.insert_snapshot(
+            StoredSnapshot(
+                id=identifier,
+                work_id="work:a",
+                text_revision_id="rev:1",
+                analysis_run_id="run:1",
+                label=None,
+                schema_version="0.1.0",
+                sha256="one",
+                created_at="2026-01-01T00:00:00Z",
+                document={"a": 1},
+            )
+        )
+
+    def test_corrections_keep_their_order_on_a_tied_timestamp(self, store: Store) -> None:
+        """`corrections` joins the ordered tables (5.2). The newest correction is the one that
+        is applied, so two made in the same second must not be reordered by anything else."""
+        from dramatis.store import Correction
+
+        self._a_snapshot(store)
+        same = "2026-03-03T00:00:00Z"
+        for name in ("Ada Mbeki", "Ada M. Mbeki", "A. M. Mbeki"):
+            store.append_correction(
+                Correction(
+                    work_id="work:a",
+                    subject_kind="character",
+                    subject_id="char:a",
+                    field="name",
+                    value=name,
+                    was="Ada",
+                    snapshot_id="snap:a",
+                    corrected_at=same,
+                )
+            )
+
+        recorded = store.list_corrections("work:a")
+
+        assert [entry.value for entry in recorded] == ["Ada Mbeki", "Ada M. Mbeki", "A. M. Mbeki"]
+        standing = store.current_corrections("work:a")
+        assert standing[("character", "char:a", "name")].value == "A. M. Mbeki"
+
+    def test_a_correction_reads_back_as_the_type_it_was_written_as(self, store: Store) -> None:
+        """JSON on the way down and back, on both backends. A list stored as text and read
+        back as text would reach the schema as a string and be rejected there."""
+        from dramatis.store import Correction
+
+        self._a_snapshot(store)
+        store.append_correction(
+            Correction(
+                work_id="work:a",
+                subject_kind="relation",
+                subject_id="rel:a--b",
+                field="types",
+                value=["kinship", "estrangement"],
+                was=None,
+                snapshot_id="snap:a",
+                corrected_at="2026-03-03T00:00:00Z",
+            )
+        )
+
+        only = store.list_corrections("work:a")[0]
+        assert only.value == ["kinship", "estrangement"]
+        assert only.was is None
+
+    def test_conflicts_round_trip(self, store: Store) -> None:
+        from dramatis.store import CorrectionConflict
+
+        self._a_snapshot(store)
+        store.append_correction_conflicts(
+            [
+                CorrectionConflict(
+                    work_id="work:a",
+                    subject_kind="character",
+                    subject_id="char:a",
+                    field="kind",
+                    proposed="collective",
+                    held="entity",
+                    snapshot_id="snap:a",
+                    noticed_at="2026-03-03T00:00:00Z",
+                )
+            ]
+        )
+
+        found = store.list_correction_conflicts("work:a", snapshot_id="snap:a")
+        assert [(c.field, c.proposed, c.held) for c in found] == [("kind", "collective", "entity")]

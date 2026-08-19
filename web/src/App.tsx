@@ -59,6 +59,21 @@ import {
   type Role,
 } from "./create.js";
 import {
+  appliedIn,
+  canSubmit,
+  characterKinds,
+  conflictsFor,
+  correctionBody,
+  correctionsFor,
+  correctionsUrl,
+  currentText,
+  describe as describeValue,
+  fieldsFor,
+  withCorrection,
+  type CorrectionEntry,
+  type CorrectionsPayload,
+} from "./correction.js";
+import {
   STATUSES as REVIEW_STATUSES,
   canRecord,
   decisionBody,
@@ -231,6 +246,174 @@ function ReviewControl({
 }
 
 /**
+ * Putting right what this reading got wrong.
+ *
+ * The browser half of **5.2**. Three things are on screen at once and they are three
+ * different facts: what a person has already corrected, where this reading argued with one of
+ * those corrections, and a box for making a new one.
+ *
+ * The snapshot itself does not change and the panel says so out loud. A correction is
+ * recorded against the reading it was made on and written into the graph by the next
+ * analysis, because snapshots are immutable — so somebody who expected the node to rename
+ * itself needs telling, in the place they would look.
+ */
+function CorrectionControl({
+  selection,
+  document_,
+  payload,
+  busy,
+  onRecord,
+}: {
+  selection: Selection;
+  document_: SnapshotDocument | null;
+  payload: CorrectionsPayload | null;
+  busy: boolean;
+  onRecord: (field: string, value: string, note: string) => void;
+}) {
+  const fields = fieldsFor(payload, selection.kind);
+  const [field, setField] = useState(fields[0] ?? "");
+  const [value, setValue] = useState("");
+  const [note, setNote] = useState("");
+  const [open, setOpen] = useState(false);
+
+  const standing = correctionsFor(payload, selection);
+  const pending = standing.filter((entry) => !appliedIn(document_, selection, entry));
+  const conflicts = conflictsFor(payload, selection);
+  const kinds = characterKinds(payload);
+
+  // The box starts at what the reading says, so a correction is an edit rather than a
+  // retyping — and so that what is being replaced is visible while replacing it.
+  const start = (next: string) => {
+    setField(next);
+    setValue(currentText(document_, selection, next));
+  };
+
+  const begin = () => {
+    setOpen(true);
+    start(fields[0] ?? "");
+  };
+
+  if (fields.length === 0) return null;
+
+  return (
+    <section className="correction" aria-label="Corrections">
+      {standing.length > 0 && (
+        <>
+          <h3 className="field-label">Corrected</h3>
+          <ul className="corrections">
+            {standing.map((entry) => (
+              <li key={entry.field}>
+                <code>{entry.field}</code> {describeValue(entry.was) || "nothing"} →{" "}
+                <strong>{describeValue(entry.value) || "nothing"}</strong>
+                {entry.note && <span className="correction-note">{entry.note}</span>}
+              </li>
+            ))}
+          </ul>
+          {/* Only where it is true. A correction is written in when a snapshot is built, so
+              the reading it was made against never carries it and every one since does —
+              and telling somebody their correction is pending while showing them the graph
+              that already has it is the confusion this line exists to avoid. */}
+          {pending.length > 0 && (
+            <p className="correction-pending">
+              {pending.length === standing.length ? "Applied" : "The rest applied"} when this work
+              is next analysed. This snapshot is unchanged.
+            </p>
+          )}
+        </>
+      )}
+
+      {conflicts.length > 0 && (
+        <>
+          <h3 className="field-label">This reading disagreed</h3>
+          <ul className="conflicts">
+            {conflicts.map((entry) => (
+              <li key={`${entry.field} ${entry.noticed_at}`}>
+                <code>{entry.field}</code> — it proposed{" "}
+                {describeValue(entry.proposed) || "nothing"}; your{" "}
+                {describeValue(entry.held) || "nothing"} stood.
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {open ? (
+        <div className="correction-form">
+          <label>
+            Field
+            <select value={field} onChange={(event) => start(event.target.value)}>
+              {fields.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Value
+            {field === "kind" ? (
+              <select value={value} onChange={(event) => setValue(event.target.value)}>
+                {kinds.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            ) : field === "directed" ? (
+              <select value={value} onChange={(event) => setValue(event.target.value)}>
+                <option value="false">false</option>
+                <option value="true">true</option>
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={value}
+                placeholder={
+                  field === "aliases" || field === "types" ? "comma separated" : undefined
+                }
+                onChange={(event) => setValue(event.target.value)}
+              />
+            )}
+          </label>
+
+          <label>
+            Why
+            <input
+              type="text"
+              value={note}
+              placeholder="optional"
+              onChange={(event) => setNote(event.target.value)}
+            />
+          </label>
+
+          <div className="correction-buttons">
+            <button
+              type="button"
+              disabled={busy || !canSubmit(payload, field, value)}
+              onClick={() => {
+                onRecord(field, value, note);
+                setOpen(false);
+                setNote("");
+              }}
+            >
+              Record correction
+            </button>
+            <button type="button" className="quiet" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" className="correction-open" onClick={begin}>
+          Correct this…
+        </button>
+      )}
+    </section>
+  );
+}
+
+/**
  * What the snapshot claims about the selected node or edge.
  *
  * The fields themselves are decided in `detail.ts`; this only sets them. Aliases and
@@ -240,20 +423,31 @@ function ReviewControl({
  */
 function DetailPanel({
   detail,
+  selection,
+  document_,
   review,
   reviewing,
   reviewBusy,
   onReview,
+  corrections,
+  correctionBusy,
+  onCorrect,
   onClear,
   onOpen,
   openAt,
 }: {
   detail: Detail;
+  /** What is selected, which the correction form needs and the fields alone cannot say. */
+  selection: Selection | null;
+  document_: SnapshotDocument | null;
   review: ReviewSubject | null;
   /** The snapshot on screen, which review decisions are shown against. */
   reviewing: string | null;
   reviewBusy: boolean;
   onReview: (status: ReviewStatus, note: string) => void;
+  corrections: CorrectionsPayload | null;
+  correctionBusy: boolean;
+  onCorrect: (field: string, value: string, note: string) => void;
   onClear: () => void;
   onOpen: (position: number) => void;
   openAt: number | null;
@@ -279,6 +473,19 @@ function DetailPanel({
           viewing={reviewing}
           busy={reviewBusy}
           onRecord={onReview}
+        />
+      )}
+
+      {selection && (
+        <CorrectionControl
+          // Keyed on the subject, so switching selection starts a fresh form rather than
+          // carrying one claim's half-typed value across to the next.
+          key={`${selection.kind} ${selection.id}`}
+          selection={selection}
+          document_={document_}
+          payload={corrections}
+          busy={correctionBusy}
+          onRecord={onCorrect}
         />
       )}
 
@@ -1091,6 +1298,8 @@ export function App() {
   const [creating, setCreating] = useState(false);
   const [reviews, setReviews] = useState<ReviewOverlay | null>(null);
   const [reviewBusy, setReviewBusy] = useState(false);
+  const [corrections, setCorrections] = useState<CorrectionsPayload | null>(null);
+  const [correctionBusy, setCorrectionBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Held in a ref as well as in state: the pin button and the drag handler need the live
   // instance, and they are not part of what makes the graph rebuild.
@@ -1158,6 +1367,14 @@ export function App() {
       .then((response) => (response.ok ? response.json() : null))
       .then(setReviews)
       .catch(() => setReviews(null));
+
+    // And the corrections, which are the work's rather than this snapshot's — except the
+    // conflicts, which are exactly this snapshot's (5.2).
+    setCorrections(null);
+    fetch(correctionsUrl(selected))
+      .then((response) => (response.ok ? response.json() : null))
+      .then(setCorrections)
+      .catch(() => setCorrections(null));
   }, [selected]);
 
   useEffect(() => {
@@ -1398,6 +1615,35 @@ export function App() {
       .finally(() => setReviewBusy(false));
   }
 
+  function recordCorrection(field: string, value: string, note: string) {
+    if (!selected || !selection) return;
+
+    setCorrectionBusy(true);
+    fetch(correctionsUrl(selected), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(correctionBody(selection, field, value, note)),
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          // The server's message names the rule that refused it — that a weight is a count
+          // rather than an opinion, say — and that is the useful half of the answer.
+          throw new Error(body.detail ?? "the server would not record that correction");
+        }
+        return response.json() as Promise<CorrectionEntry>;
+      })
+      .then((entry) => {
+        setCorrections((current) => withCorrection(current, entry));
+        // A correction is also a review decision, so the status beside it has moved.
+        return fetch(reviewsUrl(selected))
+          .then((response) => (response.ok ? response.json() : null))
+          .then(setReviews);
+      })
+      .catch((reason: Error) => setError(reason.message))
+      .finally(() => setCorrectionBusy(false));
+  }
+
   const reviewIndex = indexReviews(reviews);
   const reviewOfSelection = statusFor(reviewIndex, document_, selection);
 
@@ -1503,10 +1749,15 @@ export function App() {
         ) : detail ? (
           <DetailPanel
             detail={detail}
+            selection={selection}
+            document_={document_}
             review={reviewOfSelection}
             reviewing={selected}
             reviewBusy={reviewBusy}
             onReview={recordReview}
+            corrections={corrections}
+            correctionBusy={correctionBusy}
+            onCorrect={recordCorrection}
             onClear={() => {
               setSelection(null);
               closePassage();

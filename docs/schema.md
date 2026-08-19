@@ -92,6 +92,12 @@ it was archived is recorded beside it rather than in it, and is served separatel
 `GET /api/snapshots/{id}/reviews`; a reader holding only the document is reading what the
 analysis proposed, which is a different fact from what a person has since decided.
 
+A node or edge somebody has **corrected** is a different matter: the correction is written
+into the graph when the next snapshot is built, so that document carries the corrected value
+outright, with `provenance: human` and `review_status: corrected`. The reading it overruled is
+not in the document — it is kept in the project store, so a corrected claim can always be
+traced back to what the analysis said.
+
 ## Weights
 
 `weight` drives rendered edge thickness. `weight_basis` is **required** alongside it and

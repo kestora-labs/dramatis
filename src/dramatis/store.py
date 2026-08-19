@@ -211,6 +211,44 @@ CREATE TABLE IF NOT EXISTS reviews (
     decided_at   TEXT NOT NULL
 );
 
+-- A person's replacement for one field of one node or edge (5.2). Append-only and newest
+-- wins, for the reason `reviews` is: a correction that quietly replaced its predecessor would
+-- lose the fact that somebody had already been here and decided otherwise.
+--
+-- `was` is what the reading said at the moment the correction was made. It is not decoration:
+-- it is the only way a later analysis can be asked whether it still says the same thing, and
+-- so the only way a disagreement can be noticed rather than swallowed.
+--
+-- One row per field rather than per subject. Correcting a name and correcting a note are two
+-- decisions, and folding them into one record would make the second silently discard the
+-- first.
+CREATE TABLE IF NOT EXISTS corrections (
+    work_id      TEXT NOT NULL REFERENCES works(id),
+    subject_kind TEXT NOT NULL CHECK (subject_kind IN ('character', 'relation')),
+    subject_id   TEXT NOT NULL,
+    field        TEXT NOT NULL,
+    value        TEXT NOT NULL,
+    was          TEXT NOT NULL,
+    note         TEXT,
+    snapshot_id  TEXT NOT NULL REFERENCES snapshots(id),
+    corrected_at TEXT NOT NULL
+);
+
+-- Where a later reading proposed something other than what a correction replaced (5.2).
+-- The correction still stands — a person outranks a run — but the run's competing claim is
+-- written down rather than dropped. That is the whole of "never silently overwritten": the
+-- human value is not lost to the analysis, and the analysis is not lost to the human value.
+CREATE TABLE IF NOT EXISTS correction_conflicts (
+    work_id      TEXT NOT NULL REFERENCES works(id),
+    subject_kind TEXT NOT NULL,
+    subject_id   TEXT NOT NULL,
+    field        TEXT NOT NULL,
+    proposed     TEXT NOT NULL,
+    held         TEXT NOT NULL,
+    snapshot_id  TEXT NOT NULL REFERENCES snapshots(id),
+    noticed_at   TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS ix_snapshots_work ON snapshots(work_id);
 CREATE INDEX IF NOT EXISTS ix_snapshots_revision ON snapshots(text_revision_id);
 CREATE INDEX IF NOT EXISTS ix_snapshots_run ON snapshots(analysis_run_id);
@@ -220,6 +258,8 @@ CREATE INDEX IF NOT EXISTS ix_revisions_work ON text_revisions(work_id);
 CREATE INDEX IF NOT EXISTS ix_characters_collection ON characters(collection_id);
 CREATE INDEX IF NOT EXISTS ix_aliases_character ON character_aliases(character_id);
 CREATE INDEX IF NOT EXISTS ix_reviews_subject ON reviews(work_id, subject_kind, subject_id);
+CREATE INDEX IF NOT EXISTS ix_corrections_subject ON corrections(work_id, subject_kind, subject_id);
+CREATE INDEX IF NOT EXISTS ix_conflicts_snapshot ON correction_conflicts(snapshot_id);
 """
 
 
@@ -294,6 +334,48 @@ class ReviewDecision:
     snapshot_id: str
     decided_at: str
     note: str | None = None
+
+
+@dataclass(frozen=True)
+class Correction:
+    """One human replacement for one field of one node or edge, as kept on disk (**5.2**).
+
+    ``value`` and ``was`` are the decoded values, not JSON text — a list of aliases is a list
+    here and in the document it will be written into. The store encodes them on the way down
+    so that a correction reads back as the type it was made as; a number stored as a string
+    would reach the schema as a string and be rejected there rather than here.
+    """
+
+    work_id: str
+    subject_kind: str
+    subject_id: str
+    field: str
+    value: Any
+    was: Any
+    """What the reading said when the correction was made, so a later one can be asked
+    whether it still says it."""
+
+    snapshot_id: str
+    corrected_at: str
+    note: str | None = None
+
+
+@dataclass(frozen=True)
+class CorrectionConflict:
+    """A later reading proposing something other than what a correction replaced (**5.2**)."""
+
+    work_id: str
+    subject_kind: str
+    subject_id: str
+    field: str
+    proposed: Any
+    """What the new analysis said."""
+
+    held: Any
+    """The human value that stood in spite of it."""
+
+    snapshot_id: str
+    noticed_at: str
 
 
 class AmbiguousAliasError(Exception):
@@ -927,6 +1009,136 @@ class Store:
         for decision in self.list_reviews(work_id):
             standing[(decision.subject_kind, decision.subject_id)] = decision
         return standing
+
+    # -- corrections --------------------------------------------------------------------
+    #
+    # Append-only, newest wins, exactly as `reviews` is. Nothing here decides which fields may
+    # be corrected or what a valid value looks like — those are rules about correction rather
+    # than about storage, and they live in `dramatis.correction`. This layer writes rows.
+
+    def append_correction(self, correction: Correction) -> Correction:
+        """Record a correction. Never replaces an earlier one; it supersedes it."""
+        with self.transaction() as connection:
+            connection.execute(
+                "INSERT INTO corrections (work_id, subject_kind, subject_id, field, value, "
+                "was, note, snapshot_id, corrected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    correction.work_id,
+                    correction.subject_kind,
+                    correction.subject_id,
+                    correction.field,
+                    json.dumps(correction.value, ensure_ascii=False),
+                    json.dumps(correction.was, ensure_ascii=False),
+                    correction.note,
+                    correction.snapshot_id,
+                    correction.corrected_at,
+                ),
+            )
+        return correction
+
+    def list_corrections(
+        self,
+        work_id: str,
+        *,
+        subject_kind: str | None = None,
+        subject_id: str | None = None,
+        field: str | None = None,
+    ) -> list[Correction]:
+        """Every correction recorded against a work, oldest first.
+
+        Ties on ``corrected_at`` break on insertion order, for the reason ``list_reviews``
+        gives: two corrections made in the same second are still one after the other, and
+        which came second is the one that stands.
+        """
+        query = "SELECT * FROM corrections WHERE work_id = ?"
+        parameters: list[str] = [work_id]
+        for column, wanted in (
+            ("subject_kind", subject_kind),
+            ("subject_id", subject_id),
+            ("field", field),
+        ):
+            if wanted is not None:
+                query += f" AND {column} = ?"
+                parameters.append(wanted)
+        rows = self.connection.execute(
+            query + " ORDER BY corrected_at, {tiebreak}", parameters
+        ).fetchall()
+        return [
+            Correction(
+                work_id=str(row["work_id"]),
+                subject_kind=str(row["subject_kind"]),
+                subject_id=str(row["subject_id"]),
+                field=str(row["field"]),
+                value=json.loads(row["value"]),
+                was=json.loads(row["was"]),
+                snapshot_id=str(row["snapshot_id"]),
+                corrected_at=str(row["corrected_at"]),
+                note=row["note"],
+            )
+            for row in rows
+        ]
+
+    def current_corrections(self, work_id: str) -> dict[tuple[str, str, str], Correction]:
+        """The correction that stands for each field of each subject, keyed by (kind, id, field).
+
+        Folded here rather than asked of the database, so both backends answer identically and
+        the ordering rule ``list_corrections`` documents is applied once.
+        """
+        standing: dict[tuple[str, str, str], Correction] = {}
+        for correction in self.list_corrections(work_id):
+            key = (correction.subject_kind, correction.subject_id, correction.field)
+            standing[key] = correction
+        return standing
+
+    def append_correction_conflicts(self, conflicts: Sequence[CorrectionConflict]) -> int:
+        """Record what a reading proposed where a correction overruled it. Returns the count."""
+        if not conflicts:
+            return 0
+        with self.transaction() as connection:
+            connection.executemany(
+                "INSERT INTO correction_conflicts (work_id, subject_kind, subject_id, field, "
+                "proposed, held, snapshot_id, noticed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        conflict.work_id,
+                        conflict.subject_kind,
+                        conflict.subject_id,
+                        conflict.field,
+                        json.dumps(conflict.proposed, ensure_ascii=False),
+                        json.dumps(conflict.held, ensure_ascii=False),
+                        conflict.snapshot_id,
+                        conflict.noticed_at,
+                    )
+                    for conflict in conflicts
+                ],
+            )
+        return len(conflicts)
+
+    def list_correction_conflicts(
+        self, work_id: str, *, snapshot_id: str | None = None
+    ) -> list[CorrectionConflict]:
+        """Disagreements a reading raised with a standing correction, oldest first."""
+        query = "SELECT * FROM correction_conflicts WHERE work_id = ?"
+        parameters: list[str] = [work_id]
+        if snapshot_id is not None:
+            query += " AND snapshot_id = ?"
+            parameters.append(snapshot_id)
+        rows = self.connection.execute(
+            query + " ORDER BY noticed_at, {tiebreak}", parameters
+        ).fetchall()
+        return [
+            CorrectionConflict(
+                work_id=str(row["work_id"]),
+                subject_kind=str(row["subject_kind"]),
+                subject_id=str(row["subject_id"]),
+                field=str(row["field"]),
+                proposed=json.loads(row["proposed"]),
+                held=json.loads(row["held"]),
+                snapshot_id=str(row["snapshot_id"]),
+                noticed_at=str(row["noticed_at"]),
+            )
+            for row in rows
+        ]
 
     def revision_text(self, revision_id: str, *, roles: Sequence[str] | None = None) -> str:
         """Return the text of a revision, documents concatenated in order.

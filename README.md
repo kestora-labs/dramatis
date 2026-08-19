@@ -18,6 +18,10 @@ A [Kestora Labs](https://github.com/kestora-labs) product.
 
 ## Trying it
 
+> Dramatis publishes as **`dramatis-personae`**. An unrelated actor library has held
+> `dramatis` on PyPI since 2008, so `pip install dramatis` fetches somebody else's package —
+> the import package and the `dramatis` command here are unaffected.
+
 ```bash
 pip install -e ".[anthropic,serve]"
 export ANTHROPIC_API_KEY=...          # or run `ant auth login`

@@ -3,7 +3,11 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "dramatis"
+# Not "dramatis": an unrelated actor library has held that name on PyPI since 2008, and
+# installing by it fetches the stranger — which shipped inside a Dockerfile once already
+# (D45). The import package and the command are still `dramatis`; only the distribution
+# differs. See D55.
+name = "dramatis-personae"
 version = "0.1.0.dev0"
 description = "Character relationship graphs for narrative works, with snapshots across revisions."
 readme = "README.md"

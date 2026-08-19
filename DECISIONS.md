@@ -2994,3 +2994,47 @@ with the mark.
 
 *Reversible.* One client module, two stylesheet rules, two lines of sidebar. Nothing in the
 store, the pipeline or the schema changed.
+
+---
+
+## D55 — Dramatis publishes as `dramatis-personae`
+
+**Before phase 6.** The distribution name changes; the import package and the console command
+do not.
+
+`dramatis` on PyPI belongs to an actor library for Ruby and Python, last released on 6 June
+2008 at version 0.1.1, alpha, two sdists and no wheels. It is unrelated in every way except
+the word.
+
+This is not a theoretical clash. **D45** records the first Docker image exiting `127` with
+`dramatis: executable file not found`, because pip preferred the stranger's 0.1.1 over this
+project's 0.1.0.dev0 and installed it instead: the image was shipping somebody else's code.
+That was fixed by installing the wheel by file path, which left the collision itself in place —
+and with it `pip install dramatis`, **6.5**'s citable release and **6.7**'s installers.
+
+### Only the distribution name moves
+
+`import dramatis` and the `dramatis` command are resolved by the interpreter and the console
+script table, never through the index, so neither is at risk and neither changes. Renaming them
+would alter what every module imports and what every user types, to solve a problem neither
+has. The precedent is ordinary: `pillow` imports as `PIL`, `beautifulsoup4` as `bs4`.
+
+A governance test pins all three — the distribution name, the command, and the wheel's package
+— and asserts that nothing installs the application *by* name from an index, in either
+spelling. The Dockerfile's file-path install stays, because installing by the new name would
+work today and silently break on the day somebody registers it.
+
+Verified by building the wheel: `dramatis_personae-0.1.0.dev0-py3-none-any.whl`, importing as
+`dramatis`, carrying the five prompts and the two schema files as package data, and exposing
+`dramatis = dramatis.cli:main`.
+
+### PEP 541 is worth filing and not worth waiting for
+
+The abandonment criteria are met on paper — no release in eighteen years — but they are written
+for somebody *continuing* an abandoned project: a request must show "improvements made on their
+fork" and "why creating a fork under a different name isn't viable", and neither is true here.
+PyPI does grant these, at its discretion and on no timetable. So the request should be filed
+and the release should not wait for it. If the name is ever granted, publishing under both
+costs nothing.
+
+*Reversible.* One line of `pyproject.toml`. Nothing imports it.

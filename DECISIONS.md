@@ -3109,3 +3109,83 @@ this bullet exists to avoid is not actually available.
 
 *Reversible.* The invariant amendment is additive and the bullets are unbuilt; deleting both
 returns the project to a local-disk-only tool.
+
+---
+
+## D57 — A corpus source is an interface, and a folder is one implementation of it
+
+**Phase 4.12.** **D56** said the seam was one line wide. It was, and finding it was the whole
+bullet: `sources.Source` asks two questions and nothing else.
+
+**What is the stable root this corpus is known by?** A string. It is the key a confirmed
+structure map is saved under, so it has to be the same string however somebody named the
+corpus. For the filesystem that means resolving `corpus`, `./corpus` and the same folder
+reached from a parent to one answer — the reasoning `propose_structure` already carried, now
+stated in one place instead of two.
+
+**What are its readable documents?** `(path, text)` pairs in a deterministic order, because
+the order decides the revision hash, plus the things it could not read *and why*. `Reading`
+holds both. A source never drops a document in silence, which was already true of a folder's
+non-text files and is now the interface's promise rather than one implementation's habit.
+
+Nothing else. In particular a source is never asked for a `Path`, because the next one has
+none to give.
+
+### Constructing a source names it; reading one contacts it
+
+`read` is a method rather than something computed in `__init__`, and for a folder that
+distinction is invisible. For a source that reaches a network it is Invariant 7's guarantee
+made structural: a source can be built, passed around, and inspected without anything being
+contacted, and the one call that reaches out is the one an ingest makes.
+
+The same reasoning gives `Reading` its second job. It is a value the caller keeps and hands
+on — `ingest_source(..., reading=...)` and `propose_structure(corpus, reading)` both take
+one — so a flow that proposes a structure and then ingests reads the corpus once. The CLI's
+`structure` command did read twice, harmlessly on a disk and once per document over a network.
+
+### What moved, and what did not
+
+`TEXT_SUFFIXES`, `read_text` and `IngestError` are now `sources`', because a source raises the
+error before `ingest` is involved; `ingest` re-exports all three, so no existing import
+changed. The two inline directory walks — one in `ingest_folder`, one in `propose_structure`
+— became `FileSystemSource.read`, and with them the single-file special case each had grown
+its own copy of.
+
+`ingest_source` is now the function; `ingest_folder` is that function with "a path means the
+local filesystem" said out loud, keeping the two checks only a filesystem can fail (*no such
+folder*, *that is a file*) so its messages are unchanged. `structure_for` and
+`propose_structure` take either a source or a path.
+
+**`ingest_file` was left reading its one file directly.** It is not on the path to a Drive
+folder, and its failures are refusals rather than skips: a named file that is empty or is not
+UTF-8 stops the ingest, where the same file inside a folder is skipped and reported. Routing
+it through a source would have to preserve that difference, which is work with no bullet
+behind it. It does ask `FileSystemSource` for its root, so only one thing in the project
+decides what a root is.
+
+A work's default title now comes from the last component of the root rather than from the
+argument as typed, which for a folder is the same name and for `dramatis ingest .` is an
+improvement rather than the empty string it used to be. A source that is not a filesystem
+should name its work rather than rely on this.
+
+### The bug the seam removed
+
+`dramatis structure <a single file>` exited 1 on every single-file corpus. **4.11** made a file
+its own structure-map root holding one document named for the file; the command then rebuilt a
+path for that document by joining the root to it and went looking for `book.md/book.md`.
+`structure_for` had the special case and a comment explaining it; the CLI had neither. Reading
+the texts off the source deletes the join, so there is no longer a place that has to know
+which shape it is holding. It is covered by a test that fails against the previous CLI.
+
+### No behaviour change, and the test that says so
+
+The claim needed a source with no disk under it, so the tests carry a nine-line
+`InMemorySource`. Ingesting through it produces the same revision identifier, the same document
+identifiers and the same hashes as ingesting the folder it mirrors; proposing a structure over
+it produces the same documents; a confirmed excluded region is dropped from it exactly as from
+a file, so **4.11** is defined on pairs and not on files. Two readings of one in-memory root
+report `unchanged` and `changed` per document, which is **4.15**'s requirement proven before
+its network exists. The whole suite is otherwise untouched: 1,207 tests, none amended.
+
+*Reversible.* No stored data and no schema changed. Inlining `FileSystemSource.read` back into
+its two callers and deleting the module returns the project to exactly the code before it.

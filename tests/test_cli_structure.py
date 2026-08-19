@@ -100,6 +100,20 @@ class TestLookingCostsNothing:
         assert main(["structure", str(tmp_path / "absent")]) == 1
         assert "no such file or folder" in capsys.readouterr().err
 
+    def test_a_single_file_is_a_corpus_of_one(self, corpus: Path, capsys) -> None:
+        """The shape 4.11 made a structure-map root, which this command could not read.
+
+        `propose_structure` names a single file's one document after the file, and the command
+        then rebuilt a path for it by joining the root to it — looking for `book.md/book.md`
+        and exiting 1 on every single-file corpus. Reading the texts off the source instead
+        removes the join, and with it the only place that had to know which shape it had.
+        """
+        assert main(["structure", str(corpus / "book.md"), "--json"]) == 0
+        payload = json.loads(capsys.readouterr().out)
+
+        assert [entry["path"] for entry in payload["documents"]] == ["book.md"]
+        assert payload["root"] == str((corpus / "book.md").resolve())
+
     def test_json_stays_parseable_while_notes_go_to_stderr(self, corpus: Path, capsys) -> None:
         assert main(["structure", str(corpus), "--json"]) == 0
         captured = capsys.readouterr()

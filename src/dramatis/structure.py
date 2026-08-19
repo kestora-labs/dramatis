@@ -48,10 +48,10 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
-from dramatis.ingest import TEXT_SUFFIXES, IngestError, read_text
 from dramatis.providers import ModelRequest, Provider, ProviderError
 from dramatis.reanchor import Anchor, reanchor
 from dramatis.segmentation import DEFAULT_SEGMENT_TYPE
+from dramatis.sources import Reading, Source, as_source
 from dramatis.store import NARRATIVE, REFERENCE, utc_now
 from dramatis.text import normalise_whitespace
 
@@ -270,51 +270,22 @@ def _whole_document(text: str) -> Region:
     )
 
 
-def propose_structure(root: Path | str) -> StructureMap:
-    """Read a folder and propose what it holds.
+def propose_structure(corpus: Source | Path | str, reading: Reading | None = None) -> StructureMap:
+    """Read a corpus and propose what it holds.
 
     Reads text only to compare documents with each other; it calls no model and reaches no
-    network, so a user can look at the proposal before deciding whether to spend anything.
+    network beyond whatever the source itself is, so a user can look at the proposal before
+    deciding whether to spend anything.
+
+    ``reading`` lets a caller that has already read the source pass it in rather than cause a
+    second read — which for a folder saves a little work and for a source that costs a round
+    trip saves the round trip.
     """
-    # Resolved, because the root is the key a confirmed map is saved under: `corpus` and
-    # `./corpus` and the same folder reached from a parent directory are one folder, and a
-    # user who moved between them would be asked the same questions again.
-    root = Path(root).resolve()
-    if not root.exists():
-        raise IngestError(f"no such file or folder: {root}")
+    source = as_source(corpus)
+    if reading is None:
+        reading = source.read()
 
-    # A single file is a corpus of one, so the same map, exclusion and confirmation machinery
-    # reaches it. **4.9** offers "a single file, a folder, or a folder tree" as equals, and
-    # the commonest preface to exclude — a public-domain novel with a critical introduction
-    # bound in — arrives as exactly one file. The file is its own root, a path distinct from
-    # any folder's, and holds one document named for the file.
-    if root.is_dir():
-        found = sorted(
-            (path for path in root.rglob("*") if path.is_file()),
-            key=lambda path: path.relative_to(root).as_posix(),
-        )
-
-        def relative_of(path: Path) -> str:
-            return path.relative_to(root).as_posix()
-    else:
-        found = [root]
-
-        def relative_of(path: Path) -> str:
-            return path.name
-
-    texts: dict[str, str] = {}
-    skipped: list[tuple[str, str]] = []
-
-    for path in found:
-        relative = relative_of(path)
-        if path.suffix.lower() not in TEXT_SUFFIXES:
-            skipped.append((relative, f"not a text file ({path.suffix or 'no suffix'})"))
-            continue
-        try:
-            texts[relative] = read_text(path)
-        except IngestError as error:
-            skipped.append((relative, str(error)))
-
+    texts = reading.texts
     order = list(texts)
     documents = tuple(
         DocumentPlan(
@@ -330,7 +301,7 @@ def propose_structure(root: Path | str) -> StructureMap:
 
     notes: list[str] = []
     if not documents:
-        notes.append(f"{root} holds no readable text files")
+        notes.append(f"{source.root} holds no readable text files")
     if all(plan.revision_of.value is None for plan in documents) and len(documents) > 1:
         notes.append(
             "no document appears to be a revision of another. Where revisions are recorded "
@@ -339,7 +310,7 @@ def propose_structure(root: Path | str) -> StructureMap:
         )
 
     return StructureMap(
-        root=str(root), documents=documents, skipped=tuple(skipped), notes=tuple(notes)
+        root=source.root, documents=documents, skipped=reading.skipped, notes=tuple(notes)
     )
 
 
@@ -773,23 +744,21 @@ def restore(
     )
 
 
-def structure_for(root: Path | str, store: Any) -> StructureMap:
-    """Propose a folder's structure, with anything already confirmed for it put back.
+def structure_for(corpus: Source | Path | str, store: Any) -> StructureMap:
+    """Propose a corpus's structure, with anything already confirmed for it put back.
 
     The reading path for every later caller: an ingest asks this, gets settled answers where
     somebody has given them and proposals where nobody has, and can tell the two apart by
-    `settled`. It calls no model and reaches no network.
+    `settled`. It calls no model.
     """
-    structure = propose_structure(root)
+    source = as_source(corpus)
+    reading = source.read()
+    structure = propose_structure(source, reading)
     saved = store.structure_map(structure.root)
     if not saved:
         return structure
-    # A single file is its own root (**4.11**), and its one document is named for the file —
-    # so joining root to the document path would look for `novel.txt/novel.txt`. The root is
-    # the file itself in that case.
-    base = Path(structure.root)
-    texts = {
-        plan.path: read_text(base if base.is_file() else base / plan.path)
-        for plan in structure.documents
-    }
-    return restore(structure, saved, texts)
+    # The texts the source already handed over. Reading them off the source rather than
+    # rebuilding paths under the root is what makes a single file work without a special
+    # case — its one document is named for the file, so joining root to it would look for
+    # `novel.txt/novel.txt` — and what stops a network source being read a second time.
+    return restore(structure, saved, reading.texts)

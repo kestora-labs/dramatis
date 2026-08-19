@@ -29,6 +29,7 @@ dramatis analyse rev:abc123
 dramatis review                                # what the reading proposed, and what you make of it
 dramatis correct --character char:elizabeth-bennet --field aliases --value Lizzy Eliza
 dramatis merge char:miss-eliza-bennet --into char:elizabeth-bennet   # one person, two names
+dramatis continuity                            # what the corpus no longer agrees with itself about
 
 npm ci --prefix web && npm --prefix web run build
 dramatis serve                                 # http://127.0.0.1:7373
@@ -54,8 +55,8 @@ Excluding a preface there means its characters never reach the model, so it cost
 analyse a book without the critic who introduced it.
 
 `analyse` calls a model, and `structure --ask` does when you ask it to. `ingest`, `status`,
-`validate`, `characters`, `review`, `correct`, `merge`, `split`, and `serve` never do, and work
-with no credential and no network.
+`validate`, `characters`, `review`, `correct`, `merge`, `split`, `continuity`, and `serve`
+never do, and work with no credential and no network.
 
 ### In a container
 

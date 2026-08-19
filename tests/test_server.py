@@ -1508,3 +1508,42 @@ class TestRegistryDecisions:
 
         assert refused.status_code == 403
         assert second in self._characters(client)
+
+
+class TestContinuityEndpoint:
+    """The continuity report over the API (5.4). A read, and asked for rather than folded
+    into the snapshot response: it searches two revisions' text, and nobody should pay for a
+    report they did not request."""
+
+    def test_it_reports_on_the_current_reading(self, client, analysed) -> None:
+        _, snapshot_id, document = analysed
+        work_id = document["snapshot"]["work_id"]
+
+        payload = client.get(f"/api/works/{work_id}/continuity").json()
+
+        assert payload["snapshot_id"] == snapshot_id
+        assert payload["unchanged"] is True
+        assert payload["findings"] == 0
+
+    def test_an_unknown_work_is_a_404(self, client) -> None:
+        assert client.get("/api/works/work:nothing/continuity").status_code == 404
+
+    def test_an_unknown_revision_is_a_404(self, client, analysed) -> None:
+        _, _, document = analysed
+        work_id = document["snapshot"]["work_id"]
+
+        response = client.get(f"/api/works/{work_id}/continuity", params={"against": "rev:nothing"})
+
+        assert response.status_code == 404
+        assert "no text revision" in response.json()["detail"]
+
+    def test_it_is_a_read_and_is_not_guarded(self, client, analysed) -> None:
+        # Reads change nothing, so the origin guard leaves them alone.
+        _, _, document = analysed
+        work_id = document["snapshot"]["work_id"]
+
+        response = client.get(
+            f"/api/works/{work_id}/continuity", headers={"origin": "http://evil.example"}
+        )
+
+        assert response.status_code == 200

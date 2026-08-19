@@ -2785,3 +2785,108 @@ rebuild.
 *Reversible.* One module, one table, one column, two CLI verbs, two endpoints. Nothing outside
 `identity.py` decides anything: dropping it and the column returns the registry to where 5.2
 left it.
+
+---
+
+## D53 — Three findings a re-analysis cannot produce, and the granularity each is checked at
+
+**Phase 5.4.** Everything before this reports what a reading found. This reports what the
+corpus no longer agrees with itself about — three things that survive a re-analysis because
+re-analysing cannot see them.
+
+**A cast with a stale name in it looks exactly like a cast.** Re-read the work after renaming
+somebody in one chapter and missing another, and the graph comes back with both names in it,
+confidently, as two people or as one depending on how the model felt. Nothing in the pipeline
+is wrong; the corpus is.
+
+**A locator with nowhere to land fails one citation at a time**, and only when somebody opens
+it. **2.4** re-anchors the quotation where it can; what it cannot do is tell you how many
+claims are pointing at a place the work no longer has.
+
+**Two copies of a chapter are an ordinary corpus** to a reader that was not told they are the
+same chapter. Every interaction in it is read twice and weighted double, and every number
+downstream is quietly wrong.
+
+### The comparison is between documents, and that is a decision
+
+The stale-name check asks whether a name the last reading found in a document is no longer
+written *there* and still written in *another*. Document granularity is chosen because that is
+the shape the mistake has: a rename is a find-and-replace in the file being worked on, and what
+it misses is another file.
+
+A finer grain would report every paragraph a name dropped out of during an ordinary rewrite,
+which is most paragraphs. The cost is real and stated rather than hidden: a single-document
+work can never produce this finding, because there is no elsewhere for a name to be stale in.
+
+The same choice is what removes the need for a stop-list. A form only qualifies where it
+vanished from a document *entirely*, and `you`, `her mother` and `my dear` — all real aliases
+in the *Pride and Prejudice* registry — are in every document before and after, so they are
+never candidates. No vocabulary is encoded, which Invariant 1 and the "not tied to one author's
+method" non-goal both require.
+
+A name that disappears from the *whole* work is not reported either. That is a clean removal,
+and reporting it would be reporting an edit rather than an inconsistency — the report would cry
+wolf on every draft and be turned off.
+
+### A rename is not asserted, because it cannot be proven
+
+The finding is *this name left here and is still written there*, with every remaining location.
+It does not claim what replaced it. Where another surface form of the same character appeared
+in exactly the documents this one left, `replaced_by` names it — and the registry is what makes
+those two forms one person, so that is evidence rather than a guess. Where no such form exists,
+the field is absent. An unevidenced rename is worse than an unexplained pair, which is the rule
+`diff` already follows for merges.
+
+### Superseded documents are checked whichever revision is being looked at
+
+The other two findings compare a reading against a later text and are empty when nothing has
+moved. This one is not: a document read alongside the document that revises it is wrong in the
+revision that holds them both, not in the comparison between two. So it is reported even for a
+project nobody has revised, which is exactly when it is most useful — before the first
+analysis has spent anything.
+
+### Saying that nothing was compared
+
+A report on a reading of the current text has no findings, and so does a report on a corpus
+with nothing wrong. Those are different answers and the report gives different ones: *the
+reading is of the current text* against *nothing stale, nothing lost, nothing read twice*. An
+empty report that means "there was nothing to compare" is the same failure **2.5** recorded —
+a control that looks like information and is not.
+
+### It reports and does not repair
+
+Every one of these has more than one right answer. A stale name might want the rename finished,
+or might be a deliberate archaism in a character's speech; a lost position might want the
+evidence re-anchored or the claim dropped; a superseded document might want removing from the
+corpus or might be there on purpose. Choosing is the author's, and a tool that chose would be
+editing the work, which the non-goals forbid.
+
+### Two defects the report found by being read
+
+**A name shown with its spaces eaten.** `normalise_whitespace` strips both ends — right for
+matching a quotation, wrong for showing one, and it rendered *Sister Yeong keeps* as
+`Sister[Yeong]keeps`. The context now keeps the space beside the name where the text had one
+and loses it where the window cut mid-word.
+
+**A fixture's README is part of the fixture.** Ingesting `fixtures/c` whole puts its own
+README into the corpus, and the README names the characters — so the first run of the
+acceptance test found a third stale location, in documentation. The check was right and the
+corpus was wrong; the test now ingests the corpus without the files that describe it.
+
+### No browser view, again
+
+Like **5.3**, this is CLI and API. The report is most useful in the minutes after re-ingesting
+a revised draft and before spending anything on re-analysing it, and the browser has no
+ingest-a-new-revision flow to hang it beside — **4.9** creates projects, not revisions. Adding
+one is its own bullet, not a corner of this one.
+
+### Verified
+
+1,201 tests against SQLite and a live Postgres, and the acceptance sentence tested against
+fixture **C** itself rather than a stand-in: *Yeong* renamed to *Sarto* through all three
+transmissions while the character bible goes on saying *Yeong*, and the report naming both
+remaining occurrences with the words around them. Run live on the same fixture from the command
+line, which is where both defects above turned up.
+
+*Reversible.* One module, one store method, one CLI verb, one endpoint. Nothing else changed:
+`continuity.py` reads what the store already holds and writes nothing.

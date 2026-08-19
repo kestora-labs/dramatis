@@ -11,7 +11,9 @@ a folder holds should never cost anything.
 
 Every command locates the project file rather than assuming it (see ``dramatis.locate``),
 and only ``ingest`` may bring one into existence. ``status`` answers which project is in
-use and what is in it, and ``review`` records what a person made of what a reading proposed.
+use and what is in it, ``review`` and ``correct`` record what a person made of what a reading
+proposed, ``merge`` and ``split`` settle who is who, and ``continuity`` reports what the corpus
+no longer agrees with itself about.
 """
 
 from __future__ import annotations
@@ -24,6 +26,9 @@ from pathlib import Path
 from typing import Any
 
 from dramatis import __version__
+from dramatis.continuity import ContinuityError
+from dramatis.continuity import as_json as continuity_as_json
+from dramatis.continuity import report as continuity_report
 from dramatis.correction import (
     CHARACTER_FIELDS,
     RELATION_FIELDS,
@@ -955,6 +960,95 @@ def _run_split(args: argparse.Namespace) -> int:
         return 0
 
 
+# -- continuity -----------------------------------------------------------------------
+
+
+def _run_continuity(args: argparse.Namespace) -> int:
+    """Report what the corpus no longer agrees with itself about.
+
+    Calls no model and reaches no network (Invariant 6), and changes nothing: every finding
+    here has more than one right answer and choosing between them is the author's.
+    """
+    try:
+        path = resolve_store(args.store).require()
+    except StoreNotFound as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
+    with Store(path) as store:
+        works = store.list_works()
+        work_id = args.work
+        if work_id is None:
+            if not works:
+                print("error: this project holds no work yet", file=sys.stderr)
+                return 1
+            if len(works) > 1:
+                titles = ", ".join(f"{w['title']} ({w['id']})" for w in works)
+                print(
+                    f"error: this project holds several works, so name one: {titles}",
+                    file=sys.stderr,
+                )
+                return 1
+            work_id = str(works[0]["id"])
+
+        try:
+            found = continuity_report(
+                store, work_id, snapshot_id=args.snapshot, against=args.against
+            )
+        except ContinuityError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 1
+
+        title = str((store.get_work(work_id) or {}).get("title", work_id))
+
+    if args.as_json:
+        json.dump(continuity_as_json(found), sys.stdout, indent=2, ensure_ascii=False)
+        sys.stdout.write("\n")
+        return 0
+
+    # ASCII only, for the reason IngestResult.summary gives: a Windows console under a legacy
+    # code page renders typographic punctuation as replacement characters.
+    print(f"{title}  ({found.snapshot_id})")
+    if found.unchanged:
+        # Not a finding and not a defect. Saying so beats an empty report, which reads as
+        # "checked and clean" when what happened is "there was nothing to compare".
+        print(f"  the reading is of the current text ({found.read_revision})")
+    else:
+        print(f"  reading of {found.read_revision} against {found.against_revision}")
+    print(f"  {len(found)} finding(s)")
+
+    for note in found.notes:
+        print(f"note: {note}", file=sys.stderr)
+
+    if found.stale_names:
+        print()
+        print("names the work has moved on from")
+        for entry in found.stale_names:
+            print(f"  {entry}")
+            for location in entry.locations:
+                print(f"    {location}")
+
+    if found.lost_positions:
+        print()
+        print("claims pointing at a position that is gone")
+        for entry in found.lost_positions:
+            print(f"  {entry}")
+            if entry.quotation:
+                print(f'    "{entry.quotation}"')
+
+    if found.superseded:
+        print()
+        print("documents replaced and still being read")
+        for entry in found.superseded:
+            print(f"  {entry}")
+
+    if found.empty and not found.unchanged:
+        print()
+        print("nothing stale, nothing lost, nothing read twice.")
+
+    return 0
+
+
 # -- status ---------------------------------------------------------------------------
 
 
@@ -1570,6 +1664,40 @@ def _build_parser() -> argparse.ArgumentParser:
     split.add_argument("--note", default=None, help="why, for whoever reads this later")
     split.add_argument("--json", dest="as_json", action="store_true", help="machine-readable")
     split.set_defaults(handler=_run_split)
+
+    continuity = subcommands.add_parser(
+        "continuity",
+        help="report what the corpus no longer agrees with itself about",
+        description=(
+            "Check the last reading of a work against the text as it now stands. Reports "
+            "names a document stopped using that the corpus still uses elsewhere, claims "
+            "pointing at a structural position the text no longer has, and documents another "
+            "one revises that are still being read alongside it. Calls no model, and changes "
+            "nothing: each of these has more than one right answer."
+        ),
+    )
+    continuity.add_argument(
+        "work",
+        nargs="?",
+        default=None,
+        metavar="WORK",
+        help="which work to check. Needed only where the project holds several.",
+    )
+    continuity.add_argument("--store", default=None, help=STORE_HELP)
+    continuity.add_argument(
+        "--snapshot",
+        default=None,
+        metavar="ID",
+        help="the reading to check. Without this, the work's newest snapshot.",
+    )
+    continuity.add_argument(
+        "--against",
+        default=None,
+        metavar="REVISION",
+        help="the text to check it against. Without this, the work's newest text revision.",
+    )
+    continuity.add_argument("--json", dest="as_json", action="store_true", help="machine-readable")
+    continuity.set_defaults(handler=_run_continuity)
 
     status = subcommands.add_parser(
         "status",

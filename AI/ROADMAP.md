@@ -499,9 +499,12 @@ command line, and a preface excluded there produces a cast free of the people it
       moved forms to whoever now claims them, so nothing rewrites a snapshot and **3.4**'s
       merge detection needed no change. Reviews and corrections follow a merged character, or
       **5.1** and **5.2** would be undone by it. *(See **D52**.)*
-- [ ] **5.4** — Continuity report: entities renamed between revisions with references to
+- [x] **5.4** — Continuity report: entities renamed between revisions with references to
       the old name still present elsewhere; references to structural positions that no
-      longer exist; documents superseded but still referenced.
+      longer exist; documents superseded but still referenced. Three findings a re-analysis
+      cannot produce, checked between *documents* — the grain the mistake actually has, and
+      what removes the need for a stop-list. It reports and never repairs: each finding has
+      more than one right answer. *(See **D53**.)*
 - [ ] **5.5** — Confidence surfaced in the UI — low-confidence edges visually distinct.
 
 **Acceptance:** A correction made in snapshot *n* survives re-analysis into snapshot *n+1*

@@ -132,8 +132,21 @@ describe("describeCharacter", () => {
     expect(valueOf(detail, "Salience")).toBe("1.00");
     expect(valueOf(detail, "Confidence")).toBe("0.90");
     expect(valueOf(detail, "Provenance")).toBe("human");
-    expect(valueOf(detail, "Review")).toBe("accepted");
     expect(detail.notes).toBe("The novel's centre of consciousness.");
+  });
+
+  it("leaves review status to the review overlay, even when the document declares one", () => {
+    // From 5.1 a decision is recorded beside the immutable snapshot, so the status baked
+    // into the document is stale the moment somebody rules on the claim. One place shows
+    // where review stands; a field here would be a second place, disagreeing.
+    const document = aRichDocument();
+
+    expect(labels(describeCharacter(document, document.characters[0]).fields)).not.toContain(
+      "Review",
+    );
+    expect(labels(describeRelation(document, document.relations[0]).fields)).not.toContain(
+      "Review",
+    );
   });
 
   it("omits a qualifier the document does not carry rather than showing it empty", () => {
@@ -144,7 +157,6 @@ describe("describeCharacter", () => {
 
     expect(labels(detail.fields)).not.toContain("Salience");
     expect(labels(detail.fields)).not.toContain("Confidence");
-    expect(labels(detail.fields)).not.toContain("Review");
     expect(detail.notes).toBeUndefined();
     expect(detail.aliases).toEqual([]);
   });
@@ -231,7 +243,6 @@ describe("describeRelation", () => {
     expect(valueOf(detail, "Valence")).toBe("+0.40");
     expect(valueOf(detail, "Confidence")).toBe("1.00");
     expect(valueOf(detail, "Provenance")).toBe("human");
-    expect(valueOf(detail, "Review")).toBe("accepted");
     expect(detail.notes).toBe("Opens in mutual slight and closes in marriage.");
   });
 

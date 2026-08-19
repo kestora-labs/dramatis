@@ -335,3 +335,55 @@ class TestAgainstARealPostgres:
         store.save_structure_map("/corpus", {"one.md": {}, "two.md": {}}, "now")
 
         assert store.forget_structure_map("/corpus") == 2
+
+    def test_review_decisions_keep_their_order_on_a_tied_timestamp(self, store: Store) -> None:
+        """`reviews` joins the ordered tables (5.1), so it needs `seq` for the same reason
+        the others do: the newest decision is the one that stands, and two taken in the same
+        second must not be reordered by anything else."""
+        from dramatis.store import ReviewDecision, StoredSnapshot
+
+        store.upsert_collection("col:a", "A Set")
+        store.upsert_work("work:a", "col:a", "A Work", segment_types=[])
+        store.upsert_text_revision(
+            TextRevision(
+                id="rev:1",
+                work_id="work:a",
+                label=None,
+                sha256="d",
+                created_at="2026-01-01T00:00:00Z",
+                document_ids=(),
+            )
+        )
+        store.upsert_analysis_run(
+            {"id": "run:1", "model": "m", "prompt_version": "p", "parameters": {}}
+        )
+        store.insert_snapshot(
+            StoredSnapshot(
+                id="snap:a",
+                work_id="work:a",
+                text_revision_id="rev:1",
+                analysis_run_id="run:1",
+                label=None,
+                schema_version="0.1.0",
+                sha256="one",
+                created_at="2026-01-01T00:00:00Z",
+                document={"a": 1},
+            )
+        )
+        same = "2026-03-03T00:00:00Z"
+        for status in ("accepted", "rejected", "accepted"):
+            store.append_review(
+                ReviewDecision(
+                    work_id="work:a",
+                    subject_kind="character",
+                    subject_id="char:a",
+                    status=status,
+                    snapshot_id="snap:a",
+                    decided_at=same,
+                )
+            )
+
+        recorded = store.list_reviews("work:a")
+
+        assert [decision.status for decision in recorded] == ["accepted", "rejected", "accepted"]
+        assert store.current_reviews("work:a")[("character", "char:a")].status == "accepted"

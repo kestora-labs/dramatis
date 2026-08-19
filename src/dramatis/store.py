@@ -190,6 +190,27 @@ CREATE TABLE IF NOT EXISTS structure_map (
     PRIMARY KEY (root, path)
 );
 
+-- What a person decided about one claim in one reading (5.1). Append-only: a row is a
+-- decision, and a subject's current status is its newest row. Overwriting in place would
+-- lose that somebody once accepted what has since been rejected, and a review whose earlier
+-- state cannot be recovered is exactly the silent overwrite phase 5 exists to prevent.
+--
+-- Keyed by work rather than by snapshot. A judgement is about a claim, not about the
+-- document that happened to carry it: the same character is the same character in the next
+-- reading of the same work, and a decision that expired whenever the analysis re-ran would
+-- have to be made again every time. The snapshot the decision was taken in is recorded
+-- beside it, because what a person was looking at is part of what they decided.
+CREATE TABLE IF NOT EXISTS reviews (
+    work_id      TEXT NOT NULL REFERENCES works(id),
+    subject_kind TEXT NOT NULL CHECK (subject_kind IN ('character', 'relation')),
+    subject_id   TEXT NOT NULL,
+    status       TEXT NOT NULL
+                 CHECK (status IN ('proposed', 'accepted', 'corrected', 'rejected')),
+    note         TEXT,
+    snapshot_id  TEXT NOT NULL REFERENCES snapshots(id),
+    decided_at   TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS ix_snapshots_work ON snapshots(work_id);
 CREATE INDEX IF NOT EXISTS ix_snapshots_revision ON snapshots(text_revision_id);
 CREATE INDEX IF NOT EXISTS ix_snapshots_run ON snapshots(analysis_run_id);
@@ -198,6 +219,7 @@ CREATE INDEX IF NOT EXISTS ix_documents_work ON documents(work_id);
 CREATE INDEX IF NOT EXISTS ix_revisions_work ON text_revisions(work_id);
 CREATE INDEX IF NOT EXISTS ix_characters_collection ON characters(collection_id);
 CREATE INDEX IF NOT EXISTS ix_aliases_character ON character_aliases(character_id);
+CREATE INDEX IF NOT EXISTS ix_reviews_subject ON reviews(work_id, subject_kind, subject_id);
 """
 
 
@@ -254,6 +276,24 @@ class StoredSnapshot:
     created_at: str
     document: dict[str, Any]
     label: str | None = None
+
+
+@dataclass(frozen=True)
+class ReviewDecision:
+    """One human judgement about one node or edge, as kept on disk (**5.1**).
+
+    ``snapshot_id`` is the reading the decision was taken in, not the thing it applies to:
+    the judgement is about the subject, and the snapshot records what was on the screen when
+    it was made. See the ``reviews`` table for why those are different.
+    """
+
+    work_id: str
+    subject_kind: str
+    subject_id: str
+    status: str
+    snapshot_id: str
+    decided_at: str
+    note: str | None = None
 
 
 class AmbiguousAliasError(Exception):
@@ -814,6 +854,79 @@ class Store:
         ).fetchall()
         found = [self.get_snapshot(row["id"]) for row in rows]
         return [snapshot for snapshot in found if snapshot is not None]
+
+    # -- reviews ------------------------------------------------------------------------
+    #
+    # Append-only, newest wins. Nothing here decides whether a decision is *allowed* — that
+    # `corrected` says what it corrected, that the subject is one the reading actually
+    # proposed — because those are rules about review rather than about storage, and they
+    # live in `dramatis.review`. This layer writes rows and reads them back in order.
+
+    def append_review(self, decision: ReviewDecision) -> ReviewDecision:
+        """Record a decision. Never replaces an earlier one; it supersedes it."""
+        with self.transaction() as connection:
+            connection.execute(
+                "INSERT INTO reviews (work_id, subject_kind, subject_id, status, note, "
+                "snapshot_id, decided_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    decision.work_id,
+                    decision.subject_kind,
+                    decision.subject_id,
+                    decision.status,
+                    decision.note,
+                    decision.snapshot_id,
+                    decision.decided_at,
+                ),
+            )
+        return decision
+
+    def list_reviews(
+        self,
+        work_id: str,
+        *,
+        subject_kind: str | None = None,
+        subject_id: str | None = None,
+    ) -> list[ReviewDecision]:
+        """Every decision recorded about a work, oldest first.
+
+        Ties on ``decided_at`` break on insertion order, for the reason ``list_snapshots``
+        gives: two decisions taken in the same second are still one after the other, and
+        which came second is the one that stands.
+        """
+        query = "SELECT * FROM reviews WHERE work_id = ?"
+        parameters: list[str] = [work_id]
+        if subject_kind is not None:
+            query += " AND subject_kind = ?"
+            parameters.append(subject_kind)
+        if subject_id is not None:
+            query += " AND subject_id = ?"
+            parameters.append(subject_id)
+        rows = self.connection.execute(
+            query + " ORDER BY decided_at, {tiebreak}", parameters
+        ).fetchall()
+        return [
+            ReviewDecision(
+                work_id=str(row["work_id"]),
+                subject_kind=str(row["subject_kind"]),
+                subject_id=str(row["subject_id"]),
+                status=str(row["status"]),
+                snapshot_id=str(row["snapshot_id"]),
+                decided_at=str(row["decided_at"]),
+                note=row["note"],
+            )
+            for row in rows
+        ]
+
+    def current_reviews(self, work_id: str) -> dict[tuple[str, str], ReviewDecision]:
+        """Where review stands for each subject of a work, keyed by (kind, id).
+
+        Folded here rather than asked of the database, so both backends answer identically
+        and the ordering rule ``list_reviews`` documents is applied once.
+        """
+        standing: dict[tuple[str, str], ReviewDecision] = {}
+        for decision in self.list_reviews(work_id):
+            standing[(decision.subject_kind, decision.subject_id)] = decision
+        return standing
 
     def revision_text(self, revision_id: str, *, roles: Sequence[str] | None = None) -> str:
         """Return the text of a revision, documents concatenated in order.

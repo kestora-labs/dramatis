@@ -482,8 +482,11 @@ command line, and a preface excluded there produces a cast free of the people it
 
 *The graph becomes correctable, and starts reporting problems.*
 
-- [ ] **5.1** — Review status per node and edge: `proposed`, `accepted`, `corrected`,
-      `rejected`.
+- [x] **5.1** — Review status per node and edge: `proposed`, `accepted`, `corrected`,
+      `rejected`. Recorded *beside* the immutable snapshot rather than in it, and keyed to the
+      claim rather than to the document, so a decision outlives the reading it was taken in.
+      Append-only: the newest ruling stands and the ones it superseded remain readable.
+      *(See **D50**.)*
 - [ ] **5.2** — Human corrections persist across re-analysis and are never silently
       overwritten.
 - [ ] **5.3** — Manual merge and split of characters, with the decision recorded in the

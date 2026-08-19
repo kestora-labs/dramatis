@@ -144,6 +144,108 @@ code {
   padding: 0.1rem 0.5rem;
 }
 
+/* Review (5.1). The one thing on the detail panel a person does rather than reads, so it
+   sits above the claim and is set apart from the fields by a rule rather than by weight. */
+.review {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.7rem;
+  margin-top: 0.5rem;
+}
+
+.review-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.review-head .field-label {
+  margin-top: 0;
+}
+
+.review-status {
+  font-size: 0.75rem;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--line);
+  background: #f7fafc;
+}
+
+/* Colour carries the same four terms the vocabulary does, and nothing else: a status is
+   not a severity, so rejected is not red-as-error but simply the one ruled out. */
+.review-status.is-accepted {
+  border-color: #9ae6b4;
+  background: #f0fff4;
+}
+
+.review-status.is-corrected {
+  border-color: #fbd38d;
+  background: #fffaf0;
+}
+
+.review-status.is-rejected {
+  border-color: #feb2b2;
+  background: #fff5f5;
+}
+
+.review-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.4rem;
+}
+
+.review-choice {
+  font-size: 0.75rem;
+  font-family: inherit;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--muted);
+  padding: 0.15rem 0.55rem;
+  cursor: pointer;
+}
+
+.review-choice:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--muted);
+}
+
+.review-choice.current {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+.review-choice:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.review-note {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 0.4rem;
+  font-family: inherit;
+  font-size: 0.75rem;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.25rem 0.4rem;
+}
+
+.review-hint {
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin: 0.35rem 0 0;
+}
+
+.review-decided {
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin: 0.4rem 0 0;
+}
+
 .lineage {
   margin-top: 1.25rem;
 }

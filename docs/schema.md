@@ -86,7 +86,11 @@ worth knowing about. Corpora without reference material produce only `observed` 
 nothing breaks.
 
 `review_status` (`proposed` → `accepted` / `corrected` / `rejected`) is separate, and tracks
-how far a claim has travelled through human review.
+how far a claim has travelled through human review. What a document carries is the status as
+of the moment the snapshot was written. A snapshot is immutable, so a decision taken *after*
+it was archived is recorded beside it rather than in it, and is served separately by
+`GET /api/snapshots/{id}/reviews`; a reader holding only the document is reading what the
+analysis proposed, which is a different fact from what a person has since decided.
 
 ## Weights
 

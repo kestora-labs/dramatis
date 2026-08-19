@@ -102,7 +102,7 @@ class PostgresDriver:
 
     #: Tables whose rows are ordered with a tie-break, and so need the monotonic column
     #: SQLite gets for free. See the module docstring: the ordering is load-bearing.
-    ORDERED = ("text_revisions", "analysis_runs", "snapshots")
+    ORDERED = ("text_revisions", "analysis_runs", "snapshots", "reviews")
 
     def connect(self, target: Path | str) -> Any:
         try:

@@ -58,6 +58,19 @@ import {
   type ProposedStructure,
   type Role,
 } from "./create.js";
+import {
+  STATUSES as REVIEW_STATUSES,
+  canRecord,
+  decisionBody,
+  indexReviews,
+  reviewsUrl,
+  statusFor,
+  tally,
+  withSubject,
+  type ReviewOverlay,
+  type ReviewStatus,
+  type ReviewSubject,
+} from "./review.js";
 import { describeAnchor, passageUrl, splitPassage, type PassageResponse } from "./passage.js";
 
 interface SnapshotSummary {
@@ -130,6 +143,94 @@ const STYLE: cytoscape.StylesheetJson = [
 ];
 
 /**
+ * Where review of the selected node or edge stands, and how to move it.
+ *
+ * A control rather than a field, because review is the one thing on this panel a person
+ * *does* rather than reads. It sits above the claim it is about: the question "is this
+ * right?" is asked of the whole thing, not of the last row of it.
+ *
+ * The reason box is always offered and only required for `corrected` — the rule `canRecord`
+ * holds and the server enforces. A correction that does not say what it corrects is
+ * indistinguishable from a rejection somebody softened. Why that button is unavailable is
+ * said in text rather than in a `title`: a disabled control does not reliably receive the
+ * hover that would show a tooltip, so the explanation would be invisible exactly when it is
+ * needed.
+ */
+function ReviewControl({
+  subject,
+  viewing,
+  busy,
+  onRecord,
+}: {
+  subject: ReviewSubject;
+  /** The snapshot on screen, so a ruling taken in another one can say so. */
+  viewing: string | null;
+  busy: boolean;
+  onRecord: (status: ReviewStatus, note: string) => void;
+}) {
+  const [note, setNote] = useState("");
+
+  // The standing reason, until the reviewer starts writing their own. Clearing it when the
+  // selection changes is the caller's job — the key on this component does it.
+  const reason = note || subject.note || "";
+
+  return (
+    <section className="review" aria-label="Review">
+      <div className="review-head">
+        <h3 className="field-label">Review</h3>
+        <span className={`review-status is-${subject.status}`}>{subject.status}</span>
+      </div>
+
+      <div className="review-buttons">
+        {REVIEW_STATUSES.map((status) => (
+          <button
+            key={status}
+            type="button"
+            className={status === subject.status ? "review-choice current" : "review-choice"}
+            aria-pressed={status === subject.status}
+            disabled={busy || !canRecord(status, reason)}
+            onClick={() => onRecord(status, reason)}
+          >
+            {status}
+          </button>
+        ))}
+      </div>
+
+      <input
+        type="text"
+        className="review-note"
+        placeholder="Why (required to correct)"
+        value={reason}
+        onChange={(event) => setNote(event.target.value)}
+      />
+
+      {!canRecord("corrected", reason) && (
+        <p className="review-hint">
+          A correction has to say what it corrects: give a reason first.
+        </p>
+      )}
+
+      {subject.reviewed && (
+        // What is on the record, as against what is in the box above it. A reviewer coming
+        // back to a claim needs to see that somebody already ruled, and when.
+        <p className="review-decided">
+          {subject.status} on {subject.decided_at?.slice(0, 10)}
+          {/* Named only when it is not the reading on screen. A decision taken while
+              looking at a different snapshot is worth knowing about; one taken here is
+              already obvious. */}
+          {subject.decided_in && subject.decided_in !== viewing ? (
+            <>
+              {" · decided in "}
+              <code>{subject.decided_in}</code>
+            </>
+          ) : null}
+        </p>
+      )}
+    </section>
+  );
+}
+
+/**
  * What the snapshot claims about the selected node or edge.
  *
  * The fields themselves are decided in `detail.ts`; this only sets them. Aliases and
@@ -139,11 +240,20 @@ const STYLE: cytoscape.StylesheetJson = [
  */
 function DetailPanel({
   detail,
+  review,
+  reviewing,
+  reviewBusy,
+  onReview,
   onClear,
   onOpen,
   openAt,
 }: {
   detail: Detail;
+  review: ReviewSubject | null;
+  /** The snapshot on screen, which review decisions are shown against. */
+  reviewing: string | null;
+  reviewBusy: boolean;
+  onReview: (status: ReviewStatus, note: string) => void;
   onClear: () => void;
   onOpen: (position: number) => void;
   openAt: number | null;
@@ -159,6 +269,18 @@ function DetailPanel({
           ×
         </button>
       </div>
+
+      {review && (
+        // Keyed on the subject so switching selection starts with a fresh reason box rather
+        // than carrying one claim's note across to the next.
+        <ReviewControl
+          key={`${review.kind} ${review.id}`}
+          subject={review}
+          viewing={reviewing}
+          busy={reviewBusy}
+          onRecord={onReview}
+        />
+      )}
 
       {list.length > 0 && (
         <>
@@ -967,6 +1089,8 @@ export function App() {
   );
   const [declared, setDeclared] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [reviews, setReviews] = useState<ReviewOverlay | null>(null);
+  const [reviewBusy, setReviewBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Held in a ref as well as in state: the pin button and the drag handler need the live
   // instance, and they are not part of what makes the graph rebuild.
@@ -1025,6 +1149,15 @@ export function App() {
       .then((response) => response.json())
       .then(setDocument)
       .catch(() => setError(`could not load snapshot ${selected}`));
+
+    // A second request, and deliberately: the snapshot endpoint serves the archived
+    // document unchanged, and a decision taken since is not part of it (5.1). A project
+    // nobody has reviewed answers with every subject proposed, so there is no empty case.
+    setReviews(null);
+    fetch(reviewsUrl(selected))
+      .then((response) => (response.ok ? response.json() : null))
+      .then(setReviews)
+      .catch(() => setReviews(null));
   }, [selected]);
 
   useEffect(() => {
@@ -1242,6 +1375,32 @@ export function App() {
       });
   }
 
+  function recordReview(status: ReviewStatus, note: string) {
+    if (!selected || !selection) return;
+
+    setReviewBusy(true);
+    fetch(reviewsUrl(selected), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(decisionBody(selection, status, note)),
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body.detail ?? "the server would not record that decision");
+        }
+        return response.json() as Promise<ReviewSubject>;
+      })
+      // The subject as the server now holds it, folded in rather than guessed at: the note
+      // it kept and the time it stamped are its answers, not the browser's.
+      .then((subject) => setReviews((current) => withSubject(current, subject)))
+      .catch((reason: Error) => setError(reason.message))
+      .finally(() => setReviewBusy(false));
+  }
+
+  const reviewIndex = indexReviews(reviews);
+  const reviewOfSelection = statusFor(reviewIndex, document_, selection);
+
   // The reader is headed by the locator the panel showed, so the two name the same place.
   const openLocator =
     detail?.kind === "relation"
@@ -1344,6 +1503,10 @@ export function App() {
         ) : detail ? (
           <DetailPanel
             detail={detail}
+            review={reviewOfSelection}
+            reviewing={selected}
+            reviewBusy={reviewBusy}
+            onReview={recordReview}
             onClear={() => {
               setSelection(null);
               closePassage();
@@ -1373,6 +1536,19 @@ export function App() {
             <dd>{run?.model}</dd>
             <dt>Prompt</dt>
             <dd>{run?.prompt_version}</dd>
+            {reviews && (
+              <>
+                <dt>Review</dt>
+                {/* Only the statuses actually reached. A row of three zeroes on a project
+                    nobody has reviewed is noise; "everything proposed" is the whole fact. */}
+                <dd>
+                  {tally(reviews)
+                    .filter((entry) => entry.count > 0)
+                    .map((entry) => `${entry.count} ${entry.status}`)
+                    .join(", ")}
+                </dd>
+              </>
+            )}
           </dl>
         )}
 

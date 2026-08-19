@@ -2432,3 +2432,96 @@ schema; snapshot immutability enforced on both backends; and a full CLI round tr
 *Reversible.* SQLite behaviour is unchanged and untouched by the driver: the placeholder is
 already `?`, the tie-break is already `rowid`, and nothing is stripped from its rows. Deleting
 `drivers.py` and inlining the SQLite driver returns the store to where 4.9 left it.
+
+---
+
+## D50 — Review is recorded beside the snapshot, keyed to the claim rather than to the document
+
+**Phase 5.1.** Every node and every edge now carries a review status — `proposed`,
+`accepted`, `corrected`, `rejected` — settable from the browser, from the command line, and
+over the API. The vocabulary is not new: the schema has enumerated these four since **0.3**
+and the registry has had a column for them since **1.5**. What was missing was any way to set
+one, and any answer to the question of where a decision lives when the thing it is about is
+immutable.
+
+### Beside the snapshot, never in it
+
+A snapshot is immutable (Invariant 4) and a review happens after one was written, so recording
+a decision inside the stored document would mean rewriting an artifact something may already
+cite. Decisions live in their own table and are read back *over* the document by
+`review.overlay`. `GET /api/snapshots/{id}` goes on serving exactly what was archived, and
+`GET /api/snapshots/{id}/reviews` answers the separate question. Two requests rather than one
+merged reply, for the reason the server has given since **1.9**: a second representation of
+one graph is a second place for the truth to live.
+
+The consequence in the client is that the detail panel's old `Review` row had to go. It read
+the status straight out of the document, which from this bullet onwards is stale the moment
+somebody rules on the claim. It is replaced by a control — the one thing on that panel a
+person *does* rather than reads — so there is one place showing where review stands instead
+of two disagreeing.
+
+### Keyed by work and subject, not by snapshot
+
+A decision is about a claim, not about the document that happened to carry it. Identifiers are
+derived from content and names rather than minted per run (**1.4**), so the same character is
+the same character in the next reading of the same work. A decision scoped to a snapshot would
+expire every time the analysis re-ran, and asking somebody to re-accept a cast they have
+already been through is how a review tool stops being used.
+
+This is the seam **5.2** needs, and deliberately not **5.2** itself: what is asserted here is
+only that a decision is not scoped to one document. Carrying human work *into a re-analysis* —
+so a new snapshot is built already knowing what was accepted — is that bullet's, and nothing
+here writes a status into a snapshot being built.
+
+The snapshot the decision was taken in is recorded beside it, because what was on the screen is
+part of what was decided, and a reviewer looking at an old ruling is entitled to know which
+reading produced the claim they ruled on.
+
+### Append-only, because "never silently overwritten" starts with never losing anything
+
+Each decision is a row and the newest stands. A status column updated in place would lose that
+somebody once accepted what has since been rejected — and phase 5's promise is precisely that
+human judgements are not quietly discarded. `dramatis review --history` exists so that
+promise is checkable rather than merely made.
+
+Restating the standing decision is a no-op rather than a second identical row, so a client
+that re-sends on every render does not fill the log with restatements. Restating it *with a
+different note* is a new decision: somebody has given their reason.
+
+### `corrected` must say what it corrects
+
+The one rule here that the bullet does not state. A correction with no note is
+indistinguishable from a rejection somebody softened, and until **5.2** makes a correction an
+actual change to the graph, the note is the whole of it. Requiring it costs a reviewer one
+sentence and stops the vocabulary's most informative term from being its emptiest. `rejected`
+needs no note — "this is not a real character" is complete on its own.
+
+### The guard needed nothing
+
+`POST /api/snapshots/{id}/reviews` is the first write that is about the graph rather than
+about project metadata, and **4.8**'s middleware refused a cross-origin one before the
+endpoint existed, because it is keyed on the method. That was the argument for settling the
+guard at the first write rather than retrofitting it; a test now asserts the property on a
+write built a phase later.
+
+### Three copies of one vocabulary, held together by a test
+
+The four statuses are written in the published schema, in the store's `CHECK` constraint, and
+in `review.STATUSES` — and the client repeats them a fourth time. A constraint that has
+drifted from the vocabulary rejects a status the application holds to be valid, and the
+failure surfaces as a database error in front of a user. `TestTheVocabulary` reads the enum
+out of the schema and the constraint out of the DDL and asserts all three agree.
+
+### What is deliberately not here
+
+**The manual.** `docs/manual.pdf` is built from HTML by a Chrome render, and editing the
+prose without rebuilding the PDF would leave the two disagreeing — worse than leaving both
+alone. The manual gets its pass at **6.6**, where documentation is the bullet.
+
+**Bulk review.** Accepting a whole cast at once is the obvious next convenience and the
+obvious way to make a review meaningless. If it arrives it should be a considered decision,
+not a side effect of this one.
+
+*Reversible.* Everything is additive: one table, one module, one endpoint pair, one CLI verb,
+one client module. Dropping `reviews` returns the project to where 4.11 left it, since nothing
+else reads it and no stored snapshot changed shape.

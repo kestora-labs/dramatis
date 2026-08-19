@@ -44,6 +44,11 @@ from dramatis.passage import (
     spec_for_types,
 )
 from dramatis.registry import RegistryError, as_json, build_registry
+from dramatis.review import ReviewError
+from dramatis.review import as_json as as_review_json
+from dramatis.review import overlay as review_overlay
+from dramatis.review import record as record_decision
+from dramatis.review import subject_as_json as review_subject_as_json
 from dramatis.schema import DOCUMENT_VERSION
 from dramatis.segmentation import segment_text
 from dramatis.snapshot import canonical_json
@@ -503,11 +508,31 @@ def create_app(store_path: Path | str):
         finally:
             store.close()
 
+    @app.get("/api/snapshots/{snapshot_id}/reviews")
+    def reviews(snapshot_id: str) -> JSONResponse:
+        """Where human review of this snapshot's nodes and edges stands (**5.1**).
+
+        A second request rather than a field on the snapshot, and deliberately: the snapshot
+        endpoint hands back the stored document unchanged, and a review recorded after that
+        document was written is not part of it. Merging the two here would mean serving a
+        document that differs from the archived one, which is the drift this API is shaped to
+        avoid.
+        """
+        store = open_store()
+        try:
+            found = store.get_snapshot(snapshot_id)
+            if found is None:
+                raise HTTPException(status_code=404, detail=f"no snapshot {snapshot_id!r}")
+            return JSONResponse(as_review_json(review_overlay(store, found)))
+        finally:
+            store.close()
+
     # -- writes -----------------------------------------------------------------------------
     # The server's first mutating endpoints (4.8). The same-origin middleware above guards
-    # every one by virtue of their method — none has to opt in. Writes are confined to project
-    # metadata — a store's existence, its settings, its structure map — and none of them calls
-    # a model or touches the author's text (D31).
+    # every one by virtue of their method — none has to opt in. Most are confined to project
+    # metadata — a store's existence, its settings, its structure map — and the one that is not,
+    # `POST .../reviews`, records a person's judgement beside the graph rather than altering it.
+    # None calls a model or touches the author's text (D31).
 
     @app.post("/api/store", status_code=201)
     def create_store() -> JSONResponse:
@@ -678,6 +703,59 @@ def create_app(store_path: Path | str):
         store = open_store()
         try:
             return {"root": root, "forgotten": store.forget_structure_map(root)}
+        finally:
+            store.close()
+
+    @app.post("/api/snapshots/{snapshot_id}/reviews", status_code=201)
+    def record_review(snapshot_id: str, payload: dict[str, Any]) -> JSONResponse:
+        """Record a decision about one node or edge, and hand back where that subject stands.
+
+        The first write that is about the graph rather than about the project, and it still
+        does not change the graph: the snapshot stays exactly as it was archived, and the
+        judgement is stored beside it. Nothing here needed adding to the guard — it is a POST,
+        so the middleware refused a cross-origin one before this function existed.
+
+        The subject's whole state comes back rather than a bare acknowledgement, so a client
+        that has just clicked has the note and the timestamp the server stamped without
+        re-reading the entire overlay.
+        """
+        kind = payload.get("kind")
+        identifier = payload.get("id")
+        status = payload.get("status")
+        note = payload.get("note")
+        for name, value in (("kind", kind), ("id", identifier), ("status", status)):
+            if not isinstance(value, str) or not value:
+                raise HTTPException(
+                    status_code=422, detail=f"a review needs a non-empty {name!r} string"
+                )
+        if note is not None and not isinstance(note, str):
+            raise HTTPException(status_code=422, detail="'note' must be a string when given")
+
+        store = open_store()
+        try:
+            try:
+                record_decision(
+                    store,
+                    snapshot_id=snapshot_id,
+                    subject_kind=str(kind),
+                    subject_id=str(identifier),
+                    status=str(status),
+                    note=note,
+                )
+            except ReviewError as error:
+                # 404 when the snapshot is not there at all; 422 when it is and the decision
+                # is the thing at fault. A client that sent a bad status should not be told
+                # to go looking for a missing snapshot.
+                missing = store.get_snapshot(snapshot_id) is None
+                raise HTTPException(
+                    status_code=404 if missing else 422, detail=str(error)
+                ) from error
+
+            found = store.get_snapshot(snapshot_id)
+            assert found is not None  # recorded above, so it exists
+            entry = review_overlay(store, found).entry_for(str(kind), str(identifier))
+            assert entry is not None  # `record` refuses a subject the snapshot lacks
+            return JSONResponse(review_subject_as_json(entry), status_code=201)
         finally:
             store.close()
 

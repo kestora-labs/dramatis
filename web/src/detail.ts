@@ -23,6 +23,12 @@
  * bases are deliberately not enumerated by the schema, so there is no closed list to
  * prettify against. Tidying `interaction_passages` into "Interaction passages" would be
  * inventing a display convention the project has declined to fix.
+ *
+ * **Review status is not a field here.** It used to be, read straight from the document —
+ * and from **5.1** that reading is stale the moment somebody rules on the claim, because a
+ * decision is recorded beside the immutable snapshot rather than in it. It is served
+ * separately, lives in `review.ts`, and the panel renders it as a control rather than as a
+ * row, so there is one place showing where review stands instead of two disagreeing.
  */
 
 import { listEvidence, type EvidenceEntry } from "./evidence.js";
@@ -140,7 +146,6 @@ export function describeCharacter(
   push(fields, "Salience", optional(character.salience, unitInterval));
   push(fields, "Confidence", optional(character.confidence, unitInterval));
   push(fields, "Provenance", character.provenance, true);
-  push(fields, "Review", character.review_status, true);
   push(
     fields,
     "Evidence",
@@ -176,7 +181,6 @@ export function describeRelation(
   push(fields, "Valence", optional(relation.valence, valence));
   push(fields, "Confidence", optional(relation.confidence, unitInterval));
   push(fields, "Provenance", relation.provenance, true);
-  push(fields, "Review", relation.review_status, true);
   // No "Evidence — n passages" row: the list below carries its own count, and a field
   // stating the length of a list printed underneath it is the same fact twice.
   push(fields, "Id", relation.id, true);

@@ -11,7 +11,7 @@ a folder holds should never cost anything.
 
 Every command locates the project file rather than assuming it (see ``dramatis.locate``),
 and only ``ingest`` may bring one into existence. ``status`` answers which project is in
-use and what is in it.
+use and what is in it, and ``review`` records what a person made of what a reading proposed.
 """
 
 from __future__ import annotations
@@ -27,6 +27,12 @@ from dramatis import __version__
 from dramatis.ingest import IngestError, ingest_file, ingest_folder, read_text
 from dramatis.locate import STORE_FILENAME, StoreNotFound, resolve_store
 from dramatis.providers import Provider, ProviderError
+from dramatis.review import STATUSES as REVIEW_STATUSES
+from dramatis.review import ReviewError
+from dramatis.review import as_json as review_as_json
+from dramatis.review import history as review_history
+from dramatis.review import overlay as review_overlay
+from dramatis.review import record as record_review
 from dramatis.schema import schema_version
 from dramatis.store import COLLECTIVES_ARE_ACTORS, Store
 from dramatis.validation import Issue, validate_file
@@ -486,6 +492,151 @@ def _run_characters(args: argparse.Namespace) -> int:
         print(
             f"note: {title} has never been analysed, so nobody appears in it yet", file=sys.stderr
         )
+
+    return 0
+
+
+# -- review ---------------------------------------------------------------------------
+
+
+def _newest_snapshot(store: Store) -> Any:
+    """The most recently written snapshot in the project, or None.
+
+    So that ``dramatis review`` with no argument reviews what was just analysed, which is
+    what somebody sitting down after a run wants. Which snapshot it chose is always printed:
+    a command that silently picked one of several would have somebody accepting a cast from a
+    reading they are not looking at.
+    """
+    found = [
+        snapshot for work in store.list_works() for snapshot in store.list_snapshots(work["id"])
+    ]
+    return max(found, key=lambda snapshot: (snapshot.created_at, snapshot.id), default=None)
+
+
+def _run_review(args: argparse.Namespace) -> int:
+    """Show or set where human review of a reading's nodes and edges stands.
+
+    Calls no model and reaches no network (Invariant 6). Setting a status writes a decision
+    beside the snapshot; the snapshot itself is immutable and is never touched.
+    """
+    try:
+        path = resolve_store(args.store).require()
+    except StoreNotFound as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
+    if args.character and args.relation:
+        print("error: name a --character or a --relation, not both", file=sys.stderr)
+        return 1
+
+    kind = "character" if args.character else "relation" if args.relation else None
+    subject = args.character or args.relation
+
+    if args.status and subject is None:
+        print("error: say what is being reviewed: --character ID or --relation ID", file=sys.stderr)
+        return 1
+
+    with Store(path) as store:
+        snapshot = store.get_snapshot(args.snapshot) if args.snapshot else _newest_snapshot(store)
+        if snapshot is None:
+            if args.snapshot:
+                print(f"error: no snapshot {args.snapshot!r}", file=sys.stderr)
+            else:
+                print("error: this project holds no snapshot yet", file=sys.stderr)
+            return 1
+
+        if args.status:
+            try:
+                decision = record_review(
+                    store,
+                    snapshot_id=snapshot.id,
+                    subject_kind=str(kind),
+                    subject_id=str(subject),
+                    status=args.status,
+                    note=args.note,
+                )
+            except ReviewError as error:
+                print(f"error: {error}", file=sys.stderr)
+                return 1
+
+            if args.as_json:
+                json.dump(
+                    {
+                        "snapshot_id": decision.snapshot_id,
+                        "work_id": decision.work_id,
+                        "kind": decision.subject_kind,
+                        "id": decision.subject_id,
+                        "status": decision.status,
+                        "note": decision.note,
+                        "decided_at": decision.decided_at,
+                    },
+                    sys.stdout,
+                    indent=2,
+                    ensure_ascii=False,
+                )
+                sys.stdout.write("\n")
+                return 0
+
+            print(f"{decision.subject_kind} {decision.subject_id} is now {decision.status}")
+            if decision.note:
+                print(f"  note: {decision.note}")
+            return 0
+
+        if args.history:
+            if subject is None:
+                print(
+                    "error: --history is about one subject: name a --character or a --relation",
+                    file=sys.stderr,
+                )
+                return 1
+            past = review_history(store, snapshot.work_id, str(kind), str(subject))
+            if args.as_json:
+                json.dump(
+                    [
+                        {
+                            "status": decision.status,
+                            "note": decision.note,
+                            "decided_at": decision.decided_at,
+                            "decided_in": decision.snapshot_id,
+                        }
+                        for decision in past
+                    ],
+                    sys.stdout,
+                    indent=2,
+                    ensure_ascii=False,
+                )
+                sys.stdout.write("\n")
+                return 0
+            if not past:
+                print(f"nobody has ruled on {kind} {subject} yet")
+                return 0
+            print(f"{kind} {subject}")
+            for decision in past:
+                print(f"  {decision.decided_at}  {decision.status}  in {decision.snapshot_id}")
+                if decision.note:
+                    print(f"      {decision.note}")
+            return 0
+
+        state = review_overlay(store, snapshot)
+        work = store.get_work(snapshot.work_id) or {}
+
+    if args.as_json:
+        json.dump(review_as_json(state), sys.stdout, indent=2, ensure_ascii=False)
+        sys.stdout.write("\n")
+        return 0
+
+    # ASCII only, for the reason IngestResult.summary gives: a Windows console under a legacy
+    # code page renders typographic punctuation as replacement characters.
+    tally = ", ".join(f"{count} {name}" for name, count in state.counts.items() if count)
+    print(f"{snapshot.id}  {work.get('title', snapshot.work_id)}")
+    print(f"{len(state)} subjects - {tally}; {state.reviewed} ruled on by a person")
+    print()
+    for entry in state.subjects:
+        if args.pending and entry.reviewed:
+            continue
+        print(f"  [{entry.status:<9}] {entry.kind:<9}  {entry.label}   {entry.id}")
+        if entry.note:
+            print(f"      note: {entry.note}")
 
     return 0
 
@@ -952,6 +1103,51 @@ def _build_parser() -> argparse.ArgumentParser:
     characters.add_argument("--json", dest="as_json", action="store_true", help="machine-readable")
     characters.set_defaults(handler=_run_characters)
 
+    review = subcommands.add_parser(
+        "review",
+        help="show or set where review of a reading's characters and relations stands",
+        description=(
+            "Everything a model returns is a proposal. This is the record of somebody "
+            "having looked at one: accepted, corrected, rejected, or still proposed. "
+            "Decisions are kept beside the snapshot, which stays immutable, and are keyed "
+            "to the claim rather than to the document, so they outlive a re-analysis. "
+            "Calls no model and writes nothing unless you name a --status."
+        ),
+    )
+    review.add_argument(
+        "snapshot",
+        nargs="?",
+        default=None,
+        metavar="SNAPSHOT",
+        help="which reading to review. Without this, the project's newest snapshot.",
+    )
+    review.add_argument("--store", default=None, help=STORE_HELP)
+    review.add_argument("--character", default=None, metavar="ID", help="a node, by identifier")
+    review.add_argument("--relation", default=None, metavar="ID", help="an edge, by identifier")
+    review.add_argument(
+        "--status",
+        default=None,
+        choices=REVIEW_STATUSES,
+        help="record this decision about the named character or relation",
+    )
+    review.add_argument(
+        "--note",
+        default=None,
+        help="why. Required with --status corrected, which is meaningless without it.",
+    )
+    review.add_argument(
+        "--history",
+        action="store_true",
+        help="every decision ever taken about the named character or relation",
+    )
+    review.add_argument(
+        "--pending",
+        action="store_true",
+        help="list only what nobody has ruled on yet",
+    )
+    review.add_argument("--json", dest="as_json", action="store_true", help="machine-readable")
+    review.set_defaults(handler=_run_review)
+
     status = subcommands.add_parser(
         "status",
         help="say which project this is and what is in it",
@@ -1047,9 +1243,9 @@ def _build_parser() -> argparse.ArgumentParser:
         help="browse stored snapshots in a browser",
         description=(
             "Serve a project in a browser on this machine. Reads snapshots, and accepts "
-            "writes to project metadata from the local client only — every write refuses a "
-            "cross-origin request. It never calls a model, and never leaves the loopback "
-            "interface unless told to."
+            "writes to project metadata and to review status from the local client only — "
+            "every write refuses a cross-origin request. A stored snapshot is never altered. "
+            "It never calls a model, and never leaves the loopback interface unless told to."
         ),
     )
     serve.add_argument("--store", default=None, help=STORE_HELP)

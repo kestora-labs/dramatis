@@ -530,3 +530,221 @@ class TestAnalyseLike:
 
         parsed = _build_parser().parse_args(["analyse", "rev:1", "--like", "snap:1"])
         assert parsed.like == "snap:1"
+
+
+class TestReview:
+    """`dramatis review` — showing and setting where review of a reading stands (5.1).
+
+    Calls no model and reaches no network. Setting a status writes a decision beside the
+    snapshot; the snapshot itself is never touched.
+    """
+
+    PASSAGE = "Ada met Bram at the gate.\n\nBram did not answer her.\n\nCai spoke to Ada alone.\n"
+
+    def _analysed(self, tmp_path: Path):
+        """A project holding one analysed work, and the snapshot it produced."""
+        from dramatis.ingest import ingest_file
+        from dramatis.pipeline import analyse
+        from dramatis.providers.scripted import ScriptedProvider
+
+        source = tmp_path / "work.txt"
+        source.write_text(self.PASSAGE, encoding="utf-8", newline="")
+        store_path = tmp_path / "dramatis.sqlite"
+
+        reply = json.dumps(
+            {
+                "characters": [
+                    {"name": n, "aliases": [], "kind": "person"} for n in ("Ada", "Bram")
+                ],
+                "interactions": [
+                    {
+                        "participants": ["Ada", "Bram"],
+                        "quotation": "Ada met Bram at the gate.",
+                        "note": "",
+                    }
+                ],
+            }
+        )
+        grouping = json.dumps(
+            {
+                "groups": [
+                    {"canonical_name": n, "forms": [n], "kind": "person", "same_as_registered": ""}
+                    for n in ("Ada", "Bram")
+                ]
+            }
+        )
+
+        with Store(store_path) as store:
+            ingested = ingest_file(store, source, work_title="A Work", collection_name="A")
+            result = analyse(store, ingested.revision_id, ScriptedProvider([reply, grouping]))
+
+        return store_path, result.snapshot
+
+    def test_it_lists_every_subject_as_proposed(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path, snapshot = self._analysed(tmp_path)
+
+        assert main(["review", "--store", str(store_path)]) == 0
+
+        out = capsys.readouterr().out
+        assert snapshot.id in out
+        assert "proposed" in out
+        assert "0 ruled on by a person" in out
+
+    def test_it_records_a_decision_and_reads_it_back(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path, snapshot = self._analysed(tmp_path)
+        identifier = snapshot.document["characters"][0]["id"]
+
+        assert (
+            main(
+                [
+                    "review",
+                    "--store",
+                    str(store_path),
+                    "--character",
+                    identifier,
+                    "--status",
+                    "accepted",
+                ]
+            )
+            == 0
+        )
+        capsys.readouterr()
+
+        assert main(["review", "--store", str(store_path), "--json"]) == 0
+        payload = json.loads(capsys.readouterr().out)
+        recorded = {(entry["kind"], entry["id"]): entry["status"] for entry in payload["subjects"]}
+        assert recorded[("character", identifier)] == "accepted"
+        assert payload["counts"]["accepted"] == 1
+
+    def test_the_snapshot_is_not_touched(self, tmp_path: Path) -> None:
+        store_path, snapshot = self._analysed(tmp_path)
+
+        main(
+            [
+                "review",
+                "--store",
+                str(store_path),
+                "--relation",
+                snapshot.document["relations"][0]["id"],
+                "--status",
+                "rejected",
+            ]
+        )
+
+        with Store(store_path) as store:
+            after = store.get_snapshot(snapshot.id)
+        assert after is not None
+        assert after.sha256 == snapshot.sha256
+
+    def test_a_correction_without_a_reason_exits_one(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path, snapshot = self._analysed(tmp_path)
+
+        code = main(
+            [
+                "review",
+                "--store",
+                str(store_path),
+                "--character",
+                snapshot.document["characters"][0]["id"],
+                "--status",
+                "corrected",
+            ]
+        )
+
+        assert code == 1
+        assert "must say what it corrects" in capsys.readouterr().err
+
+    def test_a_status_with_nothing_named_exits_one(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path, _ = self._analysed(tmp_path)
+
+        assert main(["review", "--store", str(store_path), "--status", "accepted"]) == 1
+        assert "--character ID or --relation ID" in capsys.readouterr().err
+
+    def test_naming_both_a_node_and_an_edge_exits_one(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path, _ = self._analysed(tmp_path)
+
+        code = main(
+            ["review", "--store", str(store_path), "--character", "char:a", "--relation", "rel:a"]
+        )
+
+        assert code == 1
+        assert "not both" in capsys.readouterr().err
+
+    def test_the_history_of_one_subject_keeps_what_it_superseded(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path, snapshot = self._analysed(tmp_path)
+        identifier = snapshot.document["characters"][0]["id"]
+
+        for status in ("accepted", "rejected"):
+            main(
+                [
+                    "review",
+                    "--store",
+                    str(store_path),
+                    "--character",
+                    identifier,
+                    "--status",
+                    status,
+                ]
+            )
+        capsys.readouterr()
+
+        assert (
+            main(
+                [
+                    "review",
+                    "--store",
+                    str(store_path),
+                    "--character",
+                    identifier,
+                    "--history",
+                    "--json",
+                ]
+            )
+            == 0
+        )
+        past = json.loads(capsys.readouterr().out)
+        assert [decision["status"] for decision in past] == ["accepted", "rejected"]
+
+    def test_a_project_with_no_snapshot_says_so(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path = tmp_path / "dramatis.sqlite"
+        with Store(store_path):
+            pass
+
+        assert main(["review", "--store", str(store_path)]) == 1
+        assert "no snapshot yet" in capsys.readouterr().err
+
+    def test_an_unknown_status_is_refused_by_the_parser(self, tmp_path: Path) -> None:
+        from dramatis.cli import _build_parser
+
+        with pytest.raises(SystemExit):
+            _build_parser().parse_args(["review", "--character", "char:a", "--status", "maybe"])
+
+    def test_the_pending_filter_hides_what_has_been_ruled_on(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path, snapshot = self._analysed(tmp_path)
+        identifier = snapshot.document["characters"][0]["id"]
+        main(
+            ["review", "--store", str(store_path)]
+            + ["--character", identifier, "--status", "accepted"]
+        )
+        capsys.readouterr()
+
+        assert main(["review", "--store", str(store_path), "--pending"]) == 0
+        listed = capsys.readouterr().out
+        assert identifier not in listed
+        assert snapshot.document["characters"][1]["id"] in listed

@@ -1100,3 +1100,145 @@ class TestProjectCreationInTheBrowser:
         )
 
         assert allowed.status_code == 200
+
+
+class TestReviews:
+    """Where review of a snapshot's nodes and edges stands, and moving it (5.1).
+
+    Served as its own resource rather than folded into the snapshot: the snapshot endpoint
+    hands back the archived document unchanged, and a decision taken after that document was
+    written is not part of it.
+    """
+
+    def _subjects(self, client, snapshot_id: str) -> dict:
+        payload = client.get(f"/api/snapshots/{snapshot_id}/reviews").json()
+        return {(entry["kind"], entry["id"]): entry for entry in payload["subjects"]}
+
+    def test_every_node_and_edge_starts_proposed(self, client, analysed) -> None:
+        _, snapshot_id, document = analysed
+
+        payload = client.get(f"/api/snapshots/{snapshot_id}/reviews").json()
+
+        assert payload["snapshot_id"] == snapshot_id
+        assert len(payload["subjects"]) == len(document["characters"]) + len(document["relations"])
+        assert payload["counts"]["proposed"] == len(payload["subjects"])
+        assert payload["reviewed"] == 0
+
+    def test_a_decision_is_recorded_and_read_back(self, client, analysed) -> None:
+        _, snapshot_id, document = analysed
+        identifier = document["characters"][0]["id"]
+
+        recorded = client.post(
+            f"/api/snapshots/{snapshot_id}/reviews",
+            json={"kind": "character", "id": identifier, "status": "accepted"},
+        )
+
+        assert recorded.status_code == 201
+        assert recorded.json()["status"] == "accepted"
+        assert recorded.json()["decided_in"] == snapshot_id
+        standing = self._subjects(client, snapshot_id)
+        assert standing[("character", identifier)]["status"] == "accepted"
+
+    def test_an_edge_is_reviewed_the_same_way(self, client, analysed) -> None:
+        _, snapshot_id, document = analysed
+        identifier = document["relations"][0]["id"]
+
+        recorded = client.post(
+            f"/api/snapshots/{snapshot_id}/reviews",
+            json={
+                "kind": "relation",
+                "id": identifier,
+                "status": "rejected",
+                "note": "they never meet",
+            },
+        )
+
+        assert recorded.status_code == 201
+        assert recorded.json()["note"] == "they never meet"
+
+    def test_the_snapshot_it_was_taken_on_is_served_unchanged(self, client, analysed) -> None:
+        """Invariant 4. A review is recorded beside the snapshot, never inside it."""
+        _, snapshot_id, document = analysed
+
+        client.post(
+            f"/api/snapshots/{snapshot_id}/reviews",
+            json={"kind": "character", "id": document["characters"][0]["id"], "status": "rejected"},
+        )
+
+        assert client.get(f"/api/snapshots/{snapshot_id}").json() == document
+
+    def test_a_correction_with_no_reason_is_refused(self, client, analysed) -> None:
+        _, snapshot_id, document = analysed
+
+        refused = client.post(
+            f"/api/snapshots/{snapshot_id}/reviews",
+            json={
+                "kind": "character",
+                "id": document["characters"][0]["id"],
+                "status": "corrected",
+            },
+        )
+
+        assert refused.status_code == 422
+        assert "what it corrects" in refused.json()["detail"]
+
+    def test_a_status_outside_the_vocabulary_is_refused(self, client, analysed) -> None:
+        _, snapshot_id, document = analysed
+
+        refused = client.post(
+            f"/api/snapshots/{snapshot_id}/reviews",
+            json={
+                "kind": "character",
+                "id": document["characters"][0]["id"],
+                "status": "probably-fine",
+            },
+        )
+
+        assert refused.status_code == 422
+
+    def test_a_claim_the_reading_never_made_is_refused(self, client, analysed) -> None:
+        _, snapshot_id, _ = analysed
+
+        refused = client.post(
+            f"/api/snapshots/{snapshot_id}/reviews",
+            json={"kind": "character", "id": "char:nobody", "status": "accepted"},
+        )
+
+        assert refused.status_code == 422
+        assert "nothing there to review" in refused.json()["detail"]
+
+    def test_a_body_missing_a_field_is_refused(self, client, analysed) -> None:
+        _, snapshot_id, _ = analysed
+
+        refused = client.post(f"/api/snapshots/{snapshot_id}/reviews", json={"kind": "character"})
+
+        assert refused.status_code == 422
+
+    def test_an_unknown_snapshot_is_a_404_either_way(self, client) -> None:
+        # The snapshot being absent is a different failure from the decision being wrong, and
+        # a client sent looking for a missing snapshot when they mistyped a status is worse
+        # off than one told which it was.
+        assert client.get("/api/snapshots/snap:nothing/reviews").status_code == 404
+        refused = client.post(
+            "/api/snapshots/snap:nothing/reviews",
+            json={"kind": "character", "id": "char:a", "status": "accepted"},
+        )
+        assert refused.status_code == 404
+
+    def test_a_cross_origin_decision_is_refused_without_the_endpoint_opting_in(
+        self, client, analysed
+    ) -> None:
+        """The property 4.8's method-keyed middleware was chosen for: a write added a phase
+        later is guarded the moment it exists, because it is a POST."""
+        _, snapshot_id, document = analysed
+        identifier = document["characters"][0]["id"]
+
+        refused = client.post(
+            f"/api/snapshots/{snapshot_id}/reviews",
+            json={"kind": "character", "id": identifier, "status": "accepted"},
+            headers={"origin": "http://evil.example"},
+        )
+
+        assert refused.status_code == 403
+        standing = self._subjects(client, snapshot_id)
+        assert standing[("character", identifier)]["status"] == "proposed"

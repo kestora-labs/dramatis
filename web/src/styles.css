@@ -246,6 +246,111 @@ code {
   margin: 0.4rem 0 0;
 }
 
+/* Corrections (5.2). Below the review control and above the claim: a person rules on a
+   claim first and replaces it second, and the form is only open while it is being used. */
+.correction {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.7rem;
+}
+
+.corrections,
+.conflicts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.75rem;
+  color: var(--ink);
+}
+
+.corrections li,
+.conflicts li {
+  padding: 0.15rem 0;
+}
+
+.correction-note {
+  display: block;
+  color: var(--muted);
+}
+
+.correction-pending {
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin: 0.35rem 0 0;
+}
+
+.correction-open {
+  font-size: 0.75rem;
+  font-family: inherit;
+  margin-top: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--muted);
+  padding: 0.15rem 0.6rem;
+  cursor: pointer;
+}
+
+.correction-open:hover {
+  color: var(--ink);
+  border-color: var(--muted);
+}
+
+.correction-form {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.correction-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.correction-form input,
+.correction-form select {
+  font-family: inherit;
+  font-size: 0.8rem;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.25rem 0.4rem;
+}
+
+.correction-buttons {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.correction-buttons button {
+  font-family: inherit;
+  font-size: 0.75rem;
+  border: 1px solid var(--ink);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--ink);
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+}
+
+.correction-buttons button.quiet {
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.correction-buttons button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .lineage {
   margin-top: 1.25rem;
 }

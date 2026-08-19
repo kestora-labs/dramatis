@@ -23,6 +23,8 @@ from dramatis.assertion import (
     aggregate_assertions,
     extract_assertions,
 )
+from dramatis.correction import Application, record_conflicts
+from dramatis.correction import apply as apply_corrections
 from dramatis.extraction import DEFAULT_WINDOW_CHARACTERS, Extraction, extract
 from dramatis.extraction import PROMPT_VERSION as EXTRACTION_PROMPT_VERSION
 from dramatis.providers import Provider
@@ -73,6 +75,10 @@ class AnalysisResult:
     at the last moment.
     """
 
+    corrections: Application = field(default_factory=lambda: Application(document={}))
+    """What human corrections did to this reading (**5.2**): which were applied, which the
+    reading disagreed with, and which no longer have a subject to attach to."""
+
     @property
     def warnings(self) -> tuple[str, ...]:
         return (
@@ -81,6 +87,7 @@ class AnalysisResult:
             + self.resolution.warnings
             + self.aggregation.warnings
             + self.asserted.warnings
+            + self.corrections.warnings
         )
 
 
@@ -258,7 +265,20 @@ def analyse(
         created_at=now,
     )
 
-    stored = save_snapshot(store, document)
+    # Human corrections are written in here, between rendering and storing (**5.2**). This is
+    # the point of the bullet: a person's edit survives re-analysis because every snapshot
+    # built after it is built with it. Applying before `save_snapshot` also means the
+    # corrected document is what the schema is asked to validate, so a correction that would
+    # produce an invalid graph fails here rather than being discovered by a reader.
+    application = apply_corrections(store, document)
+
+    stored = save_snapshot(store, application.document)
+    record_conflicts(
+        store,
+        work_id=revision.work_id,
+        snapshot_id=stored.id,
+        conflicts=application.conflicts,
+    )
     return AnalysisResult(
         snapshot=stored,
         extraction=extraction,
@@ -267,4 +287,5 @@ def analyse(
         aggregation=aggregation,
         assertions=assertions,
         asserted=asserted,
+        corrections=application,
     )

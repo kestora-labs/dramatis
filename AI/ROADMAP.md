@@ -487,8 +487,12 @@ command line, and a preface excluded there produces a cast free of the people it
       claim rather than to the document, so a decision outlives the reading it was taken in.
       Append-only: the newest ruling stands and the ones it superseded remain readable.
       *(See **D50**.)*
-- [ ] **5.2** — Human corrections persist across re-analysis and are never silently
-      overwritten.
+- [x] **5.2** — Human corrections persist across re-analysis and are never silently
+      overwritten. A correction replaces one field of one node or edge and is applied when a
+      snapshot is *built*, so it survives every later reading; the corrected entry is `human`
+      per Invariant 5. Where a later reading proposes something else the correction stands and
+      the reading's competing claim is recorded rather than swallowed — the promise cuts both
+      ways. *(See **D51**.)*
 - [ ] **5.3** — Manual merge and split of characters, with the decision recorded in the
       registry.
 - [ ] **5.4** — Continuity report: entities renamed between revisions with references to

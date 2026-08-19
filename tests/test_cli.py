@@ -748,3 +748,195 @@ class TestReview:
         listed = capsys.readouterr().out
         assert identifier not in listed
         assert snapshot.document["characters"][1]["id"] in listed
+
+
+class TestCorrect:
+    """`dramatis correct` — putting right what a reading got wrong (5.2).
+
+    Calls no model and reaches no network. Recording a correction changes no stored snapshot;
+    it is written into the graph by the next analysis, and the command says so.
+    """
+
+    PASSAGE = "Ada met Bram at the gate.\n\nBram did not answer her.\n\nCai spoke to Ada alone.\n"
+
+    def _analysed(self, tmp_path: Path):
+        from dramatis.ingest import ingest_file
+        from dramatis.pipeline import analyse
+        from dramatis.providers.scripted import ScriptedProvider
+
+        source = tmp_path / "work.txt"
+        source.write_text(self.PASSAGE, encoding="utf-8", newline="")
+        store_path = tmp_path / "dramatis.sqlite"
+
+        reply = json.dumps(
+            {
+                "characters": [
+                    {"name": n, "aliases": [], "kind": "person"} for n in ("Ada", "Bram")
+                ],
+                "interactions": [
+                    {
+                        "participants": ["Ada", "Bram"],
+                        "quotation": "Ada met Bram at the gate.",
+                        "note": "",
+                    }
+                ],
+            }
+        )
+        grouping = json.dumps(
+            {
+                "groups": [
+                    {"canonical_name": n, "forms": [n], "kind": "person", "same_as_registered": ""}
+                    for n in ("Ada", "Bram")
+                ]
+            }
+        )
+
+        with Store(store_path) as store:
+            ingested = ingest_file(store, source, work_title="A Work", collection_name="A")
+            result = analyse(store, ingested.revision_id, ScriptedProvider([reply, grouping]))
+
+        return store_path, result.snapshot
+
+    def test_it_records_a_correction_and_says_it_applies_next_time(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path, snapshot = self._analysed(tmp_path)
+        identifier = snapshot.document["characters"][0]["id"]
+
+        code = main(
+            ["correct", "--store", str(store_path)]
+            + ["--character", identifier, "--field", "name", "--value", "Ada Mbeki"]
+        )
+
+        assert code == 0
+        out = capsys.readouterr().out
+        assert "Ada Mbeki" in out
+        assert "applies to the next analysis" in out
+
+    def test_a_list_field_takes_several_words(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path, snapshot = self._analysed(tmp_path)
+        identifier = snapshot.document["characters"][0]["id"]
+
+        code = main(
+            ["correct", "--store", str(store_path)]
+            + ["--character", identifier, "--field", "aliases", "--value", "Lizzy", "Eliza"]
+            + ["--json"]
+        )
+
+        assert code == 0
+        assert json.loads(capsys.readouterr().out)["value"] == ["Lizzy", "Eliza"]
+
+    def test_a_number_is_stored_as_a_number(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path, snapshot = self._analysed(tmp_path)
+        identifier = snapshot.document["relations"][0]["id"]
+
+        main(
+            ["correct", "--store", str(store_path)]
+            + ["--relation", identifier, "--field", "valence", "--value", "-0.4", "--json"]
+        )
+
+        assert json.loads(capsys.readouterr().out)["value"] == -0.4
+
+    def test_a_field_that_takes_one_value_refuses_several(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path, snapshot = self._analysed(tmp_path)
+        identifier = snapshot.document["characters"][0]["id"]
+
+        code = main(
+            ["correct", "--store", str(store_path)]
+            + ["--character", identifier, "--field", "name", "--value", "Ada", "Mbeki"]
+        )
+
+        assert code == 1
+        assert "takes one value" in capsys.readouterr().err
+
+    def test_a_field_that_may_not_be_corrected_says_why(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path, snapshot = self._analysed(tmp_path)
+        identifier = snapshot.document["relations"][0]["id"]
+
+        code = main(
+            ["correct", "--store", str(store_path)]
+            + ["--relation", identifier, "--field", "evidence", "--value", "anything"]
+        )
+
+        assert code == 1
+        # The reason, not "invalid choice": reaching for evidence is a sensible thing to want
+        # and why it is declined is the useful half of the answer.
+        assert "Invariant 3" in capsys.readouterr().err
+
+    def test_a_value_without_a_field_is_refused(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path, snapshot = self._analysed(tmp_path)
+
+        code = main(
+            ["correct", "--store", str(store_path)] + ["--field", "name", "--value", "Ada Mbeki"]
+        )
+
+        assert code == 1
+        assert "--character ID or --relation ID" in capsys.readouterr().err
+
+    def test_it_lists_what_stands(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+        store_path, snapshot = self._analysed(tmp_path)
+        identifier = snapshot.document["characters"][0]["id"]
+        main(
+            ["correct", "--store", str(store_path)]
+            + ["--character", identifier, "--field", "name", "--value", "Ada Mbeki"]
+        )
+        capsys.readouterr()
+
+        assert main(["correct", "--store", str(store_path)]) == 0
+        out = capsys.readouterr().out
+        assert "1 standing correction" in out
+        assert "Ada Mbeki" in out
+
+    def test_the_history_of_one_subject_keeps_what_it_superseded(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path, snapshot = self._analysed(tmp_path)
+        identifier = snapshot.document["characters"][0]["id"]
+        for name in ("Ada Mbeki", "Ada M. Mbeki"):
+            main(
+                ["correct", "--store", str(store_path)]
+                + ["--character", identifier, "--field", "name", "--value", name]
+            )
+        capsys.readouterr()
+
+        code = main(
+            ["correct", "--store", str(store_path)]
+            + ["--character", identifier, "--history", "--json"]
+        )
+
+        assert code == 0
+        past = json.loads(capsys.readouterr().out)
+        assert [entry["value"] for entry in past] == ["Ada Mbeki", "Ada M. Mbeki"]
+
+    def test_a_project_with_no_snapshot_says_so(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path = tmp_path / "dramatis.sqlite"
+        with Store(store_path):
+            pass
+
+        assert main(["correct", "--store", str(store_path)]) == 1
+        assert "no snapshot yet" in capsys.readouterr().err
+
+    def test_naming_both_a_node_and_an_edge_exits_one(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path, _ = self._analysed(tmp_path)
+
+        code = main(
+            ["correct", "--store", str(store_path)]
+            + ["--character", "char:a", "--relation", "rel:a"]
+        )
+
+        assert code == 1
+        assert "not both" in capsys.readouterr().err

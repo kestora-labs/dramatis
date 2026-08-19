@@ -235,11 +235,11 @@ def record(
     * a status outside the vocabulary, which no reader could interpret;
     * a subject kind that is neither a node nor an edge;
     * a subject the named snapshot does not contain — see the module docstring;
-    * ``corrected`` with nothing said about what was corrected. A correction that does not
-      state what it corrects is indistinguishable from a rejection somebody softened, and the
-      note is the only part of it a later reader can act on. **5.2** makes the correction
-      itself a change to the graph; until then the note is the whole of it, and it is
-      required for the same reason afterwards.
+    * ``corrected`` with nothing on the record saying what was corrected. A correction that
+      does not state what it corrects is indistinguishable from a rejection somebody
+      softened. A note satisfies this — and so, since **5.2**, does an actual correction to
+      the subject, which says what changed in more detail than a sentence could. What is
+      refused is the empty claim, not the missing sentence.
 
     Recording the decision that already stands is a no-op rather than a second identical row,
     so a client that re-sends on every render does not fill the log with restatements. A
@@ -254,11 +254,6 @@ def record(
         )
 
     note = _clean_note(note)
-    if status == CORRECTED and note is None:
-        raise ReviewError(
-            "a correction must say what it corrects: pass a note alongside 'corrected', "
-            "or use 'rejected' if the claim is simply wrong."
-        )
 
     snapshot = store.get_snapshot(snapshot_id)
     if snapshot is None:
@@ -268,6 +263,19 @@ def record(
         raise ReviewError(
             f"snapshot {snapshot_id!r} proposes no {subject_kind} {subject_id!r}, so there "
             "is nothing there to review."
+        )
+
+    if (
+        status == CORRECTED
+        and note is None
+        and not store.list_corrections(
+            snapshot.work_id, subject_kind=subject_kind, subject_id=subject_id
+        )
+    ):
+        raise ReviewError(
+            "a correction must say what it corrects: pass a note alongside 'corrected', "
+            "record the correction itself with `dramatis correct`, or use 'rejected' if the "
+            "claim is simply wrong."
         )
 
     standing = store.list_reviews(

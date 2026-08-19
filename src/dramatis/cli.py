@@ -24,6 +24,15 @@ from pathlib import Path
 from typing import Any
 
 from dramatis import __version__
+from dramatis.correction import (
+    CHARACTER_FIELDS,
+    RELATION_FIELDS,
+    CorrectionError,
+    correction_as_json,
+)
+from dramatis.correction import as_json as corrections_as_json
+from dramatis.correction import history as correction_history
+from dramatis.correction import record as record_correction
 from dramatis.ingest import IngestError, ingest_file, ingest_folder, read_text
 from dramatis.locate import STORE_FILENAME, StoreNotFound, resolve_store
 from dramatis.providers import Provider, ProviderError
@@ -36,6 +45,9 @@ from dramatis.review import record as record_review
 from dramatis.schema import schema_version
 from dramatis.store import COLLECTIVES_ARE_ACTORS, Store
 from dramatis.validation import Issue, validate_file
+
+CHARACTER_CORRECTABLE = tuple(entry.name for entry in CHARACTER_FIELDS)
+RELATION_CORRECTABLE = tuple(entry.name for entry in RELATION_FIELDS)
 
 DEFAULT_EFFORT = "medium"
 
@@ -641,6 +653,173 @@ def _run_review(args: argparse.Namespace) -> int:
     return 0
 
 
+# -- correct --------------------------------------------------------------------------
+
+
+def _correction_value(field: str, given: list[str]) -> Any:
+    """Turn what a shell can pass into the type the field actually holds.
+
+    A command line has only strings, and a correction stored as the wrong type would reach
+    the schema as the wrong type. List fields take several words because that is how a shell
+    says a list; everything else takes exactly one, and saying so beats silently using the
+    first.
+    """
+    if field in ("aliases", "types"):
+        return list(given)
+    if len(given) != 1:
+        raise CorrectionError(f"{field!r} takes one value, not {len(given)}")
+    only = given[0]
+    if field == "valence":
+        try:
+            return float(only)
+        except ValueError as error:
+            raise CorrectionError(f"{only!r} is not a number") from error
+    if field == "directed":
+        if only.lower() not in ("true", "false"):
+            raise CorrectionError(f"{only!r} is not true or false")
+        return only.lower() == "true"
+    return only
+
+
+def _print_correction(correction: Any) -> None:
+    was = json.dumps(correction.was, ensure_ascii=False)
+    now = json.dumps(correction.value, ensure_ascii=False)
+    print(f"  {correction.subject_kind:<9} {correction.subject_id}")
+    print(f"    {correction.field}: {was} -> {now}")
+    if correction.note:
+        print(f"    note: {correction.note}")
+
+
+def _run_correct(args: argparse.Namespace) -> int:
+    """Show or record corrections to a reading's characters and relations.
+
+    Calls no model and reaches no network (Invariant 6). Recording one changes no stored
+    snapshot: it is written into the graph by the next analysis.
+    """
+    try:
+        path = resolve_store(args.store).require()
+    except StoreNotFound as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
+    if args.character and args.relation:
+        print("error: name a --character or a --relation, not both", file=sys.stderr)
+        return 1
+
+    kind = "character" if args.character else "relation" if args.relation else None
+    subject = args.character or args.relation
+
+    if args.field and subject is None:
+        print(
+            "error: say what is being corrected: --character ID or --relation ID",
+            file=sys.stderr,
+        )
+        return 1
+    if args.field and not args.value:
+        print(f"error: --field {args.field} needs a --value", file=sys.stderr)
+        return 1
+
+    with Store(path) as store:
+        snapshot = store.get_snapshot(args.snapshot) if args.snapshot else _newest_snapshot(store)
+        if snapshot is None:
+            if args.snapshot:
+                print(f"error: no snapshot {args.snapshot!r}", file=sys.stderr)
+            else:
+                print("error: this project holds no snapshot yet", file=sys.stderr)
+            return 1
+
+        if args.field:
+            try:
+                correction = record_correction(
+                    store,
+                    snapshot_id=snapshot.id,
+                    subject_kind=str(kind),
+                    subject_id=str(subject),
+                    field=args.field,
+                    value=_correction_value(args.field, list(args.value)),
+                    note=args.note,
+                )
+            except (CorrectionError, ReviewError) as error:
+                print(f"error: {error}", file=sys.stderr)
+                return 1
+
+            if args.as_json:
+                json.dump(correction_as_json(correction), sys.stdout, indent=2, ensure_ascii=False)
+                sys.stdout.write("\n")
+                return 0
+
+            print(f"corrected {correction.subject_kind} {correction.subject_id}")
+            print(
+                f"  {correction.field}: "
+                f"{json.dumps(correction.was, ensure_ascii=False)} -> "
+                f"{json.dumps(correction.value, ensure_ascii=False)}"
+            )
+            # Said plainly, because the snapshot on screen will not change and somebody who
+            # expected it to would think nothing had happened.
+            print("  applies to the next analysis; this snapshot is unchanged")
+            return 0
+
+        if args.history:
+            if subject is None:
+                print(
+                    "error: --history is about one subject: name a --character or a --relation",
+                    file=sys.stderr,
+                )
+                return 1
+            past = correction_history(store, snapshot.work_id, str(kind), str(subject))
+            if args.as_json:
+                json.dump(
+                    [correction_as_json(entry) for entry in past],
+                    sys.stdout,
+                    indent=2,
+                    ensure_ascii=False,
+                )
+                sys.stdout.write("\n")
+                return 0
+            if not past:
+                print(f"nobody has corrected {kind} {subject}")
+                return 0
+            print(f"{kind} {subject}")
+            for entry in past:
+                print(f"  {entry.corrected_at}  {entry.field}")
+                print(
+                    f"      {json.dumps(entry.was, ensure_ascii=False)} -> "
+                    f"{json.dumps(entry.value, ensure_ascii=False)}"
+                )
+                if entry.note:
+                    print(f"      {entry.note}")
+            return 0
+
+        payload = corrections_as_json(store, snapshot.id, snapshot.work_id)
+        standing = list(store.current_corrections(snapshot.work_id).values())
+        conflicts = store.list_correction_conflicts(snapshot.work_id, snapshot_id=snapshot.id)
+        work = store.get_work(snapshot.work_id) or {}
+
+    if args.as_json:
+        json.dump(payload, sys.stdout, indent=2, ensure_ascii=False)
+        sys.stdout.write("\n")
+        return 0
+
+    print(f"{snapshot.id}  {work.get('title', snapshot.work_id)}")
+    print(f"{len(standing)} standing correction(s), {len(conflicts)} disagreed with here")
+    for correction in standing:
+        print()
+        _print_correction(correction)
+
+    # Never only counted: a reading that argued with a correction and was overruled is the
+    # thing this whole bullet exists to stop happening quietly.
+    for conflict in conflicts:
+        print()
+        print(f"  disagreement  {conflict.subject_kind} {conflict.subject_id}")
+        print(
+            f"    this reading said {conflict.field}="
+            f"{json.dumps(conflict.proposed, ensure_ascii=False)}; the correction "
+            f"{json.dumps(conflict.held, ensure_ascii=False)} stood"
+        )
+
+    return 0
+
+
 # -- status ---------------------------------------------------------------------------
 
 
@@ -1148,6 +1327,56 @@ def _build_parser() -> argparse.ArgumentParser:
     review.add_argument("--json", dest="as_json", action="store_true", help="machine-readable")
     review.set_defaults(handler=_run_review)
 
+    correct = subcommands.add_parser(
+        "correct",
+        help="put right what a reading got wrong, so the correction outlives it",
+        description=(
+            "Replace what a reading said about a character or a relation. The correction is "
+            "recorded against the reading it was made on and written into every snapshot "
+            "built afterwards, so it survives re-analysis instead of having to be made again. "
+            "Where a later reading disagrees, the correction stands and the disagreement is "
+            "reported rather than swallowed. Calls no model, and changes no stored snapshot."
+        ),
+    )
+    correct.add_argument(
+        "snapshot",
+        nargs="?",
+        default=None,
+        metavar="SNAPSHOT",
+        help="the reading being corrected. Without this, the project's newest snapshot.",
+    )
+    correct.add_argument("--store", default=None, help=STORE_HELP)
+    correct.add_argument("--character", default=None, metavar="ID", help="a node, by identifier")
+    correct.add_argument("--relation", default=None, metavar="ID", help="an edge, by identifier")
+    # Deliberately not a `choices` list. A field outside the vocabulary is usually one
+    # somebody had a good reason to reach for — a weight, a piece of evidence, an id — and
+    # `correction.check_field` answers each with why it is declined. `choices` would replace
+    # all of that with "invalid choice", which is the one answer that teaches nothing.
+    correct.add_argument(
+        "--field",
+        default=None,
+        metavar="FIELD",
+        help=(
+            f"which field to put right. A character takes {', '.join(CHARACTER_CORRECTABLE)}; "
+            f"a relation takes {', '.join(RELATION_CORRECTABLE)}."
+        ),
+    )
+    correct.add_argument(
+        "--value",
+        nargs="+",
+        default=None,
+        metavar="V",
+        help="the value it should hold. Several words for a list field (aliases, types).",
+    )
+    correct.add_argument("--note", default=None, help="why, for whoever reads this later")
+    correct.add_argument(
+        "--history",
+        action="store_true",
+        help="every correction ever made to the named character or relation",
+    )
+    correct.add_argument("--json", dest="as_json", action="store_true", help="machine-readable")
+    correct.set_defaults(handler=_run_correct)
+
     status = subcommands.add_parser(
         "status",
         help="say which project this is and what is in it",
@@ -1243,9 +1472,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="browse stored snapshots in a browser",
         description=(
             "Serve a project in a browser on this machine. Reads snapshots, and accepts "
-            "writes to project metadata and to review status from the local client only — "
-            "every write refuses a cross-origin request. A stored snapshot is never altered. "
-            "It never calls a model, and never leaves the loopback interface unless told to."
+            "writes to project metadata, review status and corrections from the local client "
+            "only — every write refuses a cross-origin request. A stored snapshot is never "
+            "altered: a correction is applied when the next one is built. It never calls a "
+            "model, and never leaves the loopback interface unless told to."
         ),
     )
     serve.add_argument("--store", default=None, help=STORE_HELP)

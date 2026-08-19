@@ -1,0 +1,2375 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Dramatis — The Manual</title>
+    <link rel="stylesheet" href="manual.css" />
+  </head>
+  <body>
+    <!-- ================================================================== COVER ==== -->
+    <section class="cover">
+      <h1>Dramatis</h1>
+      <p class="epigraph">“the persons of the drama”</p>
+      <p class="subtitle">
+        A manual for reading a story by the company it keeps — installing it, using it,
+        living with it, and removing it.
+      </p>
+      <p class="who">
+        Written for authors, editors, translators and literary scholars. No programming
+        knowledge is assumed. Everything you have to type is given in full.
+      </p>
+      <div class="foot">
+        <p>
+          <strong>Dramatis 0.1.0 (pre-alpha)</strong> · A Kestora Labs product · Apache-2.0
+          · This manual is CC BY 4.0
+        </p>
+        <p>
+          Describes the application as built through Phase 4. Features marked
+          <em>“not yet”</em> are planned and named so you know they are coming, not missing
+          by accident.
+        </p>
+      </div>
+    </section>
+
+    <!-- =============================================================== CONTENTS ==== -->
+    <section class="contents">
+      <h1>Contents</h1>
+      <div>
+        <div class="toc-part">
+          <span>Part I · Before you start</span>
+          <ol>
+            <li><span class="n">1</span>What Dramatis is, and is not</li>
+            <li><span class="n">2</span>The three promises</li>
+            <li><span class="n">3</span>Twelve words you will need</li>
+            <li><span class="n">4</span>The two time axes</li>
+          </ol>
+        </div>
+        <div class="toc-part">
+          <span>Part II · Installing</span>
+          <ol>
+            <li><span class="n">5</span>What you need first</li>
+            <li><span class="n">6</span>Installing, step by step</li>
+            <li><span class="n">7</span>Choosing where the thinking happens</li>
+            <li><span class="n">8</span>Checking that it worked</li>
+            <li><span class="n">9</span>Installing with Docker instead</li>
+          </ol>
+        </div>
+        <div class="toc-part">
+          <span>Part III · Using it</span>
+          <ol>
+            <li><span class="n">10</span>Making a project in the browser</li>
+            <li><span class="n">11</span>Making a project from the command line</li>
+            <li><span class="n">12</span>Saying what each file is</li>
+            <li><span class="n">13</span>Running an analysis</li>
+            <li><span class="n">14</span>The window, part by part</li>
+            <li><span class="n">15</span>Reading the graph</li>
+            <li><span class="n">16</span>Asking a character a question</li>
+            <li><span class="n">17</span>Following the evidence into the text</li>
+            <li><span class="n">18</span>Narrowing a crowded graph</li>
+            <li><span class="n">19</span>Comparing two drafts</li>
+            <li><span class="n">20</span>What you declared against what you wrote</li>
+            <li><span class="n">21</span>A cast that spans several works</li>
+            <li><span class="n">22</span>Every command, at a glance</li>
+          </ol>
+        </div>
+        <div class="toc-part">
+          <span>Part IV · A project over time</span>
+          <ol>
+            <li><span class="n">23</span>Eight milestones with one short novel</li>
+          </ol>
+        </div>
+        <div class="toc-part">
+          <span>Part V · Living with it</span>
+          <ol>
+            <li><span class="n">24</span>Where everything lives</li>
+            <li><span class="n">25</span>Backing up, sharing, archiving, citing</li>
+            <li><span class="n">26</span>What it costs and how long it takes</li>
+            <li><span class="n">27</span>Privacy, in detail</li>
+            <li><span class="n">28</span>When something goes wrong</li>
+            <li><span class="n">29</span>What Dramatis cannot do yet</li>
+            <li><span class="n">30</span>Uninstalling, completely</li>
+          </ol>
+        </div>
+        <div class="toc-part">
+          <span>End matter</span>
+          <ol>
+            <li><span class="n">A</span>Glossary</li>
+            <li><span class="n">B</span>Licences and credits</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================== PART I ==== -->
+    <section class="part">
+      <p class="kicker">Part I</p>
+      <h1>Before you start</h1>
+      <p>
+        Four short chapters. What the thing is, what it promises, the handful of words it
+        uses in a particular way, and the one idea that everything else rests on. Fifteen
+        minutes here will save you an afternoon later.
+      </p>
+    </section>
+
+    <h2><span class="num">1</span>What Dramatis is, and is not</h2>
+
+    <p class="lede">
+      Dramatis reads a narrative work and draws its characters as a network: who is in it,
+      who is close to whom, and what in the text says so. It saves each reading as a dated,
+      unchangeable snapshot, so that when you revise the work you can put the old picture
+      beside the new one and see what moved.
+    </p>
+
+    <p>
+      That is the whole of it. It is a reading instrument, not a writing tool. It never
+      edits your manuscript, never suggests a plot, and never offers an opinion about
+      quality. It answers questions of shape: <em>who carries this book?</em>
+      <em>which relationships am I actually writing, as against the ones I meant to
+      write?</em> <em>when I cut chapter nine, who fell out of the story with it?</em>
+    </p>
+
+    <figure class="plain">
+      <!--PIPELINE-->
+      <figcaption>
+        <b>The shape of the tool.</b> Your files go in; a fingerprinted copy is stored; a
+        model reads that copy once and the result is frozen as a snapshot. Everything after
+        that — opening it, reading it, comparing it, exporting it — happens on your machine
+        with no model and no network. Only the orange step ever contacts anything.
+      </figcaption>
+    </figure>
+
+    <h3>What it is good at</h3>
+    <ul>
+      <li>
+        <b>Seeing a cast whole.</b> A novel has more people in it than anyone can hold in
+        mind. A picture of them, sized by how much of the book they carry, is a different
+        object from a list of names.
+      </li>
+      <li>
+        <b>Watching a revision land.</b> Rewrite a chapter, run the analysis again, and
+        Dramatis will tell you which relationships strengthened, which weakened, and which
+        disappeared — and, crucially, whether the change belongs to your rewrite or to the
+        analysis having been done differently.
+      </li>
+      <li>
+        <b>Catching the gap between the plan and the page.</b> If you keep a cast list or a
+        series bible, Dramatis reads it separately and shows you the relationships you have
+        described but never dramatised, and the ones that took over the book without ever
+        being in the plan.
+      </li>
+      <li>
+        <b>Citable claims.</b> Every edge in the graph is backed by quotations checked
+        letter-by-letter against your text. You can click any of them and land on the
+        sentence.
+      </li>
+    </ul>
+
+    <h3>What it deliberately is not</h3>
+    <ul>
+      <li>
+        <b>Not a writing tool.</b> It reads and reflects. It has no editor and never writes
+        to your manuscript files.
+      </li>
+      <li>
+        <b>Not tied to one author's filing method.</b> It will not assume that a folder
+        called <code>draft-2</code> is a second draft, or that a file called
+        <code>cast.md</code> is a cast list. It proposes; you confirm.
+      </li>
+      <li>
+        <b>Not a general knowledge graph.</b> Characters and their relationships only.
+        Places, objects and events are out of scope.
+      </li>
+      <li>
+        <b>Not a model.</b> Dramatis ships no artificial intelligence of its own. It
+        orchestrates a model that you supply — either a paid service you hold an account
+        with, or a free one running on your own computer.
+      </li>
+      <li>
+        <b>Not a service.</b> There are no accounts, no cloud storage, no sharing features
+        and no subscription. It runs on your machine and nowhere else.
+      </li>
+    </ul>
+
+    <h3>The life of a project</h3>
+    <p>
+      This manual follows that life from end to end. Steps 3 to 5 are the loop you will
+      actually live in: write, re-read, compare.
+    </p>
+
+    <figure class="plain">
+      <!--LIFECYCLE-->
+      <figcaption>
+        <b>Seven stages, and where they are covered.</b> Installing is Part II; creating,
+        analysing and reading are Part III; the loop of revising and comparing is chapters 19
+        and 20 and is worked through end to end in Part IV; keeping and removing are chapters
+        25 and 30.
+      </figcaption>
+    </figure>
+
+    <div class="note">
+      <span class="label">A word about the version</span>
+      <p>
+        Dramatis is <strong>pre-alpha</strong>. It works, it is thoroughly tested, and the
+        parts described in this manual do what they say. But it is early software: the
+        installation is a developer-style one for now, there is no double-clickable
+        installer yet, and features named in chapter 29 are genuinely absent rather than
+        hidden. Treat a Dramatis project as valuable but not yet as a system of record.
+      </p>
+    </div>
+
+    <h2><span class="num">2</span>The three promises</h2>
+
+    <p>
+      Three commitments are built into the design rather than into the marketing. They are
+      worth knowing because they explain a lot of behaviour that would otherwise look
+      pedantic.
+    </p>
+
+    <h3>Your text stays where you put it</h3>
+    <p>
+      There is no telemetry, no analytics and no phone-home of any kind. The only outbound
+      network connection Dramatis will ever make is to the model provider you name, at the
+      moment you ask for an analysis. If you choose a model running on your own machine
+      (chapter 7), nothing leaves the machine at all — you can unplug the network cable and
+      the analysis still completes.
+    </p>
+    <p>
+      Everything else — opening a project, drawing the graph, following evidence into the
+      source, comparing two drafts, exporting — works with no credential and no network,
+      permanently and by design. This is not a fallback mode; it is the ordinary way the
+      application runs.
+    </p>
+
+    <h3>Nothing is claimed without a quotation</h3>
+    <p>
+      Every relationship in the graph carries quotations from your text, and every one of
+      them has been checked character-by-character against the source before it was allowed
+      into the record. If the model invents a line, the claim resting on it is
+      <em>rejected</em> — not flagged, not shown with a warning, but removed. Where a
+      quotation is genuine but attached to the wrong passage, it is moved to the right one
+      rather than thrown away.
+    </p>
+    <p>
+      The single concession is whitespace: a quotation spanning a line break in a
+      hard-wrapped file still counts as verbatim. Nothing else is forgiven — not a changed
+      comma, not a straightened quotation mark, not a difference of case.
+    </p>
+
+    <h3>Nothing is ever overwritten</h3>
+    <p>
+      A snapshot is immutable. Analysing the same text again does not replace the earlier
+      reading; it adds a second one beside it. Ingesting an edited chapter does not replace
+      the old chapter; it records a new revision and keeps the old one, because a snapshot
+      taken last month cites text that must still be there to be cited. Your project file
+      grows; it does not churn.
+    </p>
+
+    <h2><span class="num">3</span>Twelve words you will need</h2>
+
+    <p>
+      Dramatis uses a small number of ordinary words in a precise way. Learn these and the
+      rest of the manual reads easily. A fuller glossary is at the back.
+    </p>
+
+    <table class="glossary">
+      <tr>
+        <td>Project</td>
+        <td>
+          One file, holding everything: your texts, the cast, and every analysis you have
+          ever run. Copy the file and you have copied the project entire. It is normally
+          called <code>dramatis.sqlite</code> and lives in the folder with your manuscript.
+        </td>
+      </tr>
+      <tr>
+        <td>Collection</td>
+        <td>
+          The circle inside which characters are shared. A project holds one collection. If
+          you put two novels of a series into the same project, a character appearing in
+          both is <em>one</em> character, which is what a series wants. An unrelated book
+          belongs in its own project.
+        </td>
+      </tr>
+      <tr>
+        <td>Work</td>
+        <td>A novel, a play, a season — one thing that gets revised over time.</td>
+      </tr>
+      <tr>
+        <td>Document</td>
+        <td>
+          One file. A chapter, a cast list, an appendix. Each has a <em>role</em>: it either
+          enacts the story or describes it.
+        </td>
+      </tr>
+      <tr>
+        <td>Text revision</td>
+        <td>
+          The exact state of your manuscript at one moment, fingerprinted. Every time you
+          bring the folder in again, Dramatis records a new revision and tells you which
+          files changed.
+        </td>
+      </tr>
+      <tr>
+        <td>Analysis run</td>
+        <td>
+          One reading: which model, which instructions, which settings. Two runs with the
+          same configuration are the same reading and can be compared.
+        </td>
+      </tr>
+      <tr>
+        <td>Snapshot</td>
+        <td>
+          A graph, permanently bound to <em>one</em> text revision and <em>one</em> analysis
+          run. This pairing is the heart of the design; chapter 4 explains why.
+        </td>
+      </tr>
+      <tr>
+        <td>Character</td>
+        <td>
+          A node. Carries a canonical name and every surface form the text used for them —
+          “Elizabeth”, “Miss Eliza Bennet”, “Lizzy”.
+        </td>
+      </tr>
+      <tr>
+        <td>Relation</td>
+        <td>An edge between two characters, with a weight, a type or two, and its evidence.</td>
+      </tr>
+      <tr>
+        <td>Weight and basis</td>
+        <td>
+          How strong an edge is, <em>and</em> what the number counts. A weight without its
+          basis is meaningless, so the two always travel together and Dramatis refuses to
+          compare weights measured on different bases.
+        </td>
+      </tr>
+      <tr>
+        <td>Provenance</td>
+        <td>
+          Where a claim came from: <b>observed</b> (the narrative enacts it),
+          <b>asserted</b> (your reference material states it), or <b>human</b> (you entered
+          or corrected it). Never mixed.
+        </td>
+      </tr>
+      <tr>
+        <td>Structure map</td>
+        <td>
+          Dramatis's proposal about what your folder holds — which file is story, which is
+          notes, which is a later draft of which — with the reason for each guess, waiting
+          for you to confirm or correct it.
+        </td>
+      </tr>
+    </table>
+
+    <figure class="medium plain">
+      <!--PROVENANCE-->
+      <figcaption>
+        <b>Three sources, one graph, never merged.</b> An edge that your notes declare and
+        an edge that your chapters enact are two different claims about the same pair. Kept
+        apart, they let you ask the two questions on the right. Merged into one number they
+        would answer neither.
+      </figcaption>
+    </figure>
+
+    <h2><span class="num">4</span>The two time axes</h2>
+
+    <p class="lede">
+      This is the one idea in Dramatis worth reading twice. Everything about the way
+      snapshots are stored and compared follows from it.
+    </p>
+
+    <p>
+      A character graph can change for two entirely different reasons. Either
+      <strong>the work changed</strong> — you rewrote a chapter, cut a subplot, gave a
+      minor character three more scenes. Or <strong>the reading changed</strong> — you ran
+      the analysis with a better model, or at a higher effort setting, or with revised
+      instructions.
+    </p>
+    <p>
+      If a tool cannot tell you which of those happened, its comparisons are worthless. You
+      would have no way of knowing whether your rewrite worked or whether you simply paid
+      for a smarter reader. So Dramatis never collapses the two. A snapshot is bound to a
+      text revision <em>and</em> an analysis run, both always recorded, and the browser lays
+      your snapshots out on a grid with one axis for each.
+    </p>
+
+    <figure class="medium plain">
+      <!--AXES-->
+      <figcaption>
+        <b>Reading the grid.</b> Down a column, the reading is held still and the text
+        varies: any difference is your writing. Across a row, the text is held still and the
+        reading varies: any difference is the analysis. A snapshot in a different row
+        <em>and</em> a different column can be blamed on neither, and Dramatis will say so in
+        plain words rather than pretend.
+      </figcaption>
+    </figure>
+
+    <p>
+      In practice this means one habit is worth forming: when you re-analyse after a
+      rewrite, tell Dramatis to hold the reading exactly as it was last time. There is a
+      single option for it, <code>--like</code>, and chapter 19 shows it in use.
+    </p>
+
+    <!-- ================================================================= PART II ==== -->
+    <section class="part">
+      <p class="kicker">Part II</p>
+      <h1>Installing</h1>
+      <p>
+        Dramatis is pre-alpha, so installation is still a developer-style one: a few
+        commands in a terminal window rather than a double-clickable installer. A signed
+        desktop application is planned. What follows assumes you have never used a terminal
+        and explains every step.
+      </p>
+    </section>
+
+    <h2><span class="num">5</span>What you need first</h2>
+
+    <h3>A terminal</h3>
+    <p>
+      A terminal is a window where you type commands instead of clicking. You already have
+      one.
+    </p>
+    <ul>
+      <li>
+        <b>macOS</b> — press <code>⌘ Space</code>, type <em>Terminal</em>, press Return.
+      </li>
+      <li>
+        <b>Windows</b> — press the Start key, type <em>PowerShell</em>, press Return.
+      </li>
+      <li><b>Linux</b> — you know where it is.</li>
+    </ul>
+    <p>
+      Throughout this manual, anything shown in a dark box is typed into that window and
+      followed by Return. Lines beginning with <code>#</code> are comments for you, not
+      commands — you can leave them out.
+    </p>
+
+    <h3>Python 3.11 or later</h3>
+    <p>
+      Dramatis is written in Python. Check whether you already have a suitable version:
+    </p>
+    <pre><code>python3 --version</code></pre>
+    <p>
+      If that prints <code>Python 3.11.x</code> or higher, you are set. If it prints
+      something older, or an error, install a current Python from
+      <a href="https://www.python.org/downloads/">python.org/downloads</a> — take the
+      default options, and on Windows tick <em>“Add Python to PATH”</em> on the first screen
+      of the installer. On Windows the command is usually <code>python</code> rather than
+      <code>python3</code>.
+    </p>
+
+    <h3>Node.js 20 or later</h3>
+    <p>
+      The browser view is built from source at installation time, which needs Node.js.
+      Check with:
+    </p>
+    <pre><code>node --version</code></pre>
+    <p>
+      If it is missing, install the LTS release from
+      <a href="https://nodejs.org">nodejs.org</a>. You will never need to think about Node
+      again after installation.
+    </p>
+
+    <h3>Git</h3>
+    <p>
+      Used once, to fetch the source. <code>git --version</code> will tell you whether you
+      have it; if not, <a href="https://git-scm.com/downloads">git-scm.com/downloads</a>.
+    </p>
+
+    <h3>Somewhere for the model to come from</h3>
+    <p>
+      Analysis needs a language model. You have two choices and they have quite different
+      consequences; chapter 7 lays them out. You do not need to decide before installing.
+    </p>
+
+    <h2><span class="num">6</span>Installing, step by step</h2>
+
+    <div class="caution">
+      <span class="label">Do not install from PyPI</span>
+      <p>
+        There is an unrelated package also called <code>dramatis</code> in the public Python
+        index. <code>pip install dramatis</code> will fetch that stranger's package, not
+        this one. Install from the source checkout exactly as below.
+      </p>
+    </div>
+
+    <h3>1 · Fetch the source</h3>
+    <p>Choose where it should live and clone it there:</p>
+    <pre><code><span class="c"># macOS and Linux</span>
+cd ~
+git clone https://github.com/kestora-labs/dramatis.git
+cd dramatis</code></pre>
+    <pre><code><span class="c"># Windows PowerShell</span>
+cd $HOME
+git clone https://github.com/kestora-labs/dramatis.git
+cd dramatis</code></pre>
+
+    <h3>2 · Make a private workspace for it</h3>
+    <p>
+      A <em>virtual environment</em> is a folder holding this application's dependencies so
+      they cannot disturb anything else on your computer. Create and activate one:
+    </p>
+    <pre><code><span class="c"># macOS and Linux</span>
+python3 -m venv .venv
+source .venv/bin/activate</code></pre>
+    <pre><code><span class="c"># Windows PowerShell</span>
+python -m venv .venv
+.venv\Scripts\Activate.ps1</code></pre>
+    <p>
+      Your prompt will now begin with <code>(.venv)</code>. That is how you know the
+      workspace is active. It stays active until you close the window; whenever you come
+      back to Dramatis in a new terminal, run the <code>activate</code> line again first.
+    </p>
+    <div class="note">
+      <span class="label">If Windows refuses to run the activate script</span>
+      <p>
+        PowerShell blocks scripts by default. Run
+        <code>Set-ExecutionPolicy -Scope CurrentUser RemoteSigned</code>, answer
+        <em>Yes</em>, and try again.
+      </p>
+    </div>
+
+    <h3>3 · Install the application</h3>
+    <p>
+      The square brackets ask for two optional extras: <code>anthropic</code>, the adapter
+      for the hosted model, and <code>serve</code>, the browser view. Include both; they are
+      small and you will want them.
+    </p>
+    <pre><code>pip install -e ".[anthropic,serve]"</code></pre>
+
+    <h3>4 · Build the browser view</h3>
+    <p>Two commands, once, taking a minute or so:</p>
+    <pre><code>npm ci --prefix web
+npm --prefix web run build</code></pre>
+    <p>
+      This turns the source of the browser interface into files the Dramatis server can
+      hand to your browser. If you skip it, every command still works but
+      <code>dramatis serve</code> will show a page telling you the client has not been
+      built.
+    </p>
+
+    <h3>5 · Confirm</h3>
+    <pre><code>dramatis --version</code></pre>
+    <p>
+      Should print something like <code>dramatis 0.1.0.dev0</code>. If it prints
+      <em>command not found</em>, the virtual environment is not active — go back to step 2.
+    </p>
+
+    <h2><span class="num">7</span>Choosing where the thinking happens</h2>
+
+    <p class="lede">
+      Analysis is the one step that needs a language model, and you decide which. The choice
+      is not permanent — it is made per analysis — but it has real consequences for cost,
+      quality and privacy, so make it deliberately.
+    </p>
+
+    <table>
+      <tr>
+        <th></th>
+        <th>A hosted model (Anthropic)</th>
+        <th>A model on your machine (Ollama)</th>
+      </tr>
+      <tr>
+        <td><b>Your text</b></td>
+        <td>Is sent to the provider, in passages, as the analysis runs.</td>
+        <td>Never leaves the computer. Works with the network cable out.</td>
+      </tr>
+      <tr>
+        <td><b>Cost</b></td>
+        <td>Paid per use, on your own account with the provider.</td>
+        <td>Free. Costs electricity and time.</td>
+      </tr>
+      <tr>
+        <td><b>Quality</b></td>
+        <td>Currently much better, especially at recognising that two names are one person.</td>
+        <td>Usable; depends entirely on the model you download.</td>
+      </tr>
+      <tr>
+        <td><b>Speed</b></td>
+        <td>Minutes for a novel.</td>
+        <td>Minutes to hours, depending on your machine.</td>
+      </tr>
+      <tr>
+        <td><b>Set-up</b></td>
+        <td>An account and an API key.</td>
+        <td>Install one application, download one model.</td>
+      </tr>
+    </table>
+
+    <h3>Option A — a hosted model</h3>
+    <p>
+      Create an account at <a href="https://console.anthropic.com">console.anthropic.com</a>
+      and generate an API key. Then make it available to Dramatis by putting it in the
+      environment before you run an analysis:
+    </p>
+    <pre><code><span class="c"># macOS and Linux</span>
+export ANTHROPIC_API_KEY=sk-ant-...</code></pre>
+    <pre><code><span class="c"># Windows PowerShell</span>
+$env:ANTHROPIC_API_KEY = "sk-ant-..."</code></pre>
+    <p>
+      That setting lasts until you close the window. To make it permanent, add the same line
+      to your shell profile — on macOS that is usually <code>~/.zshrc</code>.
+    </p>
+    <div class="caution">
+      <span class="label">An API key is a password</span>
+      <p>
+        Anyone holding it can spend your money. Do not paste it into a document, an email,
+        or a file you will later commit to version control.
+      </p>
+    </div>
+
+    <h3>Option B — a model on your own machine</h3>
+    <p>
+      Install <a href="https://ollama.com">Ollama</a> — it is an ordinary application with a
+      normal installer for macOS, Windows and Linux. Then download a model:
+    </p>
+    <pre><code>ollama pull llama3.1</code></pre>
+    <p>
+      That is the whole set-up. There is no key, no account, and no charge. From then on,
+      add <code>--provider ollama</code> to any analysis and the manuscript stays on your
+      machine.
+    </p>
+    <div class="note">
+      <span class="label">A local model is only local if it is local</span>
+      <p>
+        Ollama can be pointed at another computer. If yours is, Dramatis notices and prints a
+        warning saying your text is about to leave the machine, so you find out before the
+        analysis rather than after it.
+      </p>
+    </div>
+
+    <h3>Which to pick</h3>
+    <p>
+      If you are analysing a published or public-domain text, use the hosted model: it is
+      better and the privacy question does not arise. If you are analysing an unpublished
+      manuscript that you are not comfortable sending anywhere, use Ollama and accept a
+      rougher reading. Many people do both — a local pass while drafting, a hosted pass when
+      it matters.
+    </p>
+
+    <h2><span class="num">8</span>Checking that it worked</h2>
+
+    <p>
+      Dramatis ships with a hand-authored example graph. Validating it exercises the schema
+      and its checks without needing a model, a key, or a network:
+    </p>
+    <pre><code>dramatis validate fixtures/a/snapshot.json</code></pre>
+    <pre class="out"><code>ok    fixtures/a/snapshot.json</code></pre>
+    <p>And the same command on a deliberately broken example:</p>
+    <pre><code>dramatis validate fixtures/a/invalid/self-relation.json</code></pre>
+    <pre class="out"><code>FAIL  fixtures/a/invalid/self-relation.json — 1 problem
+      [reference] /relations/0: a relation may not join a character to itself</code></pre>
+    <p>If both behave that way, your installation is sound.</p>
+
+    <h2><span class="num">9</span>Installing with Docker instead</h2>
+
+    <p>
+      If you already use Docker, there is an image that bundles the application, the browser
+      view and everything it needs. It is an alternative to Part II above, not an addition.
+    </p>
+    <pre><code>docker build -t dramatis .
+docker run --rm -p 127.0.0.1:7373:7373 -v "$PWD/project:/data" dramatis</code></pre>
+    <p>
+      The project file lands at <code>./project/dramatis.sqlite</code> on your machine, and
+      the interface is at <code>http://127.0.0.1:7373</code>.
+    </p>
+    <div class="note">
+      <span class="label">Why the address is written out in full</span>
+      <p>
+        Inside a container, “this machine only” is unreachable from outside it, so the
+        server inside binds to everything. Publishing the port to
+        <code>127.0.0.1:7373</code> rather than <code>7373</code> is what keeps your
+        manuscript off the office network. Write the address out; the short form is not the
+        same.
+      </p>
+    </div>
+
+    <!-- ================================================================ PART III ==== -->
+    <section class="part">
+      <p class="kicker">Part III</p>
+      <h1>Using it</h1>
+      <p>
+        Everything the application currently does, in the order you will meet it: making a
+        project, telling Dramatis what your files are, running a reading, and then the
+        several ways of looking at the result. Screenshots are from real analyses of
+        <em>Pride and Prejudice</em>.
+      </p>
+    </section>
+
+    <h2><span class="num">10</span>Making a project in the browser</h2>
+
+    <p class="lede">
+      The friendlier of the two routes. You point the server at a project file that does not
+      exist yet, open it in your browser, and build the project by clicking.
+    </p>
+
+    <p>Put your manuscript files in a folder, then, from inside that folder:</p>
+    <pre><code>cd ~/writing/my-novel
+dramatis serve --store dramatis.sqlite</code></pre>
+    <p>
+      Nothing is created yet. Dramatis says as much, prints an address, and waits. Open
+      <code>http://127.0.0.1:7373</code> in your browser. Because the project holds nothing,
+      the <strong>New project</strong> panel opens itself.
+    </p>
+
+    <figure class="narrow">
+      <img src="images/create-source.png" alt="The top of the New project panel" />
+      <figcaption>
+        <b>Where the work is, and what to call it.</b> A path, a title, and one question about
+        the whole study. Pressing <em>Read it</em> reads the folder; it calls no model and
+        writes nothing.
+      </figcaption>
+    </figure>
+
+    <figure class="narrow">
+      <img src="images/create-documents.png" alt="The document list in the New project panel" />
+      <figcaption>
+        <b>The screen that matters.</b> Dramatis lists what it found and asks one question
+        about each file: does this <em>enact</em> the story, or <em>describe</em> it? Nothing
+        is assumed from the filename — you are asked, and asked once. It will not let you
+        create the project until every file has an answer.
+      </figcaption>
+    </figure>
+
+    <p>The panel has four things in it:</p>
+    <ul>
+      <li>
+        <b>The source.</b> A single file, a folder, or a folder of folders. Type the full
+        path.
+      </li>
+      <li>
+        <b>The work title.</b> Optional; taken from the filename if you leave it blank.
+      </li>
+      <li>
+        <b>Count collectives as actors.</b> Whether a group — a family, a crew, a faction —
+        is a character in its own right, or only the people named in it. Leave it off for a
+        novel. Turn it on only where a group genuinely acts as one, as in a serial about
+        rival houses. It applies to the whole project, and snapshots taken either side of a
+        change to it answer different questions and cannot be compared.
+      </li>
+      <li>
+        <b>A role for each document</b>, plus an optional line to drop everything before.
+        The next chapter is about these.
+      </li>
+    </ul>
+
+    <p>
+      <em>Create the project</em> writes the file, records your settings, saves your answers
+      about the documents, and reads the text in. It calls no model and costs nothing.
+      Analysing is a separate act, and deliberately so — you can build a project, look at
+      what it holds, and abandon it without having spent anything.
+    </p>
+
+    <h2><span class="num">11</span>Making a project from the command line</h2>
+
+    <p>The same thing in one line. From inside the folder holding your manuscript:</p>
+    <pre><code>dramatis ingest . --work "My Novel" --creator "Your Name"</code></pre>
+    <p>Or for a single file:</p>
+    <pre><code>dramatis ingest draft.txt --work "My Novel"</code></pre>
+    <p>Dramatis reports what it did:</p>
+    <pre class="out"><code>ingested: rev:568a07982816 (4 documents, 3,784 characters, sha256 568a07982816...)
+  4 added
+  store       dramatis.sqlite  (new project)
+  collection  col:my-novel
+  work        work:my-novel
+  revision    rev:568a07982816
+
+  added     cast.md
+  added     chapter-01.md
+  added     chapter-02.md
+  added     chapter-03.md</code></pre>
+
+    <p>Four things about <code>ingest</code> are worth knowing:</p>
+    <ul>
+      <li>
+        <b>It is the only command that creates a project.</b> Every other command refuses to
+        run rather than quietly starting an empty project you did not ask for — which is
+        what saves you when you run a command from the wrong folder.
+      </li>
+      <li>
+        <b>Running it twice is harmless.</b> The revision identifier comes from the content
+        of the files, so ingesting unchanged text again changes nothing.
+      </li>
+      <li>
+        <b>It tells you what moved.</b> On a second ingest, each file is reported as
+        <em>added</em>, <em>changed</em> or <em>unchanged</em>, which is what later lets a
+        comparison say that the graph moved because chapter three was rewritten.
+      </li>
+      <li>
+        <b>Always pass <code>--work</code>.</b> If you ingest <code>.</code> without one,
+        the title is derived from a folder name that a bare dot does not supply, and you get
+        a work called <em>untitled</em>.
+      </li>
+    </ul>
+
+    <div class="note">
+      <span class="label">Where the project file is looked for</span>
+      <p>
+        Every command except <code>ingest</code> searches for <code>dramatis.sqlite</code>
+        in the current folder and every folder above it, the way version control finds its
+        own directory. So commands work anywhere inside a project, and
+        <code>dramatis status</code> will always tell you which file it found and how.
+      </p>
+    </div>
+
+    <h3>One project, one collection</h3>
+    <p>
+      A second work ingested into the same project joins the same collection and shares its
+      cast — which is exactly what a series or a shared universe wants:
+    </p>
+    <pre><code>dramatis ingest book-one.txt --work "Meteor Girl" --collection "Golden Age"
+dramatis ingest book-two.txt --work "The Spark"        <span class="c"># joins the same collection</span></code></pre>
+    <p>
+      An unrelated book belongs in its own project file. Dramatis refuses to merge two casts
+      into one namespace, because that is not something you could undo.
+    </p>
+
+    <h2><span class="num">12</span>Saying what each file is</h2>
+
+    <p class="lede">
+      Before it reads anything, Dramatis wants to know what it is looking at. It proposes;
+      you confirm. It never infers a filing convention, because filing conventions are
+      personal and a wrong guess would silently corrupt the reading.
+    </p>
+
+    <h3>Looking at a folder costs nothing</h3>
+    <pre><code>dramatis structure .</code></pre>
+    <p>
+      This reads no model and touches no network. It prints one block per file, each
+      proposal followed by the evidence for it:
+    </p>
+    <pre class="out"><code>/writing/lamplighter - 4 documents
+
+  cast.md  (1,022 characters)
+    role         unknown
+                 needs the text read, not the folder named
+    addressing   section
+                 blank-line sections
+    revision of  (none)
+                 no earlier document is named cast.md
+
+  chapter-03.md  (910 characters)
+    role         unknown
+    ...</code></pre>
+
+    <h3>The three questions</h3>
+    <ul>
+      <li>
+        <b>Role — narrative or reference?</b> A <em>narrative</em> document enacts the
+        story: chapters, scenes, transcripts. A <em>reference</em> document describes it: a
+        cast list, a series bible, an outline, a wiki export. The distinction is not
+        cosmetic — relationships found in the two are kept apart all the way through, and
+        the disagreement between them is one of the most useful things Dramatis will show
+        you (chapter 20).
+      </li>
+      <li>
+        <b>Addressing — how is a position in this file named?</b> At present Dramatis
+        divides text on blank lines and calls each block a <em>section</em>. Richer
+        structures come later.
+      </li>
+      <li>
+        <b>Revision of — is this a later state of another file?</b> Proposed from the
+        filename and how much text two files have in common, and shown with a percentage so
+        you can judge it.
+      </li>
+    </ul>
+
+    <h3>Answering</h3>
+    <p>
+      In the browser, you answer by clicking the roles in the New project panel. From the
+      command line, you correct and confirm in one go:
+    </p>
+    <pre><code>dramatis structure . --set cast.md=reference --confirm</code></pre>
+    <p>
+      <code>--confirm</code> saves your answers against that folder, so you are never asked
+      again; later ingests apply them automatically. It refuses while any document still has
+      an unknown role, because half a map is worse than none. If your mind changes:
+    </p>
+    <pre><code>dramatis structure . --forget</code></pre>
+
+    <h3>Letting a model read the folder for you</h3>
+    <p>
+      For a large or unfamiliar corpus, a model can read the documents and propose roles
+      itself. This is the only part of <code>structure</code> that costs anything, and you
+      have to ask for it:
+    </p>
+    <pre><code>dramatis structure . --ask</code></pre>
+    <p>
+      It still writes nothing. You look at the proposals, correct what is wrong, and confirm
+      separately.
+    </p>
+
+    <h3>Leaving out a preface</h3>
+    <p>
+      Editions of classic texts often bind a critical introduction into the same file as the
+      novel. Its characters are a modern scholar and their colleagues, and they have no
+      business in your graph — and analysing them costs money.
+    </p>
+    <p>
+      In the New project panel, each document has a field reading
+      <em>“drop everything before this line”</em>. Paste the first line of the actual
+      narrative into it. Everything above is dropped before the text is stored, so it never
+      reaches the model at all.
+    </p>
+
+    <h2><span class="num">13</span>Running an analysis</h2>
+
+    <p class="lede">
+      The one step that calls a model, costs money or time, and produces a snapshot.
+      Everything else in Dramatis is free.
+    </p>
+
+    <p>
+      You need the identifier of the text revision to read. <code>dramatis status</code>
+      lists them:
+    </p>
+    <pre><code>dramatis status</code></pre>
+    <pre class="out"><code>project     /writing/lamplighter/dramatis.sqlite
+            found by searching upward from /writing/lamplighter
+
+settings    collectives_are_actors = false
+
+collection  The Lamplighter's Daughter  (col:the-lamplighter-s-daughter)
+registry    4 character(s)
+
+work        The Lamplighter's Daughter  (work:the-lamplighter-s-daughter)
+            2 revision(s), 1 snapshot(s)
+  snap:bb9660a6fe4b  2026-08-19T07:47:12+00:00  4 characters, 4 relations  draft one</code></pre>
+
+    <p>Then analyse it:</p>
+    <pre><code>dramatis analyse rev:568a07982816 --label "draft one"</code></pre>
+    <p>Or, with a model on your own machine:</p>
+    <pre><code>dramatis analyse rev:568a07982816 --provider ollama --label "draft one"</code></pre>
+
+    <p>What comes back:</p>
+    <pre class="out"><code>snapshot    snap:bb9660a6fe4b
+  revision  rev:568a07982816
+  run       run:d5f0082cf9e2
+  model     llama3.2:3b
+  characters 4
+  relations  4
+    observed 3  (interaction_passages)
+    asserted 1  (asserted_statements)
+  rejected   6 of 37 quotations as not verbatim</code></pre>
+
+    <p>Read that last block carefully; it is the honesty of the tool on display.</p>
+    <ul>
+      <li>
+        <b>Observed and asserted are counted separately</b>, with the basis of each. Three
+        relationships were shown happening in the chapters; one was stated in the cast list.
+        A single total would hide the distinction, and the distinction is the finding.
+      </li>
+      <li>
+        <b>Six quotations were rejected.</b> The model produced them; they were not found in
+        the text; they were removed along with the claims resting on them. If more than a
+        quarter of them fail, the whole run is refused rather than delivering a plausible
+        but thin graph.
+      </li>
+    </ul>
+
+    <h3>The options that matter</h3>
+    <table class="commands">
+      <tr>
+        <td><code>--provider ollama</code></td>
+        <td>Use a model on this machine. No key, no network, nothing leaves.</td>
+      </tr>
+      <tr>
+        <td><code>--model</code></td>
+        <td>Name a specific model rather than the provider's default.</td>
+      </tr>
+      <tr>
+        <td><code>--effort</code></td>
+        <td>
+          How hard the model should work per passage: <code>low</code>,
+          <code>medium</code> (the default), <code>high</code>, <code>xhigh</code>,
+          <code>max</code>. Higher costs more and reads better. Ollama has no such dial, and
+          Dramatis says so rather than pretending.
+        </td>
+      </tr>
+      <tr>
+        <td><code>--like SNAPSHOT</code></td>
+        <td>
+          Copy the settings recorded by an earlier snapshot, so a re-run after a rewrite
+          holds the reading still. <strong>The most important option here.</strong>
+        </td>
+      </tr>
+      <tr>
+        <td><code>--label</code></td>
+        <td>A human name for the snapshot, such as “draft two, after the cut”.</td>
+      </tr>
+      <tr>
+        <td><code>--checkpoint FILE</code></td>
+        <td>
+          Record every model call to a file, so an interrupted analysis of a long novel
+          resumes instead of paying for the same calls twice.
+        </td>
+      </tr>
+    </table>
+
+    <div class="caution">
+      <span class="label">A checkpoint file holds your text</span>
+      <p>
+        It contains the full passages sent to the model. Keep it beside the project, and
+        never in version control or a shared folder.
+      </p>
+    </div>
+
+    <h2><span class="num">14</span>The window, part by part</h2>
+
+    <p>From inside your project folder:</p>
+    <pre><code>dramatis serve</code></pre>
+    <p>
+      Then open <code>http://127.0.0.1:7373</code>. The server reads only your machine's own
+      loopback address, so nothing on your network can reach it. Stop it with
+      <code>Ctrl-C</code>.
+    </p>
+
+    <figure>
+      <div class="annotated">
+        <img src="images/pp-window.png" alt="The Dramatis window" />
+        <span class="badge" style="left: 24.8%; top: 7.8%">1</span>
+        <span class="badge" style="left: 24.8%; top: 13.3%">2</span>
+        <span class="badge" style="left: 24.8%; top: 24.5%">3</span>
+        <span class="badge" style="left: 24.8%; top: 35%">4</span>
+        <span class="badge" style="left: 24.8%; top: 45.2%">5</span>
+        <span class="badge" style="left: 24.8%; top: 56.4%">6</span>
+        <span class="badge" style="left: 24.8%; top: 70.4%">7</span>
+        <span class="badge" style="left: 90%; top: 72%">8</span>
+        <span class="badge" style="left: 24.8%; top: 88.8%">9</span>
+      </div>
+      <figcaption>
+        <b>The whole interface.</b> One sidebar of controls and one stage. There are no
+        menus, no toolbars and no hidden panels — everything the application can do is on
+        this screen. Shown: the first three chapters of <em>Pride and Prejudice</em>, 23
+        characters and 31 relationships.
+      </figcaption>
+    </figure>
+
+    <ul class="legend">
+      <li><b class="n">1</b> <b>New project</b> — build a project from files, without the terminal.</li>
+      <li><b class="n">2</b> <b>Snapshot chooser</b> — every reading the project holds. Switching is
+        instant and free.
+      </li>
+      <li><b class="n">3</b> <b>The lineage grid</b> — your snapshots on the two time axes. Click to
+        open; shift-click a second to compare.
+      </li>
+      <li><b class="n">4</b> <b>Layout</b> — how the characters are arranged. Five choices, each with a
+        note saying what it is good for.
+      </li>
+      <li><b class="n">5</b> <b>Thickness</b> — whether edge width is measured against the whole
+        snapshot or only what is on screen.
+      </li>
+      <li><b class="n">6</b> <b>Pin</b> — keep this arrangement so the graph reopens looking the same.
+      </li>
+      <li><b class="n">7</b> <b>Filters</b> — narrow by weight, relationship type, or provenance. Only
+        the controls this snapshot can actually use appear.
+      </li>
+      <li><b class="n">8</b> <b>The graph</b> — click a circle for a character, a line for a
+        relationship, the background to deselect. Drag to move, scroll to zoom.
+      </li>
+      <li><b class="n">9</b> <b>Provenance of the picture</b> — which work, which text revision, which
+        analysis run, which model, which version of the instructions. This is what makes the
+        graph citable.
+      </li>
+    </ul>
+
+    <h2><span class="num">15</span>Reading the graph</h2>
+
+    <h3>What size and thickness mean</h3>
+    <p>
+      A circle is a character, sized by how much of the work they carry. A line is a
+      relationship, thickened by its weight. Both are on a square-root scale, and that is a
+      deliberate distortion: interaction counts in fiction are wildly skewed, and on a
+      straight scale the two leads would be drawn as ropes and everyone else as
+      indistinguishable hairs.
+    </p>
+    <p>
+      A pale circle is a character with no relationships left in view — either they never
+      had any, or your filters have removed them all.
+    </p>
+
+    <h3>Absolute and relative thickness</h3>
+    <p>
+      <b>Absolute</b> measures every edge against the heaviest relationship in the whole
+      snapshot, so narrowing the graph does not fatten what remains. <b>Relative</b>
+      measures against the heaviest edge currently on screen, so a filtered view uses its
+      full range. Use absolute when comparing; relative when studying a corner.
+    </p>
+    <p>
+      Where a snapshot holds relationships measured on different bases — some counted from
+      passages, some from statements in your notes — Dramatis measures within each basis
+      separately and says so beneath the control. It will not put two incomparable numbers
+      on one scale.
+    </p>
+
+    <h3>Layouts</h3>
+    <p>
+      Five arrangements: <b>Force</b> (the default, clusters characters who share
+      relationships), <b>Circle</b>, <b>Concentric</b>, <b>Hierarchy</b> and <b>Grid</b>.
+      Each has a one-line note under the chooser saying what it shows well.
+    </p>
+
+    <figure class="narrow">
+      <img src="images/pp-layout.png" alt="The layout controls" />
+      <figcaption>
+        <b>Layout, thickness, and the pin.</b> The note under each control tells you what the
+        setting actually does to the picture, so you do not have to experiment to find out.
+      </figcaption>
+    </figure>
+
+    <h3>Pinning</h3>
+    <p>
+      A force layout has no memory: every redraw scatters the arrangement you have just
+      finished learning. <em>Pin this arrangement</em> keeps it. The graph reopens exactly as
+      you left it, and if you drag a character somewhere better, the new position is kept
+      too.
+    </p>
+    <p>
+      A pin belongs to one snapshot and lives in your browser, not in the project file. Two
+      consequences: a colleague opening your project sees their own arrangement, and
+      clearing your browser's storage loses the pin but nothing else.
+    </p>
+
+    <h2><span class="num">16</span>Asking a character a question</h2>
+
+    <p>Click a circle. The sidebar fills with what the snapshot claims about that person.</p>
+
+    <figure class="narrow">
+      <img src="images/novel-character.png" alt="A character detail panel" />
+      <figcaption>
+        <b>Mr Darcy, from a full-novel reading.</b> The <em>also known as</em> list is the
+        work of alias resolution: every surface form the novel used, gathered onto one
+        person. “my master”, “our visitor” and “I (the letter writer)” are all Darcy, and
+        catching that is most of what separates a useful graph from a list of near-duplicate
+        names.
+      </figcaption>
+    </figure>
+
+    <ul>
+      <li><b>Also known as</b> — every name the text used for them.</li>
+      <li><b>Kind</b> — a person, or a collective.</li>
+      <li><b>Relations</b> — how many other characters they are connected to.</li>
+      <li><b>Provenance</b> — observed, asserted, or human.</li>
+      <li>
+        <b>Review</b> — how far the claim has travelled through human checking. Everything
+        is <code>proposed</code> at present; accepting and correcting arrive in a later
+        version.
+      </li>
+      <li><b>ID</b> — the stable identifier, the same across every snapshot in the project.</li>
+    </ul>
+
+    <p>Click a line instead and you get the relationship, with its evidence.</p>
+
+    <figure class="narrow">
+      <img src="images/pp-relation.png" alt="A relation detail panel with evidence" />
+      <figcaption>
+        <b>Elizabeth Bennet and Mr Darcy, three chapters in.</b> One passage of contact so
+        far, and the panel names it, quotes it, and says why it counts. Every claim in
+        Dramatis looks like this underneath.
+      </figcaption>
+    </figure>
+
+    <h2><span class="num">17</span>Following the evidence into the text</h2>
+
+    <p>
+      Click any quotation in the evidence list and your source opens beside the graph at
+      that passage, with the quoted words highlighted and scrolled into view.
+    </p>
+
+    <figure>
+      <img src="images/pp-reader.png" alt="The source reader open at a quotation" />
+      <figcaption>
+        <b>From an edge to a sentence in two clicks.</b> The highlight is computed by the
+        server against the stored text, not searched for by the browser — which is why it
+        works on quotations that span the line breaks of a hard-wrapped file.
+      </figcaption>
+    </figure>
+
+    <p>
+      The reader is candid about how well it found the passage, and this matters when you
+      have edited the text since the analysis was run:
+    </p>
+    <ul>
+      <li>
+        <b>Found exactly.</b> No remark. The quotation is in the current text, word for
+        word.
+      </li>
+      <li>
+        <b>Found approximately.</b> The highlight is drawn in a different style and a note
+        says the match was fuzzy — you edited inside the quoted sentence, and this is the
+        closest passage. Weigh it accordingly.
+      </li>
+      <li>
+        <b>Moved.</b> A note says where the evidence used to point. Inserting three
+        paragraphs earlier in a chapter shifts everything after it, and Dramatis simply
+        finds the sentence again.
+      </li>
+      <li>
+        <b>Not found at all.</b> The passage is shown without a highlight and a plain error
+        says the quotation is no longer in this revision. You rewrote it past recognition.
+        Saying so is the useful answer; silently pointing at whatever scored highest would
+        make every citation in the project unfalsifiable.
+      </li>
+    </ul>
+
+    <h2><span class="num">18</span>Narrowing a crowded graph</h2>
+
+    <p>
+      A whole novel is a hairball. That is not a defect of the drawing — it is what a novel's
+      cast looks like — but it is not readable, and the filters exist to cut through it.
+    </p>
+
+    <figure>
+      <img src="images/novel-window.png" alt="The full novel, unfiltered" />
+      <figcaption>
+        <b>All of <em>Pride and Prejudice</em>: 102 characters, 241 relationships.</b> Every
+        walk-on part, every servant, every author named in the Project Gutenberg apparatus at
+        the end of the file. True, and unreadable.
+      </figcaption>
+    </figure>
+
+    <figure>
+      <img src="images/novel-filtered.png" alt="The full novel, filtered by weight" />
+      <figcaption>
+        <b>The same snapshot with the weight slider at 8.</b> Thirty-four relationships of
+        241 remain and the novel appears: the Bennets, the Bingleys, Darcy, Wickham, Collins,
+        Lady Catherine. The tally beneath the slider states exactly what is being hidden — 66
+        characters now have no relationships left in view.
+      </figcaption>
+    </figure>
+
+    <p>Three filters, and each appears only if this snapshot has something for it to do:</p>
+    <ul>
+      <li>
+        <b>Minimum weight.</b> A slider. The label names the basis being counted, so you
+        always know what the number means. The graph is rebuilt when you let go, not while
+        you drag.
+      </li>
+      <li>
+        <b>Relationship type.</b> Chips for whatever vocabulary this analysis produced —
+        kinship, courtship, rivalry, employment. The vocabulary is open, so it varies by
+        work, and no snapshot is forced into a closed list.
+      </li>
+      <li>
+        <b>Provenance.</b> Observed, asserted, human. Show only what your notes declare, or
+        only what the chapters enact.
+      </li>
+    </ul>
+    <p>
+      Filters are per snapshot and reset when you switch, because “kinship” carried across
+      to a snapshot that never heard the word would silently empty the graph. There is a
+      <em>reset</em> control whenever anything is narrowed.
+    </p>
+
+    <h2><span class="num">19</span>Comparing two drafts</h2>
+
+    <p class="lede">
+      The reason the application exists. One snapshot is a picture of a cast; two snapshots
+      are a story about how the cast moved.
+    </p>
+
+    <h3>Producing a comparable pair</h3>
+    <p>Three steps, in order:</p>
+    <ol>
+      <li>Edit your manuscript in whatever you write in.</li>
+      <li>
+        <code>dramatis ingest . --work "My Novel"</code> — records a new text revision and
+        reports which files changed.
+      </li>
+      <li>
+        <code>dramatis analyse rev:NEW --like snap:OLD</code> — reads the new text with
+        <em>exactly</em> the settings the old snapshot recorded.
+      </li>
+    </ol>
+    <p>
+      That third step is the one people skip and regret. Passing the same options by hand is
+      not the same claim as copying what the earlier run recorded, and without it the
+      comparison cannot separate your rewrite from a change in the reading. Dramatis prints
+      what it copied, and if you override something explicitly it warns you that the two
+      snapshots will no longer be comparable.
+    </p>
+
+    <h3>The lineage grid</h3>
+    <figure class="narrow">
+      <img src="images/lamp-lineage.png" alt="The lineage grid with two revisions" />
+      <figcaption>
+        <b>Two drafts read the same way.</b> A row per text revision, a column per reading.
+        Click a cell to open that snapshot; hold Shift and click a second to compare the two.
+        A dot marks a pairing nobody has analysed, which is a different fact from an analysis
+        that found nothing.
+      </figcaption>
+    </figure>
+
+    <h3>The comparison</h3>
+    <figure>
+      <img src="images/lamp-diff.png" alt="Two snapshots compared" />
+      <figcaption>
+        <b>The comparison as a picture.</b> Everything either snapshot had is drawn, so what
+        was removed is still on screen: red and dashed for gone, green for new, plain grey
+        for unchanged. A graph cannot say “from 25 to 4”, so the same changes are also listed
+        in words beside it.
+      </figcaption>
+    </figure>
+
+    <figure class="narrow">
+      <img src="images/lamp-diff-panel.png" alt="The change list" />
+      <figcaption>
+        <b>The same comparison in words.</b> Three things worth noticing, in the order they
+        appear: the attribution sentence at the top; the withheld weight comparison, refused
+        with its reason rather than computed wrongly; and only then the changes themselves.
+      </figcaption>
+    </figure>
+
+    <p>The colours mean:</p>
+    <ul>
+      <li><span class="swatch" style="background: #2f855a"></span><b>Added</b> — new in the later snapshot.</li>
+      <li>
+        <span class="swatch dashed-key" style="border-color: #c53030"></span><b>Removed</b> —
+        gone from the later one, and still drawn, faint and dashed, because what disappeared
+        is the half you are least able to reconstruct from memory.
+      </li>
+      <li><span class="swatch" style="background: #2b6cb0"></span><b>Strengthened</b> — more weight behind it.</li>
+      <li><span class="swatch" style="background: #b7791f"></span><b>Weakened</b> — less.</li>
+      <li><span class="swatch" style="background: #805ad5"></span><b>Retyped</b> — the kind of relationship changed.</li>
+    </ul>
+
+    <h3>Attribution: the first line of the panel</h3>
+    <p>
+      Before it lists anything, the comparison says what the difference can be blamed on.
+      There are three possible answers and you should read the sentence every time:
+    </p>
+    <ul>
+      <li>
+        <b>The work changed.</b> Same reading, different text. Everything below is your
+        writing.
+      </li>
+      <li>
+        <b>The reading changed.</b> Same text, different analysis. Everything below is the
+        model, not you.
+      </li>
+      <li>
+        <b>Both changed.</b> Nothing below can be credited to either, and the panel says so
+        in a warning colour rather than quietly picking whichever moved more.
+      </li>
+    </ul>
+    <p>
+      Two further refusals keep the list honest. Weights are compared only where both
+      snapshots measured on the same basis; where they disagree, the weight comparisons are
+      withheld and the reason given. And where two characters have been merged into one, the
+      relationships are compared through the merge, so a single act of tidying does not
+      appear as dozens of spurious additions and removals.
+    </p>
+
+    <h2><span class="num">20</span>What you declared against what you wrote</h2>
+
+    <p class="lede">
+      If your project contains reference material — a cast list, a series bible, an outline —
+      Dramatis has read it separately and can put the two readings on top of each other.
+    </p>
+
+    <p>
+      The button in the sidebar reads <strong>Compare declared with enacted</strong>. It
+      appears only when the snapshot has both kinds of relationship to compare, and it is
+      never drawn at the same time as a draft comparison: two colour systems answering
+      different questions in one picture would answer neither.
+    </p>
+
+    <figure>
+      <img src="images/lamp-declared.png" alt="Declared compared with enacted" />
+      <figcaption>
+        <b>The plan against the page.</b> Orange: two relationships the chapters carry that
+        the cast list never mentions. Faint grey: the one relationship both agree on, receding
+        because it needs no attention. A relationship declared and never enacted would be
+        drawn purple and dashed; this small reading found none, which is itself a finding
+        about the reading rather than about the book.
+      </figcaption>
+    </figure>
+
+    <p>
+      The two disagreements are the finding. A relationship the bible describes at length
+      and the narrative never dramatises is a scene you meant to write; a pair who carry more
+      of the book than anyone while the bible does not mention them is a subplot that took
+      over while you were not looking. Both are ordinary and both are hard to see from
+      inside the manuscript.
+    </p>
+    <p>
+      No weights appear anywhere in this panel, and that is deliberate. A relationship your
+      notes state twice is not twice as strong — you repeated yourself. Passages of contact
+      and statements of fact are different quantities, and a column of numbers side by side
+      would invite exactly the comparison the rest of the tool refuses to make.
+    </p>
+    <p>
+      Relationships that are neither declared nor enacted — ones entered by hand — are
+      counted and named at the top of the panel rather than quietly excluded, so the totals
+      here agree with the totals everywhere else.
+    </p>
+
+    <h2><span class="num">21</span>A cast that spans several works</h2>
+
+    <p>
+      When a project holds more than one work, the shared character registry becomes useful
+      in its own right:
+    </p>
+    <pre><code>dramatis characters</code></pre>
+    <pre class="out"><code>Jane Austen - 102 characters across 1 works
+
+  Caroline Bingley  [person]
+    also        Caroline, Miss Bingley
+    appears in  Pride and Prejudice (12 relations)
+
+  Charlotte Lucas  [person]
+    also        Charlotte, Miss Lucas, Mrs. Collins
+    appears in  Pride and Prejudice (13 relations)</code></pre>
+    <p>
+      Whoever spans the most works is listed first, because that is the question a
+      shared-universe registry is opened to ask. To see only those:
+    </p>
+    <pre><code>dramatis characters --spanning</code></pre>
+    <p>
+      Two details worth knowing. Appearances are worked out from snapshots rather than
+      stored separately, so they cannot fall out of step — and only the <em>newest</em>
+      snapshot of each work is consulted, because a character you cut in the second draft
+      does not appear in that novel any more. A character present in the registry but in no
+      current reading is listed as such rather than left blank, since that is a real state
+      and a blank line reads as a bug. This command calls no model and reaches no network.
+    </p>
+
+    <h2><span class="num">22</span>Every command, at a glance</h2>
+
+    <table class="commands">
+      <tr>
+        <th>Command</th>
+        <th>What it does</th>
+        <th>Model?</th>
+      </tr>
+      <tr>
+        <td><code>dramatis status</code></td>
+        <td>
+          Which project file is in use, how it was found, and everything in it: settings,
+          collection, works, revisions, snapshots.
+        </td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td><code>dramatis structure</code></td>
+        <td>
+          What a folder appears to hold, with the evidence for each guess.
+          <code>--set</code> corrects, <code>--confirm</code> saves, <code>--forget</code>
+          discards, <code>--ask</code> has a model read the documents.
+        </td>
+        <td>Only with <code>--ask</code></td>
+      </tr>
+      <tr>
+        <td><code>dramatis ingest</code></td>
+        <td>
+          Reads a file or folder into the project as a text revision. The only command that
+          creates a project.
+        </td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td><code>dramatis analyse</code></td>
+        <td>
+          Reads a stored revision with a model, verifies every quotation, records a snapshot.
+          <em>(<code>analyze</code> also works.)</em>
+        </td>
+        <td><b>Yes</b></td>
+      </tr>
+      <tr>
+        <td><code>dramatis serve</code></td>
+        <td>
+          Opens the project in your browser on this machine only. Default address
+          <code>127.0.0.1:7373</code>.
+        </td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td><code>dramatis characters</code></td>
+        <td>The collection's cast and which works each character appears in.</td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td><code>dramatis validate</code></td>
+        <td>
+          Checks a snapshot file against the published schema and its internal references.
+          Works on documents produced by other tools.
+        </td>
+        <td>No</td>
+      </tr>
+    </table>
+
+    <p>Options shared by most commands:</p>
+    <table class="commands">
+      <tr>
+        <td><code>--store PATH</code></td>
+        <td>
+          Name the project file directly instead of letting Dramatis search for it. Also
+          accepts a PostgreSQL address for shared installations.
+        </td>
+      </tr>
+      <tr>
+        <td><code>--json</code></td>
+        <td>
+          Machine-readable output on standard output. Every remark, note and warning goes to
+          standard error instead, so the JSON is never contaminated.
+        </td>
+      </tr>
+      <tr>
+        <td><code>--help</code></td>
+        <td>
+          Full options for any command: <code>dramatis analyse --help</code>. The help text
+          is written in the same voice as this manual.
+        </td>
+      </tr>
+    </table>
+
+    <!-- ================================================================= PART IV ==== -->
+    <section class="part">
+      <p class="kicker">Part IV</p>
+      <h1>A project over time</h1>
+      <p>
+        One short novel, followed from an empty folder to a finished study, in eight
+        milestones. Each gives the reason for the step, the exact commands, and what you
+        should look at afterwards. Follow it with your own work substituted and you will
+        have used every feature Dramatis currently has.
+      </p>
+    </section>
+
+    <h2><span class="num">23</span>Eight milestones with one short novel</h2>
+
+    <p class="lede">
+      <em>The Lamplighter's Daughter.</em> Auber Vance has lit the same round for forty
+      years. Neve, his daughter, keeps the accounts at a chandlery. Idris Kell is the borough
+      inspector who cuts the round in half. There is a cast list. There will be two drafts.
+    </p>
+
+    <div class="note">
+      <span class="label">About the screenshots in this part</span>
+      <p>
+        These readings were produced with a small model running locally
+        (<code>llama3.2:3b</code>) so that the whole example could be reproduced free of
+        charge and with nothing leaving the machine. That has a visible consequence, called
+        out at milestone 3, and it is left in rather than tidied away: it is exactly the kind
+        of error you should expect to find and check.
+      </p>
+    </div>
+
+    <h3 class="milestone-head">
+      <span class="tag">Milestone 1</span> A folder, looked at
+    </h3>
+    <p>
+      <b>Why.</b> Before spending anything, find out what Dramatis thinks your folder holds.
+      This costs nothing and reaches nothing.
+    </p>
+    <pre><code>cd ~/writing/lamplighter
+ls</code></pre>
+    <pre class="out"><code>cast.md   chapter-01.md   chapter-02.md   chapter-03.md</code></pre>
+    <pre><code>dramatis structure .</code></pre>
+    <div class="outcome">
+      <b>What to look at</b>
+      Four documents, every role <em>unknown</em>, and under each the reason: “needs the text
+      read, not the folder named”. Dramatis will not guess that a file called
+      <code>cast.md</code> is a cast list. That refusal is the feature — your filing habits
+      are yours, and a wrong guess here would quietly poison every graph that followed.
+    </div>
+
+    <h3 class="milestone-head">
+      <span class="tag">Milestone 2</span> The project exists
+    </h3>
+    <p>
+      <b>Why.</b> Answer the role question once, and read the text in. Still no model, still
+      no cost.
+    </p>
+    <pre><code>dramatis serve --store dramatis.sqlite</code></pre>
+    <p>
+      Open <code>http://127.0.0.1:7373</code>. The New project panel is already open because
+      there is nothing to show. Type the folder path, press <em>Read it</em>, mark
+      <code>cast.md</code> as <strong>reference</strong> and the three chapters as
+      <strong>narrative</strong>, give the work a title, and press
+      <em>Create the project</em>.
+    </p>
+    <div class="outcome">
+      <b>What to look at</b>
+      “Ready: 4 documents, 1 as reference material.” A file called
+      <code>dramatis.sqlite</code> now sits beside your chapters. That single file is the
+      project — the text, the settings, and every reading you will ever run.
+    </div>
+
+    <h3 class="milestone-head">
+      <span class="tag">Milestone 3</span> The first reading
+    </h3>
+    <p><b>Why.</b> Now spend something. This is the first and only step that calls a model.</p>
+    <pre><code>dramatis status                       <span class="c"># find the revision identifier</span>
+dramatis analyse rev:568a07982816 --provider ollama --label "draft one"</code></pre>
+    <pre class="out"><code>snapshot    snap:bb9660a6fe4b
+  characters 4
+  relations  4
+    observed 3  (interaction_passages)
+    asserted 1  (asserted_statements)
+  rejected   6 of 37 quotations as not verbatim</code></pre>
+
+    <figure>
+      <img src="images/lamp-graph.png" alt="The first graph" />
+      <figcaption>
+        <b>Draft one.</b> Three people and the triangle between them. Mrs Ferrin is in the
+        cast list and in chapter two, but this reading found her sharing no passage of
+        contact with anybody, so she sits alone and pale. Small enough to check by hand —
+        which is the point of starting small.
+      </figcaption>
+    </figure>
+
+    <div class="outcome">
+      <b>What to look at</b>
+      Two things. First, the split between <em>observed</em> and <em>asserted</em>: three
+      relationships were shown happening, one was merely stated. Second — and this is the
+      error promised above — open Auber Vance's panel and look at his aliases. The small
+      local model has folded “Neve Vance” into her father. A larger model does not make this
+      mistake, but the lesson holds: click through to the evidence before you trust a node.
+    </div>
+
+    <h3 class="milestone-head">
+      <span class="tag">Milestone 4</span> Reading the picture properly
+    </h3>
+    <p>
+      <b>Why.</b> Nothing here costs anything, and it is where most of your time will be
+      spent.
+    </p>
+    <p>
+      Click the heaviest line — Auber and Idris. The panel gives its weight, its basis, and
+      eight passages of evidence. Click a quotation and the chapter opens beside the graph
+      with the sentence highlighted. Try the layouts. Pin the one you like. Drag Neve
+      somewhere more sensible and watch the position stick.
+    </p>
+    <div class="outcome">
+      <b>What to look at</b>
+      The distance between “the graph says these two are close” and “here is the sentence
+      that says so” should be two clicks. If a claim looks wrong, this is how you convict it.
+    </div>
+
+    <h3 class="milestone-head">
+      <span class="tag">Milestone 5</span> The rewrite
+    </h3>
+    <p>
+      <b>Why.</b> This is the whole reason for the two time axes. You have rewritten chapter
+      three: Auber no longer confronts Idris directly — the confrontation is relayed through
+      Neve. Does the graph show it?
+    </p>
+    <pre><code><span class="c"># after editing chapter-03.md in your own editor</span>
+dramatis ingest . --work "The Lamplighter's Daughter" --label "draft two"</code></pre>
+    <pre class="out"><code>ingested: rev:3fbe3124d583 (4 documents, 3,869 characters)
+  1 changed, 3 unchanged
+  against     rev:568a07982816
+
+  unchanged cast.md
+  unchanged chapter-01.md
+  unchanged chapter-02.md
+  changed   chapter-03.md</code></pre>
+    <p>Now re-read it, holding the reading exactly as it was:</p>
+    <pre><code>dramatis analyse rev:3fbe3124d583 --provider ollama --like snap:bb9660a6fe4b --label "draft two"</code></pre>
+    <pre class="out"><code>note: holding the analysis as recorded by snap:bb9660a6fe4b
+      (effort=medium, max_rejection_rate=0.25, target_characters=12000)</code></pre>
+    <div class="outcome">
+      <b>What to look at</b>
+      “1 changed, 3 unchanged” — Dramatis knows precisely what you touched. And the note
+      about holding the analysis still is what makes the next milestone mean anything.
+    </div>
+
+    <h3 class="milestone-head">
+      <span class="tag">Milestone 6</span> The comparison
+    </h3>
+    <p><b>Why.</b> To find out whether the rewrite did what you intended.</p>
+    <p>
+      Refresh the browser. The lineage grid now has two rows in one column. Click draft one,
+      then hold <strong>Shift</strong> and click draft two.
+    </p>
+    <div class="outcome">
+      <b>What to look at</b>
+      The first line of the panel, before anything else. Here it reads
+      <em>“The analysis was held still, so these changes belong to the text.”</em> That
+      sentence is what licenses everything below it, and you get it only because milestone 5
+      used <code>--like</code>. The second line is the tool declining to do something: the two
+      snapshots weigh their relationships on different bases, so nothing is reported as
+      strengthened or weakened rather than a wrong number being reported confidently. Then
+      read the changes and ask whether they match the edit you made.
+    </div>
+
+    <h3 class="milestone-head">
+      <span class="tag">Milestone 7</span> The plan against the page
+    </h3>
+    <p>
+      <b>Why.</b> You have kept a cast list. It makes claims. Do the chapters bear them out?
+    </p>
+    <p>
+      With a snapshot open, press <strong>Compare declared with enacted</strong> in the
+      sidebar.
+    </p>
+    <div class="outcome">
+      <b>What to look at</b>
+      The summary line: here, <em>“2 enacted but never declared; 1 agreed.”</em> Two of the
+      three relationships the chapters carry are missing from the cast list — an outline that
+      has fallen behind the writing, which is the ordinary condition of an outline. Anything
+      purple and dashed would be the opposite case, a relationship described and never
+      dramatised. Whether either is a gap to fill or a note to delete is a judgement only you
+      can make; Dramatis's job is to put it in front of you.
+    </div>
+
+    <figure class="narrow">
+      <img src="images/lamp-declared-panel.png" alt="The declared and enacted panel" />
+      <figcaption>
+        <b>Disagreements first, agreement last and faint.</b> No weights appear anywhere here:
+        passages of contact and statements in a cast list are different quantities, and
+        printing them side by side would invite a comparison that means nothing.
+      </figcaption>
+    </figure>
+
+    <h3 class="milestone-head">
+      <span class="tag">Milestone 8</span> Keeping it
+    </h3>
+    <p>
+      <b>Why.</b> The project file is now a piece of research with citable results. Treat it
+      like one.
+    </p>
+    <pre><code>cp dramatis.sqlite ~/backups/lamplighter-2026-08-19.sqlite</code></pre>
+    <p>
+      That is the entire backup procedure. To hand the study to a colleague, send them that
+      file: they can open every snapshot, follow every quotation into the text, and compare
+      every draft, with no key, no network and no account. To cite a result, quote the
+      snapshot identifier together with the text revision and the analysis run beneath the
+      sidebar — the three together make the reading reproducible.
+    </p>
+
+    <hr />
+
+    <h3>What a longer project looks like</h3>
+    <p>
+      Beyond eight milestones the pattern simply repeats. A realistic sequence for a novel
+      written over a year:
+    </p>
+    <table>
+      <tr>
+        <th>When</th>
+        <th>What you do</th>
+        <th>What it costs</th>
+      </tr>
+      <tr>
+        <td>At the end of each draft</td>
+        <td>Ingest, then analyse with <code>--like</code> the previous snapshot.</td>
+        <td>One analysis</td>
+      </tr>
+      <tr>
+        <td>After a structural cut</td>
+        <td>Ingest and analyse; compare against the snapshot before the cut.</td>
+        <td>One analysis</td>
+      </tr>
+      <tr>
+        <td>Whenever the cast list changes</td>
+        <td>Re-ingest and re-analyse; check declared against enacted again.</td>
+        <td>One analysis</td>
+      </tr>
+      <tr>
+        <td>Once, out of curiosity</td>
+        <td>
+          Re-analyse an <em>old</em> revision with a better model, to see how much of a past
+          finding was the reading rather than the writing.
+        </td>
+        <td>One analysis</td>
+      </tr>
+      <tr>
+        <td>Continuously</td>
+        <td>Open, read, filter, follow evidence, compare.</td>
+        <td>Nothing</td>
+      </tr>
+    </table>
+
+    <!-- ================================================================== PART V ==== -->
+    <section class="part">
+      <p class="kicker">Part V</p>
+      <h1>Living with it</h1>
+      <p>
+        Where the files are, how to keep them safe, what it costs, what it promises about
+        privacy, what to do when something breaks, what is genuinely not built yet, and how
+        to remove every trace of it.
+      </p>
+    </section>
+
+    <h2><span class="num">24</span>Where everything lives</h2>
+
+    <table>
+      <tr>
+        <th>What</th>
+        <th>Where</th>
+        <th>Matters?</th>
+      </tr>
+      <tr>
+        <td>Your project</td>
+        <td>
+          <code>dramatis.sqlite</code>, in your manuscript folder unless you named it
+          otherwise
+        </td>
+        <td><b>Everything.</b> Back this up.</td>
+      </tr>
+      <tr>
+        <td>Your manuscript</td>
+        <td>Wherever you keep it. Dramatis never writes to it.</td>
+        <td>Yes, but it is yours already</td>
+      </tr>
+      <tr>
+        <td>The application</td>
+        <td>The folder you cloned into, and its <code>.venv</code></td>
+        <td>No — re-installable in five minutes</td>
+      </tr>
+      <tr>
+        <td>Checkpoint files</td>
+        <td>Wherever you pointed <code>--checkpoint</code></td>
+        <td>Contain your text; delete when the run is done</td>
+      </tr>
+      <tr>
+        <td>Pinned layouts</td>
+        <td>Your browser's local storage</td>
+        <td>No — cosmetic, and per browser</td>
+      </tr>
+      <tr>
+        <td>Your API key</td>
+        <td>Your shell environment or profile</td>
+        <td>Treat as a password</td>
+      </tr>
+    </table>
+
+    <h3>Inside the project file</h3>
+    <p>
+      One SQLite database holding your texts (the full content, not a reference to a path on
+      somebody's laptop), the character registry, and every snapshot as a complete, valid,
+      self-contained document. Nothing points outside the file. That is what makes it
+      portable, archivable and citable — and it is why an evidence quotation can still be
+      resolved against the exact text it was drawn from ten years from now.
+    </p>
+
+    <h3>When one file is the wrong shape</h3>
+    <p>
+      For several people reading one corpus, or a container with no persistent disk, point
+      <code>--store</code> at a PostgreSQL address instead. Nothing else changes:
+    </p>
+    <pre><code>pip install -e ".[postgres]"
+dramatis ingest draft.txt --store postgresql://user:pass@localhost/dramatis --work "My Novel"</code></pre>
+    <p>
+      A store is chosen once, not migrated between backends. The single file remains the
+      default and the shape the application is designed around.
+    </p>
+
+    <h2><span class="num">25</span>Backing up, sharing, archiving, citing</h2>
+
+    <h3>Backing up</h3>
+    <p>
+      Copy the file. Do it whenever you have run an analysis worth keeping — that is the
+      only expensive thing in the project. Dated copies are worth the disk space:
+    </p>
+    <pre><code>cp dramatis.sqlite ~/backups/my-novel-2026-08-19.sqlite</code></pre>
+    <p>
+      Whether the project file belongs in version control alongside your manuscript is your
+      call. It is a binary and it grows, but it is also the record of your study.
+    </p>
+
+    <h3>Sharing</h3>
+    <p>
+      Send the file. Your recipient needs Dramatis installed but needs no key, no account
+      and no network to read everything in it: the graphs, the evidence, the source text,
+      the comparisons. This follows from the rule that reading never requires a model.
+    </p>
+    <div class="caution">
+      <span class="label">The file contains your manuscript</span>
+      <p>
+        Document contents are stored inside the project so that evidence can always be
+        resolved. Sending the project file sends the text. That is usually what you want and
+        occasionally very much not.
+      </p>
+    </div>
+
+    <h3>Archiving and citing</h3>
+    <p>
+      A snapshot is a complete document conforming to a published, separately versioned
+      schema, so it can be deposited and read by other tools without Dramatis. To make a
+      result citable, name three things together:
+    </p>
+    <ul>
+      <li>the <b>snapshot</b> identifier (for example <code>snap:bb9660a6fe4b</code>),</li>
+      <li>the <b>text revision</b> it read,</li>
+      <li>the <b>analysis run</b> that read it — which carries the model and the version of the instructions.</li>
+    </ul>
+    <p>
+      All three are in the sidebar under any open snapshot. Given them and the project file,
+      another scholar can reproduce exactly what you saw.
+    </p>
+
+    <h2><span class="num">26</span>What it costs and how long it takes</h2>
+
+    <p>
+      Only <code>analyse</code> costs anything, and <code>structure --ask</code> if you use
+      it. Everything else — ingesting, browsing, filtering, comparing, exporting, validating
+      — is free and offline, permanently.
+    </p>
+
+    <table>
+      <tr>
+        <th></th>
+        <th>Hosted model</th>
+        <th>Local model</th>
+      </tr>
+      <tr>
+        <td>Three chapters</td>
+        <td>Pennies; under a minute</td>
+        <td>Free; a few minutes</td>
+      </tr>
+      <tr>
+        <td>A full novel</td>
+        <td>A few dollars at medium effort; several minutes</td>
+        <td>Free; hours on an ordinary laptop</td>
+      </tr>
+      <tr>
+        <td>Every re-read</td>
+        <td>The same again — the work is not cached between runs</td>
+        <td>The same again</td>
+      </tr>
+    </table>
+
+    <p>Three ways to spend less:</p>
+    <ul>
+      <li>
+        <b>Exclude what you do not need.</b> A critical preface bound into the same file has
+        its own cast, and dropping it before analysis costs nothing and saves a real fraction
+        of a long book. See chapter 12.
+      </li>
+      <li>
+        <b>Use <code>--checkpoint</code> for long runs.</b> An interrupted novel resumes
+        instead of paying for the same calls again.
+      </li>
+      <li>
+        <b>Start at low effort.</b> Read a cheap pass, decide whether the shape is right,
+        then pay for a careful one.
+      </li>
+    </ul>
+
+    <h2><span class="num">27</span>Privacy, in detail</h2>
+
+    <p>Precisely what leaves your machine, and when.</p>
+    <table>
+      <tr>
+        <th>Action</th>
+        <th>What leaves your machine</th>
+      </tr>
+      <tr>
+        <td><code>ingest</code>, <code>status</code>, <code>validate</code>, <code>characters</code>, <code>serve</code></td>
+        <td><b>Nothing.</b> Ever. These work offline and always will.</td>
+      </tr>
+      <tr>
+        <td><code>structure</code> without <code>--ask</code></td>
+        <td>Nothing.</td>
+      </tr>
+      <tr>
+        <td><code>structure --ask</code></td>
+        <td>The opening of each document, to your chosen provider.</td>
+      </tr>
+      <tr>
+        <td><code>analyse</code> with a hosted model</td>
+        <td>Your text, in passages, to that provider and nowhere else.</td>
+      </tr>
+      <tr>
+        <td><code>analyse --provider ollama</code></td>
+        <td>Nothing, provided Ollama is on this machine — and Dramatis warns you if it is not.</td>
+      </tr>
+    </table>
+
+    <p>Four further guarantees:</p>
+    <ul>
+      <li>
+        <b>No telemetry, no analytics, no update checks, no crash reports.</b> There is no
+        code in Dramatis that contacts Kestora Labs.
+      </li>
+      <li>
+        <b>The browser interface binds to this machine only.</b> Serving it to the network
+        is possible, deliberately awkward, and warned about in plain words.
+      </li>
+      <li>
+        <b>The server refuses writes from other websites.</b> Any page you have open could
+        send a command to an address on your own machine; every write is checked and a
+        request from elsewhere is refused before it reaches anything.
+      </li>
+      <li>
+        <b>One place does networking.</b> The whole application makes outbound connections
+        from a single small module per provider — the property is checkable by anyone who
+        wants to read the source, which is why it is stated this way.
+      </li>
+    </ul>
+
+    <h2><span class="num">28</span>When something goes wrong</h2>
+
+    <table>
+      <tr>
+        <th>What you see</th>
+        <th>What it means, and what to do</th>
+      </tr>
+      <tr>
+        <td><code>dramatis: command not found</code></td>
+        <td>
+          The virtual environment is not active. Run the <code>activate</code> line from
+          chapter 6 step 2 in this terminal window.
+        </td>
+      </tr>
+      <tr>
+        <td><code>error: no project file found</code></td>
+        <td>
+          You are outside the project. <code>cd</code> into the manuscript folder, or pass
+          <code>--store</code> with the path. Dramatis refuses rather than creating an empty
+          project — deliberately.
+        </td>
+      </tr>
+      <tr>
+        <td>A page saying the client has not been built</td>
+        <td>The two <code>npm</code> commands from chapter 6 step 4 were not run.</td>
+      </tr>
+      <tr>
+        <td>Analysis fails on a credential</td>
+        <td>
+          <code>ANTHROPIC_API_KEY</code> is not set in <em>this</em> terminal window. It does
+          not survive closing the window unless you put it in your shell profile.
+        </td>
+      </tr>
+      <tr>
+        <td><code>too many quotations failed verification</code></td>
+        <td>
+          More than a quarter of what the model produced was not in your text, so the whole
+          run was refused rather than delivered thin and misleading. Try a better model or a
+          higher effort. If it persists, the text may have an unusual encoding.
+        </td>
+      </tr>
+      <tr>
+        <td>Two names that are obviously one person</td>
+        <td>
+          Alias resolution missed a merge. A more capable model fixes most cases. Merging by
+          hand is a Phase 5 feature and is not built yet.
+        </td>
+      </tr>
+      <tr>
+        <td>A character you do not recognise</td>
+        <td>
+          Usually front or back matter: a Gutenberg header, a translator's note, an
+          introduction. Exclude it (chapter 12) and analyse again.
+        </td>
+      </tr>
+      <tr>
+        <td>“This quotation is not in this revision”</td>
+        <td>
+          Working as designed. You edited the sentence after the analysis. Re-analyse the new
+          revision when you are ready.
+        </td>
+      </tr>
+      <tr>
+        <td>The comparison says it cannot attribute the change</td>
+        <td>
+          Both the text and the reading moved. Re-run the newer analysis with
+          <code>--like</code> the older snapshot and compare again.
+        </td>
+      </tr>
+      <tr>
+        <td>An analysis was interrupted</td>
+        <td>
+          Run it again with the same <code>--checkpoint</code> file and it resumes from where
+          it stopped.
+        </td>
+      </tr>
+      <tr>
+        <td><code>note: skipped ... : not a text file</code></td>
+        <td>
+          Informational. Dramatis reads <code>.txt</code>, <code>.md</code>,
+          <code>.markdown</code> and <code>.text</code>; anything else in the folder is named
+          and left out rather than dropped silently.
+        </td>
+      </tr>
+    </table>
+
+    <h2><span class="num">29</span>What Dramatis cannot do yet</h2>
+
+    <p>
+      Named honestly, so you can plan around them, and listed in roughly the order they are expected to arrive.
+    </p>
+    <table>
+      <tr>
+        <th>Not yet</th>
+        <th>What it will be</th>
+      </tr>
+      <tr>
+        <td>Correcting the graph by hand</td>
+        <td>
+          Accepting, rejecting and correcting individual claims, with your corrections
+          surviving re-analysis rather than being silently overwritten.
+        </td>
+      </tr>
+      <tr>
+        <td>Merging and splitting characters</td>
+        <td>
+          Joining two nodes that are one person, or separating one that is two, with the
+          decision recorded in the graph. Today this is entirely the model's call.
+        </td>
+      </tr>
+      <tr>
+        <td>A continuity report</td>
+        <td>
+          Characters renamed between drafts, listed with references, so a rename does not
+          read as a death and a birth.
+        </td>
+      </tr>
+      <tr>
+        <td>Confidence shown on screen</td>
+        <td>Low-confidence relationships drawn distinctly from well-evidenced ones.</td>
+      </tr>
+      <tr>
+        <td>Exports</td>
+        <td>
+          GraphML, GEXF and CSV for Gephi and similar tools; evidence as W3C Web Annotation.
+          Today the project file and its JSON are the export.
+        </td>
+      </tr>
+      <tr>
+        <td>Multiple editions of one work</td>
+        <td>Comparing translations or editions inside a single collection.</td>
+      </tr>
+      <tr>
+        <td>A double-clickable application</td>
+        <td>A signed desktop installer for macOS and Windows, with no terminal at all.</td>
+      </tr>
+      <tr>
+        <td>Editing the instructions</td>
+        <td>
+          Per-project prompts, so a scholar can state and publish exactly how their corpus
+          was read, with an evaluation harness to show the change was an improvement.
+        </td>
+      </tr>
+    </table>
+
+    <h2><span class="num">30</span>Uninstalling, completely</h2>
+
+    <p>
+      Nothing is hidden anywhere on your system. Removing Dramatis is removing two folders,
+      and you decide separately what to do with your projects.
+    </p>
+
+    <h3>1 · Decide about your projects first</h3>
+    <p>
+      Your <code>dramatis.sqlite</code> files are in your own manuscript folders and are not
+      touched by any of the steps below. Each holds analyses you paid for. Copy them
+      somewhere safe if there is any chance you will want them, or delete them deliberately.
+    </p>
+    <pre><code><span class="c"># find every project on the machine (macOS and Linux)</span>
+find ~ -name "dramatis.sqlite" 2>/dev/null</code></pre>
+    <pre><code><span class="c"># Windows PowerShell</span>
+Get-ChildItem -Path $HOME -Filter dramatis.sqlite -Recurse -ErrorAction SilentlyContinue</code></pre>
+
+    <h3>2 · Remove the application</h3>
+    <p>Delete the folder you cloned into. That is the virtual environment and all of it:</p>
+    <pre><code>rm -rf ~/dramatis          <span class="c"># macOS and Linux</span></code></pre>
+    <pre><code>Remove-Item -Recurse -Force $HOME\dramatis      <span class="c"># Windows PowerShell</span></code></pre>
+
+    <h3>3 · Remove what you added for it</h3>
+    <ul>
+      <li>
+        <b>Your API key.</b> Delete the <code>ANTHROPIC_API_KEY</code> line from your shell
+        profile, and revoke the key itself in the provider's console — deleting the line does
+        not disable the key.
+      </li>
+      <li>
+        <b>Checkpoint files.</b> Any file you passed to <code>--checkpoint</code>. These
+        contain your text.
+      </li>
+      <li>
+        <b>Ollama</b>, if you installed it only for this. Uninstall it like any other
+        application; <code>ollama rm llama3.1</code> first reclaims the model's disk space.
+      </li>
+      <li>
+        <b>Python and Node</b>, if you installed them only for this and nothing else on your
+        machine uses them. Most people should leave them.
+      </li>
+      <li>
+        <b>Pinned layouts</b> live in your browser's storage for
+        <code>127.0.0.1:7373</code> and disappear when you clear site data. They are
+        cosmetic.
+      </li>
+      <li>
+        <b>The Docker image</b>, if you used it: <code>docker rmi dramatis</code>.
+      </li>
+    </ul>
+
+    <div class="note">
+      <span class="label">There is nothing else</span>
+      <p>
+        No system-wide configuration, no registry entries, no background service, no login
+        item, no account to close, and no remote copy of anything — because nothing was ever
+        sent anywhere except to the model provider you chose, at the moment you asked.
+      </p>
+    </div>
+
+    <!-- ================================================================== APPENDIX == -->
+    <section class="part">
+      <p class="kicker">End matter</p>
+      <h1>Glossary and credits</h1>
+    </section>
+
+    <h2><span class="num">A</span>Glossary</h2>
+
+    <table class="glossary">
+      <tr>
+        <td>Alias</td>
+        <td>
+          A surface form of a name: “Lizzy” for Elizabeth Bennet. Gathering aliases onto one
+          character is <em>alias resolution</em>, and it is the hardest thing the pipeline
+          does.
+        </td>
+      </tr>
+      <tr>
+        <td>Analysis run</td>
+        <td>One reading: a model, a version of the instructions, and the settings used.</td>
+      </tr>
+      <tr>
+        <td>Asserted</td>
+        <td>A claim your reference material states, as opposed to one the narrative enacts.</td>
+      </tr>
+      <tr>
+        <td>Attribution</td>
+        <td>
+          A comparison's verdict on <em>what</em> a difference can be blamed on: the work,
+          the reading, or neither.
+        </td>
+      </tr>
+      <tr>
+        <td>Checkpoint</td>
+        <td>
+          A file recording every model call, so an interrupted analysis resumes rather than
+          paying twice. Contains your text.
+        </td>
+      </tr>
+      <tr>
+        <td>Collection</td>
+        <td>The circle inside which characters are shared. One per project.</td>
+      </tr>
+      <tr>
+        <td>Document</td>
+        <td>One file in a project, with a role: narrative or reference.</td>
+      </tr>
+      <tr>
+        <td>Evidence</td>
+        <td>
+          A quotation with a locator and often a note, attached to a relationship. Verified
+          verbatim against the source or discarded.
+        </td>
+      </tr>
+      <tr>
+        <td>Ingest</td>
+        <td>Reading text into a project as a fingerprinted revision. Never calls a model.</td>
+      </tr>
+      <tr>
+        <td>Lineage</td>
+        <td>A work's snapshots arranged on the two time axes.</td>
+      </tr>
+      <tr>
+        <td>Locator</td>
+        <td>
+          Where in a document something is: an ordered path of typed segments. The types are
+          data supplied per work, so the schema names no chapter, panel or scene.
+        </td>
+      </tr>
+      <tr>
+        <td>Observed</td>
+        <td>A claim the narrative enacts on the page.</td>
+      </tr>
+      <tr>
+        <td>Provenance</td>
+        <td>Where a claim came from: observed, asserted, or human.</td>
+      </tr>
+      <tr>
+        <td>Re-anchoring</td>
+        <td>
+          Finding a quotation again after the text around it has been edited — exactly, then
+          by surrounding context, then approximately, and never silently.
+        </td>
+      </tr>
+      <tr>
+        <td>Region</td>
+        <td>
+          A marked part of a document, which may be excluded so it is never stored or
+          analysed. What a preface goes in.
+        </td>
+      </tr>
+      <tr>
+        <td>Review status</td>
+        <td>
+          How far a claim has travelled through human checking: proposed, accepted,
+          corrected, rejected. Everything is <em>proposed</em> today.
+        </td>
+      </tr>
+      <tr>
+        <td>Role</td>
+        <td>Whether a document enacts the story (narrative) or describes it (reference).</td>
+      </tr>
+      <tr>
+        <td>Schema</td>
+        <td>
+          The published, separately versioned definition of a Dramatis document, so other
+          tools can read and write the format without running Dramatis.
+        </td>
+      </tr>
+      <tr>
+        <td>Segment</td>
+        <td>
+          A division of a text. Dramatis currently divides on blank lines and calls each
+          block a <em>section</em>.
+        </td>
+      </tr>
+      <tr>
+        <td>Snapshot</td>
+        <td>A graph bound to one text revision and one analysis run. Immutable.</td>
+      </tr>
+      <tr>
+        <td>Structure map</td>
+        <td>Dramatis's proposals about a folder, with evidence, awaiting your confirmation.</td>
+      </tr>
+      <tr>
+        <td>Text revision</td>
+        <td>The exact fingerprinted state of a work's files at one moment.</td>
+      </tr>
+      <tr>
+        <td>Weight basis</td>
+        <td>
+          What a weight counts. Weights are comparable only within a shared basis, and
+          Dramatis refuses to compare across bases rather than producing a wrong answer.
+        </td>
+      </tr>
+    </table>
+
+    <h2><span class="num">B</span>Licences and credits</h2>
+
+    <p>
+      Dramatis is a <a href="https://github.com/kestora-labs">Kestora Labs</a> product. The
+      code is Apache-2.0; the documentation, including this manual, is CC BY 4.0. The source
+      is at <a href="https://github.com/kestora-labs/dramatis">github.com/kestora-labs/dramatis</a>.
+    </p>
+    <p>
+      Dramatis ships no model and no credentials. Whichever model you use is yours, under
+      that provider's terms.
+    </p>
+    <p>
+      The screenshots of <em>Pride and Prejudice</em> are from the Project Gutenberg text,
+      which is in the public domain. <em>The Lamplighter's Daughter</em> is synthetic,
+      written for this repository's test fixtures, and deliberately short.
+    </p>
+
+    <div class="colophon">
+      <p>
+        <strong>Dramatis — The Manual.</strong> Describes version 0.1.0.dev0, built through
+        Phase 4 of the roadmap. Everything stated here was checked against the running
+        application; every screenshot is of a real analysis of a real text.
+      </p>
+      <p>
+        Further reading in the repository: <code>docs/schema.md</code> for the document
+        format, <code>AI/ROADMAP.md</code> for the design specification and the invariants
+        every change must respect, and <code>DECISIONS.md</code> for the reasoning behind
+        the choices that shaped it.
+      </p>
+    </div>
+  </body>
+</html>

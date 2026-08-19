@@ -105,8 +105,14 @@ State these plainly so they don't creep in:
 6. **Reading data never requires a model.** The app must open, render, diff, and export
    any stored snapshot with no network access and no API key. Models are needed only to
    *produce* new analyses.
-7. **No egress except to the user's chosen provider.** No telemetry, no analytics, no
-   phone-home. This is a headline feature for people holding unpublished manuscripts.
+7. **No egress except to the user's chosen provider, and to a source the user has named as
+   holding their corpus.** No telemetry, no analytics, no phone-home. This is a headline
+   feature for people holding unpublished manuscripts. A named source is read-only, is
+   contacted only while ingesting, and is never contacted unless a person named it in that
+   run — so a corpus already kept in somebody's cloud drive can be read from where it lives
+   without the manuscript being exposed anywhere it was not already. Reading a *stored*
+   project stays offline regardless, which is Invariant 6 and is not weakened by this.
+   *(Amended before phase 6; see **D56**.)*
 8. **The schema is a separately versioned, published artifact.** Other tools should be
    able to emit and consume Dramatis JSON without running Dramatis. It follows semver and
    ships with its own JSON Schema document.
@@ -470,11 +476,41 @@ graph.
       exclusion a configuration rather than a model behaviour. *(Split from **4.9**; see
       **D47**.)*
 
+- [ ] **4.12** — **A corpus source is an interface**, and the local filesystem becomes one
+      implementation of it. A source answers two questions: what is the stable root this
+      corpus is known by, and what are its readable documents as `(path, text)` pairs.
+      Everything downstream — hashing, revisions, structure maps, exclusion — already works
+      on exactly that, so this is a refactor with no behaviour change and a test that says so.
+      *(Depends on nothing. It is what stops the next three bullets touching `ingest`.)*
+- [ ] **4.13** — **A Google Drive source**: walk a folder tree, export each Google Doc to
+      Markdown — which keeps the headings that structure inference reads — and download
+      native text files as they are. Anything it cannot read is skipped *with its reason*,
+      as a folder's non-text files already are. Identity is unchanged: **D32**'s hash is
+      taken over the exported text, so an edited Doc becomes a new document and a new
+      revision exactly as an edited file does. Tested against recorded traffic, never a
+      live Drive.
+- [ ] **4.14** — **Authentication, and `dramatis ingest` against a Drive folder.** An OAuth
+      installed-app flow: the user brings a client secret, consents in a browser once, and
+      the refresh token is cached outside the project file — a project store is a thing
+      people send to each other, and a credential must not travel in one. Read-only scope.
+      Refused unless the run names a Drive source, so a typo cannot reach the network.
+- [ ] **4.15** — **Re-ingest over a Drive root**, so revisions work: a second ingest of the
+      same folder picks up edited documents as a new text revision, and the structure map
+      confirmed against that root is reused rather than asked again. This is what makes
+      **3.x**'s diff and **5.4**'s continuity report usable on a corpus nobody ever
+      downloads.
+
 **Acceptance:** Fixture **C** ingests without any code specific to its filing conventions.
 The structure map is editable and persists. A relation asserted in reference material and
 absent from the narrative is surfaced as such. A full analysis completes against a local
 model with the machine offline. A project is created from the browser without touching the
 command line, and a preface excluded there produces a cast free of the people it discusses.
+A corpus held in a cloud drive is ingested from where it lives, with Google Docs read as text
+and nothing downloaded by hand; re-ingesting it produces a second revision the diff runs
+across.
+
+*Reopened before phase 6 (**4.12**–**4.15**): every corpus this application had seen until
+then was on a local disk, and most of the ones it is wanted for are not. See **D56**.*
 
 ---
 

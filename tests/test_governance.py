@@ -166,3 +166,35 @@ class TestTheDecisionLogAndTheRoadmapAgree:
 
         missing = sorted(cited - declared, key=lambda item: [int(p) for p in item.split(".")])
         assert not missing, f"the log cites bullets the roadmap does not declare: {missing}"
+
+
+class TestTheDistributionName:
+    """The name this project publishes under is not the name it imports under.
+
+    An unrelated actor library has held `dramatis` on PyPI since 2008, and installing by that
+    name fetches it — which is not hypothetical: a Docker image shipped the stranger's code
+    once (D45). The distribution is `dramatis-personae`; the import package and the console
+    command stay `dramatis`, because neither is resolved through the index.
+    """
+
+    def _pyproject(self) -> dict:
+        return tomllib.loads(_read("pyproject.toml"))
+
+    def test_it_does_not_publish_under_the_taken_name(self) -> None:
+        assert self._pyproject()["project"]["name"] == "dramatis-personae"
+
+    def test_the_command_and_the_import_package_are_unchanged(self) -> None:
+        # The collision is only over the distribution name. Renaming either of these would
+        # change what users type and what every module imports, for no gain.
+        project = self._pyproject()
+        assert project["project"]["scripts"] == {"dramatis": "dramatis.cli:main"}
+        assert self._pyproject()["tool"]["hatch"]["build"]["targets"]["wheel"]["packages"] == [
+            "src/dramatis"
+        ]
+
+    def test_nothing_installs_the_application_by_name(self) -> None:
+        """The whole reason the rename matters. Installing by *either* name from an index is
+        how the wrong package arrives; the Dockerfile installs the wheel by file path."""
+        dockerfile = _read("Dockerfile")
+        for form in ('"dramatis[serve]"', "pip install dramatis", "pip install dramatis-personae"):
+            assert form not in dockerfile, f"{form!r} reintroduces the collision"

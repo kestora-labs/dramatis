@@ -476,12 +476,13 @@ graph.
       exclusion a configuration rather than a model behaviour. *(Split from **4.9**; see
       **D47**.)*
 
-- [ ] **4.12** — **A corpus source is an interface**, and the local filesystem becomes one
+- [x] **4.12** — **A corpus source is an interface**, and the local filesystem becomes one
       implementation of it. A source answers two questions: what is the stable root this
       corpus is known by, and what are its readable documents as `(path, text)` pairs.
       Everything downstream — hashing, revisions, structure maps, exclusion — already works
       on exactly that, so this is a refactor with no behaviour change and a test that says so.
-      *(Depends on nothing. It is what stops the next three bullets touching `ingest`.)*
+      *(Depends on nothing. It is what stops the next three bullets touching `ingest`.
+      See **D57**.)*
 - [ ] **4.13** — **A Google Drive source**: walk a folder tree, export each Google Doc to
       Markdown — which keeps the headings that structure inference reads — and download
       native text files as they are. Anything it cannot read is skipped *with its reason*,

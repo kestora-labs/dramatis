@@ -17,6 +17,11 @@ directory-per-revision layout as data precisely so that no code has to know it.
 an older revision depends on, and two files that happen to hold identical bytes stay two
 documents. What makes `chapter-03.md` the same chapter in two drafts is that it sits at the
 same path relative to the folder ingested, and that is what per-file tracking compares.
+
+**A folder is not the only place a corpus can be.** Since **4.12** the work here is defined
+on a `sources.Source` — a root string and a list of `(path, text)` pairs — and a directory
+walk is one implementation of that and nothing more. `ingest_source` is the whole of it;
+`ingest_folder` is that function with "a path means the local filesystem" said out loud.
 """
 
 from __future__ import annotations
@@ -28,6 +33,15 @@ from pathlib import Path
 from typing import Any
 
 from dramatis import ids
+from dramatis.sources import (
+    TEXT_SUFFIXES,
+    FileSystemSource,
+    IngestError,
+    Reading,
+    Source,
+    as_source,
+    read_text,
+)
 from dramatis.store import (
     COLLECTIVES_ARE_ACTORS,
     DOCUMENT_ROLES,
@@ -38,7 +52,25 @@ from dramatis.store import (
     TextRevision,
     utc_now,
 )
-from dramatis.text import content_hash, normalise_line_endings, revision_hash
+from dramatis.text import content_hash, revision_hash
+
+__all__ = [
+    "TEXT_SUFFIXES",
+    "FileSystemSource",
+    "FolderIngestResult",
+    "IngestError",
+    "IngestResult",
+    "Reading",
+    "Source",
+    "as_source",
+    "ingest_file",
+    "ingest_folder",
+    "ingest_source",
+    "kept_text",
+    "read_text",
+]
+"""`TEXT_SUFFIXES`, `IngestError` and `read_text` moved to `sources` in **4.12** and are
+re-exported here, where every existing caller imports them from."""
 
 DEFAULT_ROLE = NARRATIVE
 
@@ -118,20 +150,6 @@ def _role_of(region: Mapping[str, Any]) -> Any:
     return (region.get("role") or {}).get("value")
 
 
-TEXT_SUFFIXES = frozenset({".txt", ".md", ".markdown", ".text"})
-"""Which files in a folder are taken as text.
-
-A draft folder holds more than the draft — notes in other formats, an exported PDF, the
-editor's own dotfiles. Reading everything would put binary into a revision hash; guessing
-by sniffing content would be the encoding guess `read_text` already refuses. So the rule is
-the suffix, and anything else is reported as skipped rather than passed over in silence.
-"""
-
-
-class IngestError(Exception):
-    """A file could not be ingested. The message is meant for a user, not a traceback."""
-
-
 @dataclass(frozen=True)
 class IngestResult:
     collection_id: str
@@ -155,40 +173,6 @@ class IngestResult:
             f"{state}: {self.revision_id} ({self.characters:,} characters, "
             f"sha256 {self.sha256[:12]}...)" + excluded
         )
-
-
-def read_text(path: Path) -> str:
-    """Read a file as UTF-8 and normalise its line endings.
-
-    The normalised form is what gets stored and hashed. Storing the raw bytes and hashing a
-    normalised copy would mean the recorded hash described something other than the text on
-    which every locator and quotation is resolved.
-    """
-    # Checked before reading rather than caught after: a directory read raises
-    # IsADirectoryError on POSIX and PermissionError on Windows, and the distinction is
-    # not worth carrying into the error message a user sees.
-    if path.is_dir():
-        raise IngestError(f"{path} is a directory; use ingest_folder")
-
-    try:
-        raw = path.read_bytes()
-    except FileNotFoundError:
-        raise IngestError(f"no such file: {path}") from None
-    except OSError as error:
-        raise IngestError(f"cannot read {path}: {error.strerror}") from None
-
-    try:
-        decoded = raw.decode("utf-8-sig")
-    except UnicodeDecodeError as error:
-        raise IngestError(
-            f"{path} is not valid UTF-8 (byte {error.start}). Convert it first; Dramatis "
-            "does not guess encodings, because guessing wrong corrupts quotations silently."
-        ) from None
-
-    text = normalise_line_endings(decoded)
-    if not text.strip():
-        raise IngestError(f"{path} is empty")
-    return text
 
 
 def _resolve_collection(store: Store, work_id: str, collection_name: str | None, title: str) -> str:
@@ -257,11 +241,12 @@ def ingest_file(
     path = Path(path)
     text = read_text(path)
 
-    # A single file is its own structure-map root (structure.propose_structure), keyed under
-    # its resolved path with one document named for the file. Absent a confirmed map this is
-    # empty and nothing is dropped; where a preface region was confirmed excluded, its text
-    # never enters the store, so it never reaches extraction (4.11).
-    plan = store.structure_map(str(path.resolve())).get(path.name, {})
+    # A single file is its own structure-map root, keyed under its resolved path with one
+    # document named for the file — which is `FileSystemSource`'s answer for a file, asked
+    # here so that only one thing in the project decides what a root is. Absent a confirmed
+    # map this is empty and nothing is dropped; where a preface region was confirmed
+    # excluded, its text never enters the store, so it never reaches extraction (4.11).
+    plan = store.structure_map(FileSystemSource(path).root).get(path.name, {})
     kept, exclusion_note = kept_text(text, plan)
     if exclusion_note:
         # A confirmed exclusion that cannot be applied is refused, not ignored: keeping the
@@ -393,18 +378,6 @@ class FolderIngestResult:
         )
 
 
-def _text_files(root: Path) -> list[Path]:
-    """Every text file under ``root``, in a deterministic order.
-
-    Sorted by relative path, because the order decides the revision hash: two ingests of one
-    folder must produce the same revision, and a filesystem's own ordering is not a promise.
-    """
-    return sorted(
-        (path for path in root.rglob("*") if path.is_file()),
-        key=lambda path: path.relative_to(root).as_posix(),
-    )
-
-
 def _previous_state(store: Store, work_id: str) -> tuple[str | None, dict[str, str]]:
     """The newest revision of this work, as a map of path to content hash."""
     revisions = store.list_text_revisions(work_id)
@@ -435,60 +408,92 @@ def ingest_folder(
 ) -> FolderIngestResult:
     """Ingest a folder of text files as one text revision of one work.
 
-    Every readable text file under ``path`` becomes a document of the revision, ordered by
-    its path. Files that are not text, and files with nothing in them, are skipped and named
-    in the result rather than dropped quietly.
-
-    Each file is reported as ``added``, ``changed`` or ``unchanged`` against the newest
-    existing revision of the work — which is what makes a later diff able to say that a
-    graph moved because one chapter was rewritten and not because the analysis changed.
-
-    ``role`` applies to files this folder has no confirmed answer for. Where a structure map
-    has been confirmed (**4.2**), each document takes the role somebody gave it, because a
-    single role for a whole folder cannot describe fixture **C**, which keeps its reference
-    material and its narrative side by side.
+    A thin wrapper over `ingest_source` that says what a bare path means and checks the two
+    things only a filesystem can be wrong about. Everything after that is the same work for
+    a folder as for any other source.
     """
-    if role not in DOCUMENT_ROLES:
-        raise IngestError(f"unknown document role {role!r}; expected 'narrative' or 'reference'")
-
     path = Path(path)
     if not path.exists():
         raise IngestError(f"no such folder: {path}")
     if not path.is_dir():
         raise IngestError(f"{path} is a file; use ingest_file")
 
+    return ingest_source(
+        store,
+        FileSystemSource(path),
+        work_title=work_title,
+        collection_name=collection_name,
+        creator=creator,
+        language=language,
+        label=label,
+        role=role,
+        now=now,
+        collectives_are_actors=collectives_are_actors,
+    )
+
+
+def ingest_source(
+    store: Store,
+    corpus: Source | Path | str,
+    *,
+    work_title: str | None = None,
+    collection_name: str | None = None,
+    creator: str | None = None,
+    language: str | None = None,
+    label: str | None = None,
+    role: str = DEFAULT_ROLE,
+    now: str | None = None,
+    collectives_are_actors: bool | None = None,
+    reading: Reading | None = None,
+) -> FolderIngestResult:
+    """Ingest a corpus — from wherever it comes — as one text revision of one work.
+
+    Every readable document the source offers becomes a document of the revision, in the
+    order the source gave them. Documents it could not read are skipped and named in the
+    result rather than dropped quietly.
+
+    Each document is reported as ``added``, ``changed`` or ``unchanged`` against the newest
+    existing revision of the work — which is what makes a later diff able to say that a
+    graph moved because one chapter was rewritten and not because the analysis changed.
+
+    ``role`` applies to documents this corpus has no confirmed answer for. Where a structure
+    map has been confirmed (**4.2**), each document takes the role somebody gave it, because
+    a single role for a whole corpus cannot describe fixture **C**, which keeps its reference
+    material and its narrative side by side.
+
+    ``reading`` lets a caller that has already read the source hand the result over instead
+    of causing a second read. For a folder that is an optimisation; for a source that costs a
+    network round trip it is the difference between reading a corpus once and twice.
+    """
+    if role not in DOCUMENT_ROLES:
+        raise IngestError(f"unknown document role {role!r}; expected 'narrative' or 'reference'")
+
+    source = as_source(corpus)
+    if reading is None:
+        reading = source.read()
+
     if collectives_are_actors is not None:
         store.set_setting(COLLECTIVES_ARE_ACTORS, bool(collectives_are_actors))
 
-    title = work_title or path.name.replace("_", " ").replace("-", " ").strip() or path.name
+    # The last component of the root, which for a folder is the folder's name. A source that
+    # is not a filesystem should name the work itself rather than rely on this.
+    named = Path(source.root).name
+    title = work_title or named.replace("_", " ").replace("-", " ").strip() or named
     work_id = ids.work_id(title)
     collection_id = _resolve_collection(store, work_id, collection_name, title)
 
-    readable: list[tuple[str, str]] = []  # (relative path, text)
-    skipped: list[tuple[str, str]] = []
-
-    for found in _text_files(path):
-        relative = found.relative_to(path).as_posix()
-        if found.suffix.lower() not in TEXT_SUFFIXES:
-            skipped.append((relative, f"not a text file ({found.suffix or 'no suffix'})"))
-            continue
-        try:
-            readable.append((relative, read_text(found)))
-        except IngestError as error:
-            # One unreadable file should not discard a folder the user meant to ingest, but
-            # it must be visible: a revision quietly missing a chapter is a graph missing a
-            # character, with nothing on screen to say why.
-            skipped.append((relative, str(error)))
+    readable = list(reading.documents)
+    skipped = list(reading.skipped)
 
     if not readable:
         raise IngestError(
-            f"{path} holds no readable text files. Expected one of "
+            f"{source.root} holds no readable text files. Expected one of "
             f"{', '.join(sorted(TEXT_SUFFIXES))}."
         )
 
     # The shape read here is what `structure.as_json` writes. Read through the store rather
     # than by importing that module, which imports this one.
-    plans = store.structure_map(str(path.resolve()))
+    plans = store.structure_map(source.root)
     confirmed = {
         relative: (entry.get("role") or {}).get("value") for relative, entry in plans.items()
     }

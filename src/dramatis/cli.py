@@ -42,7 +42,7 @@ from dramatis.identity import IdentityError
 from dramatis.identity import describe as describe_decisions
 from dramatis.identity import merge as merge_characters
 from dramatis.identity import split as split_character
-from dramatis.ingest import IngestError, ingest_file, ingest_folder, read_text
+from dramatis.ingest import ingest_file, ingest_folder
 from dramatis.locate import STORE_FILENAME, StoreNotFound, resolve_store
 from dramatis.providers import Provider, ProviderError
 from dramatis.review import STATUSES as REVIEW_STATUSES
@@ -52,6 +52,7 @@ from dramatis.review import history as review_history
 from dramatis.review import overlay as review_overlay
 from dramatis.review import record as record_review
 from dramatis.schema import schema_version
+from dramatis.sources import FileSystemSource, IngestError
 from dramatis.store import COLLECTIVES_ARE_ACTORS, AmbiguousAliasError, Store
 from dramatis.validation import Issue, validate_file
 
@@ -189,8 +190,12 @@ def _run_structure(args: argparse.Namespace) -> int:
             print(f"forgot {forgotten} confirmed document(s) for {args.path}")
             return 0
 
-        structure = propose_structure(args.path)
-        texts = {plan.path: read_text(Path(args.path) / plan.path) for plan in structure.documents}
+        # Read the corpus once and pass the reading on. Every later step here wants the
+        # same texts, and asking the source again for them would be a second read — free
+        # for a folder, not free for anything else.
+        reading = FileSystemSource(args.path).read()
+        structure = propose_structure(args.path, reading)
+        texts = reading.texts
 
         if args.ask:
             from dramatis.providers.anthropic_provider import AnthropicProvider

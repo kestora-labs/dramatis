@@ -3028,15 +3028,6 @@ Verified by building the wheel: `dramatis_personae-0.1.0.dev0-py3-none-any.whl`,
 `dramatis`, carrying the five prompts and the two schema files as package data, and exposing
 `dramatis = dramatis.cli:main`.
 
-### PEP 541 is worth filing and not worth waiting for
-
-The abandonment criteria are met on paper — no release in eighteen years — but they are written
-for somebody *continuing* an abandoned project: a request must show "improvements made on their
-fork" and "why creating a fork under a different name isn't viable", and neither is true here.
-PyPI does grant these, at its discretion and on no timetable. So the request should be filed
-and the release should not wait for it. If the name is ever granted, publishing under both
-costs nothing.
-
 *Reversible.* One line of `pyproject.toml`. Nothing imports it.
 
 ---

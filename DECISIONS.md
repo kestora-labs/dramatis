@@ -2890,3 +2890,107 @@ line, which is where both defects above turned up.
 
 *Reversible.* One module, one store method, one CLI verb, one endpoint. Nothing else changed:
 `continuity.py` reads what the store already holds and writes nothing.
+
+---
+
+## D54 — Confidence is drawn where it was recorded, and its absence is said out loud
+
+**Phase 5.5.** The schema has carried `confidence` on nodes and edges since **0.3** and nothing
+has ever looked at it. This draws it: an edge a reading was less than half sure of is dotted,
+and the sidebar says how many of them there are.
+
+### The finding that shapes the whole bullet: nothing records it
+
+Dramatis's own pipeline has never asked a model how sure it was. The extraction response
+schema has no `confidence` field, `aggregation.Relation.as_schema` emits none, and
+`_character_as_schema` emits none — so every graph this application has produced, including the
+241-relation reading of *Pride and Prejudice*, carries confidence on nothing at all.
+
+That is worth stating plainly rather than working around, and it is why the bullet is smaller
+than it looks. **5.5 asks for confidence to be surfaced, not for it to be produced.** Producing
+it means changing the extraction prompt, which changes `prompt_sha256`, which makes every
+existing snapshot incomparable with every new one — correctly, by **D35**, but that is a
+deliberate act belonging to **Phase 7**, where the prompt becomes the object of study rather
+than an input. Slipping it into a UI bullet would spend the project's whole back catalogue of
+comparability on a rendering change.
+
+So what ships is the rendering, and it is not dead: `confidence` is part of a *published*
+schema (Invariant 8), so a document produced by another tool — or imported by **6.3** — may
+carry it, and a hand-authored fixture in this repository already does.
+
+### An absent confidence is not a low one
+
+The rule everything else rests on. `detail.ts` has drawn this distinction for panel fields
+since **2.1** — *a snapshot that records no confidence is not a snapshot with low confidence* —
+and the same mistake made in ink, across a whole graph, would be far worse: it cannot be
+argued with, and it would tell every existing Dramatis user that their entire graph is
+uncertain. An element the reading said nothing about is drawn exactly as it is drawn today.
+
+A value outside 0–1 is treated as unsaid rather than clamped, for the same reason: clamping
+turns a malformed document into a claim nobody made.
+
+### Low is below the midpoint, because the midpoint is the only number available
+
+The schema declares confidence as a value from 0 to 1 and says nothing about what it counts.
+There is no `confidence_basis` the way there is a `weight_basis`, so any threshold is a reading
+of an undeclared scale. 0.5 is the one that needs no tuning: the point at which a reading stops
+being more sure than not. Below, not at — at exactly 0.5 a reading is as sure as not, and the
+mark is for the edges it was more unsure than sure of.
+
+The number is printed on screen rather than applied silently, because a reader who disagrees
+with it needs to know it was applied at all. If confidence ever acquires a declared basis, this
+becomes a decision with evidence behind it and should move then.
+
+### Dotted, because dashed is spoken for twice
+
+The diff draws a removed edge dashed and **4.4** draws a declared-but-never-enacted edge
+dashed, both for the reason recorded there: *a dashed edge is the one convention a reader
+already reads as "not really there"*. A third meaning on that mark would make all three
+unreadable, so confidence takes dotted.
+
+**An overlay outranks it.** A diff and a provenance comparison each answer a question the
+reader has just asked; confidence is a standing property of the graph. The stylesheet arranges
+this by order — the `uncertain` rules sit before the overlay rules — rather than by anything in
+the logic, and both overlay paths *append* their class rather than replacing, so the mark
+survives underneath and reappears when the overlay is dismissed. Checked live: an edge carrying
+both renders in the overlay's dashed colour, and its `uncertain` class is still there
+afterwards.
+
+### Saying "not recorded" is the feature, on today's data
+
+For every graph Dramatis has produced, the sidebar's answer is *not recorded by this reading* —
+and that row is always shown. Leaving it out where there was nothing to report would let a
+reader take an unqualified graph for a confident one, which is the question they are most
+likely to be asking of it. The legend explaining the dotted mark is the opposite case and is
+withheld unless something on screen carries the mark: a legend for an unused encoding is the
+control **2.5** refused, one that looks like information and is not.
+
+### Nodes as well as edges
+
+The bullet names edges. Characters carry `confidence` in the same schema, under the same rule,
+and a convention that applies to half a graph is one a reader cannot trust — so an uncertain
+character takes a dotted border. It is the same rule, not a second one.
+
+### What is deliberately not here
+
+**A confidence filter.** The bullet asks for the uncertain to be *distinct*, not hidden, and
+hiding them is the one thing a reader studying reliability should not be offered by default.
+
+**Asking the model for it**, as above: Phase 7's, with the prompt hash it costs.
+
+**A derived confidence** — from evidence counts, verification rejections, or anchor similarity.
+Each is arithmetic the pipeline already has, and each would be a number with no declared basis
+put on a scale that has none: exactly the mistake `weight_basis` exists to prevent, and the
+project has refused it twice already.
+
+### Verified
+
+310 web tests, `tsc`, prettier, and the 1,201-test Python suite untouched and green. Driven in
+a real browser twice: against the *Pride and Prejudice* reading, where the row reads *not
+recorded by this reading*, no legend is offered and no edge is marked; and against a snapshot
+built for the demo carrying confidence on 160 of 241 relations, where 69 render dotted at 0.55
+opacity, the row reads *160 of 241 relation(s), 69 below 0.50*, and the panel's number agrees
+with the mark.
+
+*Reversible.* One client module, two stylesheet rules, two lines of sidebar. Nothing in the
+store, the pipeline or the schema changed.

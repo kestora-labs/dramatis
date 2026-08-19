@@ -104,6 +104,15 @@ character answering to more names, or a new one carrying `provenance: human`. Th
 itself lives in the project's registry, which is what makes it durable and what a diff reads
 to tell a merge from a character leaving the work.
 
+## Confidence
+
+`confidence` is a value from 0 to 1 on a node or an edge, and the schema deliberately says no
+more than that: unlike `weight` it has no declared basis, so it means whatever the tool that
+emitted it meant. Dramatis renders it — an element below 0.50 is drawn dotted — and does not
+currently produce it: nothing in the extraction prompt asks a model how sure it was, so a
+Dramatis snapshot carries the field on nothing. An absent confidence is *not* a low one, and
+no reader or renderer should treat it as one.
+
 ## Weights
 
 `weight` drives rendered edge thickness. `weight_basis` is **required** alongside it and

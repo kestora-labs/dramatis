@@ -237,3 +237,47 @@ describe("edgeWidth and nodeSize", () => {
     }
   });
 });
+
+describe("marking what the reading was unsure of", () => {
+  it("gives an uncertain edge the class and leaves the rest alone", () => {
+    const document = aDocument();
+    document.relations[0].confidence = 0.2;
+    document.relations[1].confidence = 0.9;
+
+    const { elements } = buildGraph(document);
+    const byId = new Map(elements.map((element) => [element.data.id, element]));
+
+    expect(byId.get("rel:a--b")?.classes).toBe("uncertain");
+    expect(byId.get("rel:a--c")?.classes).toBeUndefined();
+  });
+
+  it("leaves an edge the reading said nothing about unmarked", () => {
+    // The rule the whole feature rests on: an unqualified graph must look exactly as it
+    // looks today, and every graph this application has produced so far is unqualified.
+    const { elements } = buildGraph(aDocument());
+
+    expect(elements.every((element) => element.classes === undefined)).toBe(true);
+  });
+
+  it("carries the recorded value into the element, so the panel and the mark agree", () => {
+    const document = aDocument();
+    document.relations[0].confidence = 0.2;
+
+    const { elements } = buildGraph(document);
+    const edge = elements.find((element) => element.data.id === "rel:a--b");
+
+    expect(edge?.data.confidence).toBe(0.2);
+  });
+
+  it("marks an uncertain character without losing its other class", () => {
+    const document = aDocument({ relations: [] });
+    document.characters[0].confidence = 0.1;
+
+    const { elements } = buildGraph(document);
+    const node = elements.find((element) => element.data.id === "char:a");
+
+    // Isolated because the filter left it no relations, uncertain because the reading said
+    // so. Two facts, two classes; dropping either would lose a fact.
+    expect(node?.classes?.split(" ").sort()).toEqual(["isolated", "uncertain"]);
+  });
+});

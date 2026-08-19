@@ -1,6 +1,11 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import cytoscape from "cytoscape";
 
+import {
+  describe as describeConfidence,
+  legend as confidenceLegend,
+  summarise as summariseConfidence,
+} from "./confidence.js";
 import { describeSelection, type Detail, type Selection } from "./detail.js";
 import {
   NO_FILTERS,
@@ -123,6 +128,25 @@ const STYLE: cytoscape.StylesheetJson = [
       opacity: 0.75,
     },
   },
+  // 5.5, how sure the reading was. Dotted rather than dashed, because dashed already means
+  // "removed" below and "declared but never enacted" below that — a third meaning on one mark
+  // would make all three unreadable. Placed *before* the overlays so they override it: a diff
+  // or a provenance comparison answers a question the reader just asked, and confidence is a
+  // standing property of the graph that can wait its turn.
+  //
+  // Only elements the reading actually qualified carry this class. An absent confidence is
+  // not a low one, and `buildGraph` is where that is decided.
+  { selector: "edge.uncertain", style: { "line-style": "dotted", opacity: 0.55 } },
+  {
+    selector: "node.uncertain",
+    style: {
+      "border-width": 2,
+      "border-style": "dotted",
+      "border-color": "#4a5568",
+      "background-opacity": 0.45,
+    },
+  },
+
   { selector: ":selected", style: { "background-color": "#c05621", "line-color": "#c05621" } },
 
   // The overlay. Colour carries the direction of the change and opacity carries whether the
@@ -1644,6 +1668,8 @@ export function App() {
       .finally(() => setCorrectionBusy(false));
   }
 
+  const confidence = summariseConfidence(document_);
+
   const reviewIndex = indexReviews(reviews);
   const reviewOfSelection = statusFor(reviewIndex, document_, selection);
 
@@ -1787,6 +1813,11 @@ export function App() {
             <dd>{run?.model}</dd>
             <dt>Prompt</dt>
             <dd>{run?.prompt_version}</dd>
+            {/* Always, including when the answer is "not recorded". Leaving the row out
+                would let a reader take an unqualified graph for a confident one, which is
+                the question they are most likely to be asking of it. */}
+            <dt>Confidence</dt>
+            <dd>{describeConfidence(confidence)}</dd>
             {reviews && (
               <>
                 <dt>Review</dt>
@@ -1808,6 +1839,10 @@ export function App() {
           skewed, and a linear scale renders the leads as ropes and everyone else as
           indistinguishable hairlines.
         </p>
+
+        {/* Only where there is an encoding to explain. A legend for a mark nothing on screen
+            carries is the kind of control 2.5 refused: it looks like information and is not. */}
+        {confidenceLegend(confidence) && <p className="note">{confidenceLegend(confidence)}</p>}
       </aside>
 
       <main className="stage">

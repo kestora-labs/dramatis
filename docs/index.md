@@ -11,6 +11,7 @@ drafts.
 
 | Page | Status |
 |---|---|
+| [The manual](manual.pdf) — install, use, and remove Dramatis (PDF) | Current |
 | Installation | Phase 6.6 |
 | Your first analysis | Phase 6.6 |
 | [Schema reference](schema.md) | Phase 0.4 |

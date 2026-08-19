@@ -1,0 +1,581 @@
+/* Print styling for the Dramatis manual.
+   Built for Chrome's --print-to-pdf at A4. Screen rules are incidental; the page is the
+   target, so everything here is sized in millimetres and points where it matters. */
+
+/* Page size and margins are supplied by the PDF renderer so that a running footer can be
+   reserved; see build.mjs. */
+
+:root {
+  --ink: #1a202c;
+  --ink-soft: #4a5568;
+  --ink-faint: #718096;
+  --rule: #e2e8f0;
+  --accent: #c05621;
+  --accent-soft: #fffaf5;
+  --blue: #2b6cb0;
+  --green: #2f855a;
+  --red: #c53030;
+  --amber: #b7791f;
+  --purple: #805ad5;
+  --paper: #ffffff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 10.5pt;
+}
+
+body {
+  margin: 0;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman",
+    serif;
+  color: var(--ink);
+  background: var(--paper);
+  line-height: 1.55;
+  text-rendering: optimizeLegibility;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* -- the cover ---------------------------------------------------------------------- */
+
+.cover {
+  min-height: 245mm;
+  padding: 26mm 0 0;
+  page-break-after: always;
+  display: flex;
+  flex-direction: column;
+  border-top: 7mm solid var(--ink);
+}
+
+.cover h1 {
+  font-size: 46pt;
+  line-height: 1;
+  margin: 0;
+  letter-spacing: -0.5pt;
+  border: none;
+  padding: 0;
+}
+
+.cover .epigraph {
+  font-style: italic;
+  color: var(--ink-soft);
+  font-size: 13pt;
+  margin: 4mm 0 0;
+}
+
+.cover .subtitle {
+  font-size: 17pt;
+  color: var(--ink-soft);
+  margin: 16mm 0 0;
+  line-height: 1.35;
+  max-width: 120mm;
+}
+
+.cover .who {
+  margin-top: 6mm;
+  font-size: 11pt;
+  color: var(--ink-faint);
+  max-width: 120mm;
+}
+
+.cover .foot {
+  margin-top: auto;
+  font-size: 9.5pt;
+  color: var(--ink-faint);
+  border-top: 0.4mm solid var(--rule);
+  padding-top: 4mm;
+}
+
+.cover .foot strong {
+  color: var(--ink);
+}
+
+/* -- headings ----------------------------------------------------------------------- */
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-weight: 600;
+  color: var(--ink);
+  page-break-after: avoid;
+  break-after: avoid;
+}
+
+.part {
+  page-break-before: always;
+  page-break-inside: avoid;
+  break-inside: avoid;
+  margin: 0 0 10mm;
+  padding-top: 30mm;
+}
+
+.part .kicker {
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 9pt;
+  letter-spacing: 1.6pt;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 3mm;
+}
+
+.part h1 {
+  font-size: 26pt;
+  margin: 0;
+  line-height: 1.15;
+}
+
+.part p {
+  margin-top: 4mm;
+  max-width: 130mm;
+  color: var(--ink-soft);
+  font-size: 11pt;
+}
+
+h2 {
+  font-size: 15pt;
+  margin: 10mm 0 3mm;
+  padding-bottom: 1.5mm;
+  border-bottom: 0.4mm solid var(--rule);
+}
+
+h2 .num {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  margin-right: 2mm;
+}
+
+h3 {
+  font-size: 11.5pt;
+  margin: 6mm 0 2mm;
+}
+
+h4 {
+  font-size: 10pt;
+  margin: 4mm 0 1.5mm;
+  color: var(--ink-soft);
+}
+
+p {
+  margin: 0 0 3mm;
+  orphans: 2;
+  widows: 2;
+}
+
+a {
+  color: var(--blue);
+  text-decoration: none;
+}
+
+strong {
+  font-weight: 600;
+}
+
+em {
+  font-style: italic;
+}
+
+ul,
+ol {
+  margin: 0 0 3mm;
+  padding-left: 6mm;
+}
+
+li {
+  margin-bottom: 1.5mm;
+}
+
+/* -- contents ----------------------------------------------------------------------- */
+
+.contents {
+  page-break-after: always;
+  padding-top: 6mm;
+}
+
+.contents h1 {
+  font-size: 20pt;
+  margin: 0 0 6mm;
+}
+
+.contents ol {
+  list-style: none;
+  padding: 0;
+  columns: 2;
+  column-gap: 10mm;
+}
+
+.contents .toc-part {
+  break-inside: avoid;
+  margin: 0 0 4mm;
+}
+
+.contents .toc-part > span {
+  display: block;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 8.5pt;
+  letter-spacing: 1.2pt;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 1.5mm;
+}
+
+.contents li {
+  font-size: 9.5pt;
+  margin-bottom: 0.8mm;
+  color: var(--ink-soft);
+}
+
+.contents li .n {
+  display: inline-block;
+  width: 8mm;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* -- code --------------------------------------------------------------------------- */
+
+code {
+  font-family: "SF Mono", Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace;
+  font-size: 0.86em;
+  /* No ligatures anywhere in code. A font that draws "--" as one long dash turns an option
+     a reader is meant to type into something they cannot type. */
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "clig" 0, "calt" 0;
+  background: #f7fafc;
+  border: 0.25mm solid var(--rule);
+  border-radius: 1mm;
+  padding: 0.2mm 1mm;
+  color: #2d3748;
+}
+
+pre {
+  font-family: "SF Mono", Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace;
+  font-size: 8.6pt;
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "clig" 0, "calt" 0;
+  line-height: 1.5;
+  background: #1a202c;
+  color: #e2e8f0;
+  padding: 3.5mm 4mm;
+  border-radius: 1.5mm;
+  margin: 0 0 4mm;
+  white-space: pre-wrap;
+  word-break: break-word;
+  page-break-inside: avoid;
+}
+
+pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+/* Program output, as against something to type. A different object on the page, so a
+   reader never types a line the application printed. */
+pre.out {
+  background: #f7fafc;
+  color: #2d3748;
+  border: 0.25mm solid var(--rule);
+  border-left: 1mm solid #cbd5e0;
+  border-radius: 0 1.5mm 1.5mm 0;
+}
+
+pre .c {
+  color: #a0aec0;
+  font-style: italic;
+}
+
+pre .p {
+  color: #f6ad55;
+}
+
+pre .o {
+  color: #90cdf4;
+}
+
+/* -- figures ------------------------------------------------------------------------ */
+
+figure {
+  margin: 5mm 0;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+figure img,
+figure svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 0.3mm solid var(--rule);
+  border-radius: 1mm;
+}
+
+figure.plain img,
+figure.plain svg {
+  border: none;
+}
+
+figure.narrow {
+  max-width: 105mm;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+figure.medium {
+  max-width: 130mm;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+figcaption {
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 8.5pt;
+  line-height: 1.45;
+  color: var(--ink-faint);
+  margin-top: 2mm;
+}
+
+figcaption b {
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+/* An annotated screenshot: numbered badges laid over the image by percentage. The
+   positioning box is the image alone, never the figure, or the caption's height would
+   shift every badge. */
+.annotated {
+  position: relative;
+  line-height: 0;
+}
+
+.annotated .badge {
+  position: absolute;
+  width: 5.2mm;
+  height: 5.2mm;
+  margin: -2.6mm 0 0 -2.6mm;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 7.5pt;
+  font-weight: 700;
+  line-height: 5.2mm;
+  text-align: center;
+  box-shadow: 0 0 0 0.6mm #fff;
+}
+
+.legend {
+  list-style: none;
+  padding: 0;
+  margin: 3mm 0 0;
+  columns: 2;
+  column-gap: 8mm;
+  font-size: 9pt;
+}
+
+.legend li {
+  break-inside: avoid;
+  margin-bottom: 1.8mm;
+  padding-left: 6mm;
+  position: relative;
+  color: var(--ink-soft);
+}
+
+.legend li b.n {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  width: 4.2mm;
+  height: 4.2mm;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 6.5pt;
+  line-height: 4.2mm;
+  text-align: center;
+}
+
+/* -- tables ------------------------------------------------------------------------- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9pt;
+  margin: 0 0 4mm;
+  page-break-inside: avoid;
+}
+
+th {
+  text-align: left;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 8pt;
+  letter-spacing: 0.6pt;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  border-bottom: 0.5mm solid var(--ink);
+  padding: 1.5mm 2mm 1.5mm 0;
+  vertical-align: bottom;
+}
+
+td {
+  padding: 1.8mm 2mm 1.8mm 0;
+  border-bottom: 0.25mm solid var(--rule);
+  vertical-align: top;
+}
+
+td:last-child,
+th:last-child {
+  padding-right: 0;
+}
+
+table.commands td:first-child {
+  white-space: nowrap;
+  width: 34mm;
+}
+
+table.glossary td:first-child {
+  width: 38mm;
+  font-weight: 600;
+}
+
+/* -- notes -------------------------------------------------------------------------- */
+
+.note,
+.caution,
+.aside {
+  border-left: 1mm solid var(--accent);
+  background: var(--accent-soft);
+  padding: 3mm 4mm;
+  margin: 4mm 0;
+  font-size: 9.5pt;
+  page-break-inside: avoid;
+}
+
+.note p:last-child,
+.caution p:last-child,
+.aside p:last-child {
+  margin-bottom: 0;
+}
+
+.note .label,
+.caution .label,
+.aside .label {
+  display: block;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 8pt;
+  letter-spacing: 1pt;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 1mm;
+}
+
+.caution {
+  border-left-color: var(--red);
+  background: #fff5f5;
+}
+
+.caution .label {
+  color: var(--red);
+}
+
+.aside {
+  border-left-color: var(--blue);
+  background: #f7fbff;
+}
+
+.aside .label {
+  color: var(--blue);
+}
+
+/* -- milestones --------------------------------------------------------------------- */
+
+.milestone {
+  page-break-inside: avoid;
+  margin: 0 0 7mm;
+}
+
+h3.milestone-head {
+  display: flex;
+  align-items: baseline;
+  gap: 3mm;
+  margin-top: 8mm;
+  border-top: 0.5mm solid var(--ink);
+  padding-top: 3mm;
+}
+
+h3.milestone-head .tag {
+  font-size: 8pt;
+  letter-spacing: 1.2pt;
+  text-transform: uppercase;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.outcome {
+  font-size: 9pt;
+  color: var(--ink-soft);
+  border-left: 0.5mm solid var(--rule);
+  padding-left: 3mm;
+  margin: 3mm 0;
+}
+
+.outcome b {
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 8pt;
+  letter-spacing: 0.8pt;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  display: block;
+}
+
+/* -- keyed colour swatches ---------------------------------------------------------- */
+
+.swatch {
+  display: inline-block;
+  width: 3mm;
+  height: 3mm;
+  border-radius: 0.6mm;
+  vertical-align: -0.2mm;
+  margin-right: 1.2mm;
+  border: 0.2mm solid rgba(0, 0, 0, 0.15);
+}
+
+.dashed-key {
+  border-style: dashed;
+  background: none !important;
+}
+
+/* -- misc --------------------------------------------------------------------------- */
+
+.lede {
+  font-size: 11.5pt;
+  color: var(--ink-soft);
+  line-height: 1.5;
+  margin-bottom: 5mm;
+}
+
+.keep {
+  page-break-inside: avoid;
+}
+
+.colophon {
+  page-break-before: always;
+  padding-top: 20mm;
+  font-size: 9.5pt;
+  color: var(--ink-soft);
+}
+
+hr {
+  border: none;
+  border-top: 0.25mm solid var(--rule);
+  margin: 6mm 0;
+}

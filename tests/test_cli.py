@@ -1070,3 +1070,136 @@ class TestMergeAndSplit:
 
         with pytest.raises(SystemExit):
             _build_parser().parse_args(["split", "char:ada"])
+
+
+class TestContinuity:
+    """`dramatis continuity` — what the corpus no longer agrees with itself about (5.4).
+
+    Calls no model and changes nothing.
+    """
+
+    def _analysed(self, tmp_path: Path):
+        from dramatis.ingest import ingest_file
+        from dramatis.pipeline import analyse
+        from dramatis.providers.scripted import ScriptedProvider
+
+        source = tmp_path / "work.txt"
+        source.write_text(
+            "Ada met Bram at the gate.\n\nBram did not answer her.\n",
+            encoding="utf-8",
+            newline="",
+        )
+        store_path = tmp_path / "dramatis.sqlite"
+
+        payload = json.dumps(
+            {
+                "characters": [
+                    {"name": n, "aliases": [], "kind": "person"} for n in ("Ada", "Bram")
+                ],
+                "interactions": [
+                    {
+                        "participants": ["Ada", "Bram"],
+                        "quotation": "Ada met Bram at the gate.",
+                        "note": "",
+                    }
+                ],
+                "groups": [
+                    {"canonical_name": n, "forms": [n], "kind": "person", "same_as_registered": ""}
+                    for n in ("Ada", "Bram")
+                ],
+            }
+        )
+
+        with Store(store_path) as store:
+            ingested = ingest_file(store, source, work_title="A Work", collection_name="A")
+            analyse(store, ingested.revision_id, ScriptedProvider(lambda _r: payload))
+
+        return store_path, source
+
+    def test_a_reading_of_the_current_text_says_so(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path, _ = self._analysed(tmp_path)
+
+        assert main(["continuity", "--store", str(store_path)]) == 0
+
+        out = capsys.readouterr().out
+        assert "0 finding(s)" in out
+        # Not an empty report: "checked and clean" and "nothing to compare" are different
+        # answers and only one of them is true here.
+        assert "the reading is of the current text" in out
+
+    def test_it_reports_a_name_the_work_has_moved_on_from(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """The finding is between documents, which is the shape the mistake has: a rename is
+        a find-and-replace in the file being worked on, and what it misses is another file."""
+        from dramatis.ingest import ingest_folder
+        from dramatis.pipeline import analyse
+        from dramatis.providers.scripted import ScriptedProvider
+
+        root = tmp_path / "corpus"
+        root.mkdir()
+        one = root / "one.md"
+        two = root / "two.md"
+        one.write_text("Ada met Bram at the gate.\n", encoding="utf-8", newline="")
+        two.write_text("Bram did not answer Ada.\n", encoding="utf-8", newline="")
+
+        store_path = tmp_path / "dramatis.sqlite"
+        payload = json.dumps(
+            {
+                "characters": [
+                    {"name": n, "aliases": [], "kind": "person"} for n in ("Ada", "Bram")
+                ],
+                "interactions": [],
+                "groups": [
+                    {"canonical_name": n, "forms": [n], "kind": "person", "same_as_registered": ""}
+                    for n in ("Ada", "Bram")
+                ],
+            }
+        )
+        with Store(store_path) as store:
+            ingested = ingest_folder(store, root, work_title="A Work", collection_name="A")
+            analyse(store, ingested.revision_id, ScriptedProvider(lambda _r: payload))
+
+            # Renamed in one file and missed in the other.
+            two.write_text("Kell did not answer Ada.\n", encoding="utf-8", newline="")
+            ingest_folder(store, root, work_title="A Work", collection_name="A")
+
+        assert main(["continuity", "--store", str(store_path)]) == 0
+
+        out = capsys.readouterr().out
+        assert "names the work has moved on from" in out
+        assert "Bram" in out
+        assert "one.md" in out
+
+    def test_json_carries_the_axes_it_compared(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path, _ = self._analysed(tmp_path)
+
+        assert main(["continuity", "--store", str(store_path), "--json"]) == 0
+
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["unchanged"] is True
+        assert payload["read_revision"] == payload["against_revision"]
+
+    def test_an_unknown_revision_exits_one(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path, _ = self._analysed(tmp_path)
+
+        code = main(["continuity", "--store", str(store_path), "--against", "rev:nothing"])
+
+        assert code == 1
+        assert "no text revision" in capsys.readouterr().err
+
+    def test_a_project_with_no_work_says_so(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path = tmp_path / "dramatis.sqlite"
+        with Store(store_path):
+            pass
+
+        assert main(["continuity", "--store", str(store_path)]) == 1
+        assert "no work yet" in capsys.readouterr().err

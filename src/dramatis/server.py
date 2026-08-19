@@ -35,6 +35,9 @@ from typing import Any
 from urllib.parse import urlparse
 
 from dramatis import __version__
+from dramatis.continuity import ContinuityError
+from dramatis.continuity import as_json as continuity_as_json
+from dramatis.continuity import report as continuity_report
 from dramatis.correction import CorrectionError, correction_as_json
 from dramatis.correction import as_json as corrections_as_json
 from dramatis.correction import record as record_correction_decision
@@ -511,6 +514,30 @@ def create_app(store_path: Path | str):
                     },
                 }
             )
+        finally:
+            store.close()
+
+    @app.get("/api/works/{work_id}/continuity")
+    def continuity(
+        work_id: str, snapshot: str | None = None, against: str | None = None
+    ) -> JSONResponse:
+        """What this work no longer agrees with itself about (**5.4**).
+
+        A read, and a slow one by the standards of this API: it searches two revisions' text
+        for every surface form the reading found. That is why it is asked for rather than
+        folded into the snapshot response — a report nobody requested should not be paid for
+        on every page load.
+        """
+        store = open_store()
+        try:
+            try:
+                return JSONResponse(
+                    continuity_as_json(
+                        continuity_report(store, work_id, snapshot_id=snapshot, against=against)
+                    )
+                )
+            except ContinuityError as error:
+                raise HTTPException(status_code=404, detail=str(error)) from error
         finally:
             store.close()
 

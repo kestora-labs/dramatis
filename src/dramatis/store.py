@@ -640,6 +640,17 @@ class Store:
         ).fetchall()
         return {row["path"]: json.loads(row["plan"]) for row in rows}
 
+    def structure_roots(self) -> list[str]:
+        """Every folder somebody has confirmed a structure map for.
+
+        The map is keyed by folder, and a caller asking what the store knows about a document
+        has only the document. Listing the roots is how it finds the map to look in.
+        """
+        rows = self.connection.execute(
+            "SELECT DISTINCT root FROM structure_map ORDER BY root"
+        ).fetchall()
+        return [str(row["root"]) for row in rows]
+
     def forget_structure_map(self, root: str) -> int:
         """Drop a folder's confirmed answers, so it is asked about again. Returns the count."""
         with self.transaction() as connection:

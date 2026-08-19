@@ -1412,3 +1412,99 @@ class TestCorrections:
 
         assert refused.status_code == 403
         assert client.get(f"/api/snapshots/{snapshot_id}/corrections").json()["corrections"] == []
+
+
+class TestRegistryDecisions:
+    """Merging and splitting over the API (5.3).
+
+    The only writes this server accepts that a later analysis *acts on* rather than merely
+    records: the registry is what the next reading resolves against.
+    """
+
+    def _characters(self, client) -> dict[str, dict]:
+        payload = client.get("/api/registry").json()
+        return {entry["id"]: entry for entry in payload["characters"]}
+
+    def test_two_characters_become_one(self, client, analysed) -> None:
+        _, _, document = analysed
+        first, second = (character["id"] for character in document["characters"][:2])
+
+        recorded = client.post("/api/registry/merge", json={"character": second, "into": first})
+
+        assert recorded.status_code == 201
+        assert recorded.json()["survivor"] == first
+        assert recorded.json()["absorbed"] == second
+        assert second not in self._characters(client)
+
+    def test_the_decision_is_served_with_the_registry(self, client, analysed) -> None:
+        _, _, document = analysed
+        first, second = (character["id"] for character in document["characters"][:2])
+        client.post("/api/registry/merge", json={"character": second, "into": first})
+
+        payload = client.get("/api/registry").json()
+
+        assert [entry["action"] for entry in payload["decisions"]] == ["merge"]
+        assert payload["retired"][0]["id"] == second
+
+    def test_no_stored_snapshot_changes(self, client, analysed) -> None:
+        _, snapshot_id, document = analysed
+        first, second = (character["id"] for character in document["characters"][:2])
+
+        client.post("/api/registry/merge", json={"character": second, "into": first})
+
+        assert client.get(f"/api/snapshots/{snapshot_id}").json() == document
+
+    def test_a_split_puts_a_form_on_a_new_character(self, client, analysed) -> None:
+        _, _, document = analysed
+        first, second = (character["id"] for character in document["characters"][:2])
+        client.post("/api/registry/merge", json={"character": second, "into": first})
+        moved = next(c["name"] for c in document["characters"] if c["id"] == second)
+
+        recorded = client.post("/api/registry/split", json={"character": first, "forms": [moved]})
+
+        assert recorded.status_code == 201
+        assert recorded.json()["forms"] == [moved]
+        assert recorded.json()["created"] in self._characters(client)
+
+    def test_a_merge_into_itself_is_refused(self, client, analysed) -> None:
+        _, _, document = analysed
+        first = document["characters"][0]["id"]
+
+        refused = client.post("/api/registry/merge", json={"character": first, "into": first})
+
+        assert refused.status_code == 422
+        assert "into itself" in refused.json()["detail"]
+
+    def test_a_merge_with_no_target_is_refused(self, client, analysed) -> None:
+        _, _, document = analysed
+
+        refused = client.post(
+            "/api/registry/merge", json={"character": document["characters"][0]["id"]}
+        )
+
+        assert refused.status_code == 422
+
+    def test_a_split_with_no_forms_is_refused(self, client, analysed) -> None:
+        _, _, document = analysed
+
+        refused = client.post(
+            "/api/registry/split",
+            json={"character": document["characters"][0]["id"], "forms": []},
+        )
+
+        assert refused.status_code == 422
+
+    def test_a_cross_origin_merge_is_refused(self, client, analysed) -> None:
+        """Guarded by being a POST, like every write since 4.8 — and this one would be the
+        worst to leave open, since it is the only write a later analysis acts on."""
+        _, _, document = analysed
+        first, second = (character["id"] for character in document["characters"][:2])
+
+        refused = client.post(
+            "/api/registry/merge",
+            json={"character": second, "into": first},
+            headers={"origin": "http://evil.example"},
+        )
+
+        assert refused.status_code == 403
+        assert second in self._characters(client)

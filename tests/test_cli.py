@@ -940,3 +940,133 @@ class TestCorrect:
 
         assert code == 1
         assert "not both" in capsys.readouterr().err
+
+
+class TestMergeAndSplit:
+    """`dramatis merge` and `dramatis split` — deciding who is who (5.3).
+
+    Neither calls a model and neither rewrites a snapshot: the registry is the mechanism, and
+    the next analysis reads it.
+    """
+
+    PASSAGE = "Ada met Bram at the gate.\n\nMiss Ada did not answer Bram.\n"
+    NAMES = ("Ada", "Miss Ada", "Bram")
+
+    def _analysed(self, tmp_path: Path):
+        from dramatis.ingest import ingest_file
+        from dramatis.pipeline import analyse
+        from dramatis.providers.scripted import ScriptedProvider
+
+        source = tmp_path / "work.txt"
+        source.write_text(self.PASSAGE, encoding="utf-8", newline="")
+        store_path = tmp_path / "dramatis.sqlite"
+
+        reply = json.dumps(
+            {
+                "characters": [{"name": n, "aliases": [], "kind": "person"} for n in self.NAMES],
+                "interactions": [
+                    {
+                        "participants": ["Ada", "Bram"],
+                        "quotation": "Ada met Bram at the gate.",
+                        "note": "",
+                    },
+                    {
+                        "participants": ["Miss Ada", "Bram"],
+                        "quotation": "Miss Ada did not answer Bram.",
+                        "note": "",
+                    },
+                ],
+            }
+        )
+        grouping = json.dumps(
+            {
+                "groups": [
+                    {"canonical_name": n, "forms": [n], "kind": "person", "same_as_registered": ""}
+                    for n in self.NAMES
+                ]
+            }
+        )
+
+        with Store(store_path) as store:
+            ingested = ingest_file(store, source, work_title="A Work", collection_name="A")
+            analyse(store, ingested.revision_id, ScriptedProvider([reply, grouping]))
+
+        return store_path
+
+    def test_it_merges_and_says_what_the_survivor_answers_to(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path = self._analysed(tmp_path)
+
+        code = main(["merge", "char:miss-ada", "--into", "char:ada", "--store", str(store_path)])
+
+        assert code == 0
+        out = capsys.readouterr().out
+        assert "merged char:miss-ada into char:ada" in out
+        assert "Miss Ada" in out
+        assert "the next analysis" in out
+
+    def test_the_decision_is_in_the_registry_afterwards(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path = self._analysed(tmp_path)
+        main(["merge", "char:miss-ada", "--into", "char:ada", "--store", str(store_path)])
+        capsys.readouterr()
+
+        assert main(["characters", "--store", str(store_path), "--json"]) == 0
+        payload = json.loads(capsys.readouterr().out)
+
+        assert [entry["action"] for entry in payload["decisions"]] == ["merge"]
+        assert payload["retired"][0]["id"] == "char:miss-ada"
+
+    def test_merging_into_itself_exits_one(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path = self._analysed(tmp_path)
+
+        code = main(["merge", "char:ada", "--into", "char:ada", "--store", str(store_path)])
+
+        assert code == 1
+        assert "into itself" in capsys.readouterr().err
+
+    def test_an_unknown_character_exits_one(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path = self._analysed(tmp_path)
+
+        code = main(["merge", "char:nobody", "--into", "char:ada", "--store", str(store_path)])
+
+        assert code == 1
+        assert "not a character" in capsys.readouterr().err
+
+    def test_it_splits_on_the_forms_named(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path = self._analysed(tmp_path)
+        main(["merge", "char:miss-ada", "--into", "char:ada", "--store", str(store_path)])
+        capsys.readouterr()
+
+        code = main(
+            ["split", "char:ada", "--form", "Miss Ada", "--store", str(store_path), "--json"]
+        )
+
+        assert code == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["action"] == "split"
+        assert payload["forms"] == ["Miss Ada"]
+
+    def test_splitting_every_form_exits_one(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path = self._analysed(tmp_path)
+
+        code = main(["split", "char:ada", "--form", "Ada", "--store", str(store_path)])
+
+        assert code == 1
+        assert "rename, not a split" in capsys.readouterr().err
+
+    def test_split_needs_a_form(self, tmp_path: Path) -> None:
+        from dramatis.cli import _build_parser
+
+        with pytest.raises(SystemExit):
+            _build_parser().parse_args(["split", "char:ada"])

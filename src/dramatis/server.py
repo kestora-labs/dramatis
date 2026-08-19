@@ -39,6 +39,9 @@ from dramatis.correction import CorrectionError, correction_as_json
 from dramatis.correction import as_json as corrections_as_json
 from dramatis.correction import record as record_correction_decision
 from dramatis.diff import DiffError, diff_snapshots
+from dramatis.identity import IdentityError
+from dramatis.identity import merge as merge_characters
+from dramatis.identity import split as split_character
 from dramatis.ingest import IngestError
 from dramatis.passage import (
     PassageNotFound,
@@ -55,7 +58,7 @@ from dramatis.review import subject_as_json as review_subject_as_json
 from dramatis.schema import DOCUMENT_VERSION
 from dramatis.segmentation import segment_text
 from dramatis.snapshot import canonical_json
-from dramatis.store import Store, utc_now
+from dramatis.store import AmbiguousAliasError, Store, utc_now
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 7373
@@ -550,11 +553,11 @@ def create_app(store_path: Path | str):
     # -- writes -----------------------------------------------------------------------------
     # The server's first mutating endpoints (4.8). The same-origin middleware above guards
     # every one by virtue of their method — none has to opt in. Most are confined to project
-    # metadata — a store's existence, its settings, its structure map. The two that are not,
-    # `POST .../reviews` and `POST .../corrections`, record a person's judgement and their
-    # replacement *beside* the graph; neither alters a stored snapshot, and a correction reaches
-    # the graph only when the next one is built. None calls a model or touches the author's
-    # text (D31).
+    # metadata — a store's existence, its settings, its structure map. The others record a
+    # person's judgement *beside* the graph: `POST .../reviews` a ruling, `POST .../corrections`
+    # a replacement, and `POST /api/registry/{merge,split}` a decision about who is who. None
+    # alters a stored snapshot; each reaches the graph only when the next one is built. None
+    # calls a model or touches the author's text (D31).
 
     @app.post("/api/store", status_code=201)
     def create_store() -> JSONResponse:
@@ -825,6 +828,87 @@ def create_app(store_path: Path | str):
                 ) from error
 
             return JSONResponse(correction_as_json(recorded), status_code=201)
+        finally:
+            store.close()
+
+    @app.post("/api/registry/merge", status_code=201)
+    def merge_registry(payload: dict[str, Any]) -> JSONResponse:
+        """Declare that two registered characters are one person (**5.3**).
+
+        A write against the registry rather than against a snapshot, and the only kind of write
+        this server accepts that a later analysis *acts on* rather than merely records: the
+        next reading resolves both names to one character. Nothing already stored changes.
+        """
+        return _registry_write(payload, merge=True)
+
+    @app.post("/api/registry/split", status_code=201)
+    def split_registry(payload: dict[str, Any]) -> JSONResponse:
+        """Declare that one registered character is two people (**5.3**)."""
+        return _registry_write(payload, merge=False)
+
+    def _registry_write(payload: dict[str, Any], *, merge: bool) -> JSONResponse:
+        character = payload.get("character")
+        if not isinstance(character, str) or not character:
+            raise HTTPException(
+                status_code=422, detail="a registry decision needs a non-empty 'character'"
+            )
+
+        store = open_store()
+        try:
+            collection_id = payload.get("collection_id")
+            if collection_id is None:
+                collections = store.list_collections()
+                if not collections:
+                    raise HTTPException(status_code=404, detail="this project holds no collection")
+                collection_id = str(collections[0]["id"])
+
+            try:
+                if merge:
+                    into = payload.get("into")
+                    if not isinstance(into, str) or not into:
+                        raise HTTPException(
+                            status_code=422, detail="a merge needs a non-empty 'into'"
+                        )
+                    result = merge_characters(
+                        store,
+                        str(collection_id),
+                        into=into,
+                        absorb=character,
+                        note=payload.get("note"),
+                    )
+                    body: dict[str, Any] = {
+                        "action": "merge",
+                        "absorbed": result.absorbed.id,
+                        "survivor": result.survivor.id,
+                        "forms": list(result.decision.forms),
+                        "aliases": list(result.survivor.aliases),
+                        "warnings": list(result.warnings),
+                    }
+                else:
+                    forms = payload.get("forms")
+                    if not isinstance(forms, list) or not forms:
+                        raise HTTPException(
+                            status_code=422, detail="a split needs a non-empty 'forms' list"
+                        )
+                    outcome = split_character(
+                        store,
+                        str(collection_id),
+                        character=character,
+                        forms=[str(form) for form in forms],
+                        name=payload.get("name"),
+                        note=payload.get("note"),
+                    )
+                    body = {
+                        "action": "split",
+                        "source": outcome.source.id,
+                        "created": outcome.created.id,
+                        "forms": list(outcome.decision.forms),
+                        "warnings": list(outcome.warnings),
+                    }
+            except (IdentityError, AmbiguousAliasError) as error:
+                raise HTTPException(status_code=422, detail=str(error)) from error
+
+            return JSONResponse(body, status_code=201)
         finally:
             store.close()
 

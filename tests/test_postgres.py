@@ -493,3 +493,72 @@ class TestAgainstARealPostgres:
 
         found = store.list_correction_conflicts("work:a", snapshot_id="snap:a")
         assert [(c.field, c.proposed, c.held) for c in found] == [("kind", "collective", "entity")]
+
+    def test_a_merge_moves_claims_and_retires_in_one_transaction(self, store: Store) -> None:
+        """`rewrite_characters` is the one write that hands a surface form from one character
+        to another (5.3). Both backends have to land it whole: a half-applied move leaves a
+        name denoting nobody, and the alias primary key would refuse it half-way."""
+        from dramatis import identity
+        from dramatis.store import RegisteredCharacter
+
+        store.upsert_collection("col:a", "A Set")
+        store.upsert_character(
+            RegisteredCharacter(id="char:ada", collection_id="col:a", name="Ada", kind="person")
+        )
+        store.upsert_character(
+            RegisteredCharacter(
+                id="char:miss-ada", collection_id="col:a", name="Miss Ada", kind="person"
+            )
+        )
+
+        identity.merge(store, "col:a", into="char:ada", absorb="char:miss-ada")
+
+        survivor = store.find_character_by_form("col:a", "Miss Ada")
+        assert survivor is not None and survivor.id == "char:ada"
+        assert [c.id for c in store.list_characters("col:a")] == ["char:ada"]
+        retired = store.get_character("char:miss-ada")
+        assert retired is not None and retired.merged_into == "char:ada"
+        assert store.merged_into("col:a") == {"char:miss-ada": "char:ada"}
+
+    def test_registry_decisions_keep_their_order_on_a_tied_timestamp(self, store: Store) -> None:
+        from dramatis.store import RegistryDecision
+
+        store.upsert_collection("col:a", "A Set")
+        same = "2026-04-04T00:00:00Z"
+        for action in ("merge", "split", "merge"):
+            store.append_registry_decision(
+                RegistryDecision(
+                    collection_id="col:a",
+                    action=action,
+                    source_id="char:a",
+                    target_id="char:b",
+                    forms=("A",),
+                    decided_at=same,
+                )
+            )
+
+        assert [d.action for d in store.list_registry_decisions("col:a")] == [
+            "merge",
+            "split",
+            "merge",
+        ]
+
+    def test_a_column_added_later_is_added_to_an_existing_database(self, store: Store) -> None:
+        """The bug a real project file found: `CREATE TABLE IF NOT EXISTS` adds tables and
+        never columns, so a store made before 5.3 has no `merged_into` and every read of the
+        registry fails on it. The migration has to work on both backends, and the dialects
+        differ in how a table's columns are asked for — which is why it asks the cursor."""
+        import psycopg
+
+        from dramatis.store import Store as OpenStore
+
+        store.upsert_collection("col:a", "A Set")
+        store.close()
+
+        with psycopg.connect(URL) as connection:
+            connection.execute("ALTER TABLE characters DROP COLUMN merged_into")
+            connection.commit()
+
+        with OpenStore(URL) as reopened:
+            assert "merged_into" in reopened.connection.columns("characters")
+            assert reopened.merged_into("col:a") == {}

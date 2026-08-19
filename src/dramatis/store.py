@@ -15,7 +15,10 @@ whose evidence cannot be resolved back to the exact text it was drawn from is no
 and a path on somebody's laptop is not a durable reference.
 
 Tables are created as the phases that need them arrive. The DDL is idempotent, so opening
-an older store simply adds what is missing.
+an older store simply adds what is missing — but only *tables*: `CREATE TABLE IF NOT EXISTS`
+leaves a table that already exists exactly as it was, columns included. A column added to an
+existing table therefore needs `ADDED_COLUMNS` as well, or every project file made before it
+fails on the first query that names it.
 """
 
 from __future__ import annotations
@@ -23,11 +26,12 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from dramatis import ids
 from dramatis.drivers import Connection, driver_for, is_postgres
 
 STORE_VERSION = 3
@@ -135,7 +139,12 @@ CREATE TABLE IF NOT EXISTS characters (
                   CHECK (provenance IN ('observed', 'asserted', 'human')),
     review_status TEXT NOT NULL DEFAULT 'proposed'
                   CHECK (review_status IN ('proposed', 'accepted', 'corrected', 'rejected')),
-    notes         TEXT
+    notes         TEXT,
+    -- Set when a person merged this character into another (5.3). The row stays rather than
+    -- being deleted: snapshots already written name this identifier, and a reader tracing one
+    -- back is owed an answer better than nothing. A retired character holds no surface forms,
+    -- so resolution can never assign to it again without anything having to check.
+    merged_into   TEXT REFERENCES characters(id)
 );
 
 -- One surface form maps to at most one character within a collection. The primary key is
@@ -249,6 +258,25 @@ CREATE TABLE IF NOT EXISTS correction_conflicts (
     noticed_at   TEXT NOT NULL
 );
 
+-- What a person decided about who is who (5.3). Both a merge and a split are one act — a set
+-- of surface forms moving from one character to another — so one shape holds both. A merge
+-- empties its source and retires it; a split creates its target and leaves the source
+-- standing.
+--
+-- Recorded because the registry alone cannot say it. After a merge the registry shows one
+-- character answering to both names, which is the outcome and not the decision; without this
+-- nobody could tell a curated identity from one the model proposed that way, and the merge is
+-- the more consequential of the two.
+CREATE TABLE IF NOT EXISTS registry_decisions (
+    collection_id TEXT NOT NULL REFERENCES collections(id),
+    action        TEXT NOT NULL CHECK (action IN ('merge', 'split')),
+    source_id     TEXT NOT NULL,
+    target_id     TEXT NOT NULL,
+    forms         TEXT NOT NULL,
+    note          TEXT,
+    decided_at    TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS ix_snapshots_work ON snapshots(work_id);
 CREATE INDEX IF NOT EXISTS ix_snapshots_revision ON snapshots(text_revision_id);
 CREATE INDEX IF NOT EXISTS ix_snapshots_run ON snapshots(analysis_run_id);
@@ -260,6 +288,21 @@ CREATE INDEX IF NOT EXISTS ix_aliases_character ON character_aliases(character_i
 CREATE INDEX IF NOT EXISTS ix_reviews_subject ON reviews(work_id, subject_kind, subject_id);
 CREATE INDEX IF NOT EXISTS ix_corrections_subject ON corrections(work_id, subject_kind, subject_id);
 CREATE INDEX IF NOT EXISTS ix_conflicts_snapshot ON correction_conflicts(snapshot_id);
+CREATE INDEX IF NOT EXISTS ix_decisions_collection ON registry_decisions(collection_id);
+"""
+
+
+ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("characters", "merged_into", "TEXT REFERENCES characters(id)"),
+)
+"""Columns added to tables that already existed, as (table, column, definition).
+
+The DDL above is what a *new* store is built from; this is what an older one is brought up
+to. Both are needed, and the pair has to agree — a test asserts that every column named here
+is in the DDL too, so a column can never be added for new stores and forgotten for old ones.
+
+Additive only. A column is added with no default and no backfill, so an older store gains it
+holding NULL, which is what "nobody has decided this yet" means for every column here.
 """
 
 
@@ -297,6 +340,19 @@ class RegisteredCharacter:
     review_status: str = "proposed"
     notes: str | None = None
     aliases: tuple[str, ...] = ()
+
+    merged_into: str | None = None
+    """The character this one was merged into, where somebody merged it (**5.3**).
+
+    A retired character keeps its row and loses its surface forms. It is excluded from the
+    registry a reading resolves against, so nothing can be assigned to it again, but it stays
+    answerable: a snapshot written before the merge names this identifier, and a reader
+    following it back deserves to be told where the character went.
+    """
+
+    @property
+    def retired(self) -> bool:
+        return self.merged_into is not None
 
     @property
     def surface_forms(self) -> tuple[str, ...]:
@@ -378,6 +434,24 @@ class CorrectionConflict:
     noticed_at: str
 
 
+@dataclass(frozen=True)
+class RegistryDecision:
+    """One person's ruling about who is who (**5.3**).
+
+    A merge and a split are the same shape: surface forms moving from ``source_id`` to
+    ``target_id``. A merge empties its source and retires it; a split creates its target and
+    leaves the source standing.
+    """
+
+    collection_id: str
+    action: str
+    source_id: str
+    target_id: str
+    forms: tuple[str, ...]
+    decided_at: str
+    note: str | None = None
+
+
 class AmbiguousAliasError(Exception):
     """A surface form was claimed by two characters in one collection."""
 
@@ -439,12 +513,27 @@ class Store:
         self._connection = Connection(self._driver.connect(self.path), self._driver)
         self._driver.prepare(self._connection._raw)
         self._connection.executescript(DDL)
+        self._add_missing_columns()
         self._connection.execute(
             "INSERT INTO meta (key, value) VALUES ('store_version', ?) ON CONFLICT(key) DO NOTHING",
             (str(STORE_VERSION),),
         )
         self._connection.commit()
         return self
+
+    def _add_missing_columns(self) -> None:
+        """Bring a store made before a column existed up to the current schema.
+
+        Runs on every open and does nothing on a store that is already current, which is the
+        same bargain the DDL makes. Adding the column is the whole migration: every one of
+        them means "nobody has decided this", and NULL says that already.
+        """
+        connection = self.connection
+        for table, column, definition in ADDED_COLUMNS:
+            if column in connection.columns(table):
+                continue
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+        connection.commit()
 
     def close(self) -> None:
         if self._connection is not None:
@@ -767,6 +856,8 @@ class Store:
                     )
 
             connection.execute(
+                # `merged_into` is deliberately not in the update list: a reading writes
+                # characters on every run and must never un-retire one a person merged away.
                 "INSERT INTO characters (id, collection_id, name, kind, provenance, "
                 "review_status, notes) VALUES (?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(id) DO UPDATE SET name = excluded.name, kind = excluded.kind, "
@@ -816,13 +907,182 @@ class Store:
         ).fetchone()
         return None if row is None else self.get_character(row["character_id"])
 
-    def list_characters(self, collection_id: str) -> list[RegisteredCharacter]:
-        rows = self.connection.execute(
-            "SELECT id FROM characters WHERE collection_id = ? ORDER BY name, id",
-            (collection_id,),
-        ).fetchall()
+    def list_characters(
+        self, collection_id: str, *, include_retired: bool = False
+    ) -> list[RegisteredCharacter]:
+        """The collection's cast.
+
+        A character somebody merged into another is left out by default: it holds no surface
+        forms, nothing can resolve to it, and listing it would put a person with no part in
+        the work in front of every reader of the registry. Callers tracing an identifier from
+        an older snapshot ask for it back.
+        """
+        query = "SELECT id FROM characters WHERE collection_id = ?"
+        if not include_retired:
+            query += " AND merged_into IS NULL"
+        rows = self.connection.execute(query + " ORDER BY name, id", (collection_id,)).fetchall()
         found = [self.get_character(row["id"]) for row in rows]
         return [character for character in found if character is not None]
+
+    # -- who is who ---------------------------------------------------------------------
+    #
+    # Merging and splitting both move surface forms between characters, and both have to land
+    # whole: a form belongs to exactly one character, so a half-applied move leaves a name
+    # denoting nobody. `rewrite_characters` is the one write that can do it. Deciding which
+    # forms move, and whether the move is a merge or a split, is `dramatis.identity`'s.
+
+    def rewrite_characters(
+        self,
+        characters: Sequence[RegisteredCharacter],
+        *,
+        retire: Mapping[str, str] | None = None,
+    ) -> None:
+        """Rewrite several characters and their claims together, in one transaction.
+
+        `upsert_character` checks each form against every claim in the collection, which is
+        right when a reading is adding to the registry and wrong here: a merge hands a form
+        from one character to another, and checking part-way through would refuse a move for
+        colliding with the character it is moving away from. The check is made against claims
+        held *outside* this batch instead, so the batch may shuffle forms among itself while
+        still being unable to steal one from a character it does not name.
+
+        ``retire`` maps a character to the one that absorbed it. A retired character keeps its
+        row and, having handed over its forms, holds none.
+        """
+        retire = dict(retire or {})
+        batch = {character.id for character in characters} | set(retire)
+
+        with self.transaction() as connection:
+            outside = {
+                row["form_key"]: row["character_id"]
+                for row in connection.execute(
+                    "SELECT form_key, character_id FROM character_aliases WHERE collection_id = ?",
+                    (next(iter({c.collection_id for c in characters}), ""),),
+                ).fetchall()
+                if row["character_id"] not in batch
+            }
+            for character in characters:
+                if character.id in retire:
+                    continue
+                for form in character.surface_forms:
+                    holder = outside.get(form_key(form))
+                    if holder is not None:
+                        raise AmbiguousAliasError(
+                            f"the surface form {form!r} is already claimed by {holder!r}; "
+                            f"it cannot also denote {character.id!r}"
+                        )
+
+            for identifier in batch:
+                connection.execute(
+                    "DELETE FROM character_aliases WHERE character_id = ?", (identifier,)
+                )
+
+            for character in characters:
+                connection.execute(
+                    "INSERT INTO characters (id, collection_id, name, kind, provenance, "
+                    "review_status, notes, merged_into) VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(id) DO UPDATE SET name = excluded.name, kind = excluded.kind, "
+                    "provenance = excluded.provenance, "
+                    "review_status = excluded.review_status, "
+                    "notes = COALESCE(excluded.notes, characters.notes)",
+                    (
+                        character.id,
+                        character.collection_id,
+                        character.name,
+                        character.kind,
+                        character.provenance,
+                        character.review_status,
+                        character.notes,
+                        character.merged_into,
+                    ),
+                )
+                if character.id in retire:
+                    # A retired character claims nothing at all, its own name included: that
+                    # name is exactly what it handed over, and leaving it claimed here would
+                    # collide with the character that took it. The row keeps the name so a
+                    # reader tracing an older snapshot still learns who it was.
+                    continue
+                connection.executemany(
+                    "INSERT INTO character_aliases (collection_id, form_key, form, "
+                    "character_id, is_canonical) VALUES (?, ?, ?, ?, ?)",
+                    [
+                        (
+                            character.collection_id,
+                            form_key(form),
+                            form,
+                            character.id,
+                            int(index == 0),
+                        )
+                        for index, form in enumerate(character.surface_forms)
+                    ],
+                )
+
+            for absorbed, survivor in retire.items():
+                connection.execute(
+                    "UPDATE characters SET merged_into = ? WHERE id = ?", (survivor, absorbed)
+                )
+
+    def append_registry_decision(self, decision: RegistryDecision) -> RegistryDecision:
+        """Record who a person decided somebody was. Append-only, like every other ruling."""
+        with self.transaction() as connection:
+            connection.execute(
+                "INSERT INTO registry_decisions (collection_id, action, source_id, target_id, "
+                "forms, note, decided_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    decision.collection_id,
+                    decision.action,
+                    decision.source_id,
+                    decision.target_id,
+                    json.dumps(list(decision.forms), ensure_ascii=False),
+                    decision.note,
+                    decision.decided_at,
+                ),
+            )
+        return decision
+
+    def list_registry_decisions(self, collection_id: str) -> list[RegistryDecision]:
+        """Every merge and split in a collection, oldest first."""
+        rows = self.connection.execute(
+            "SELECT * FROM registry_decisions WHERE collection_id = ? "
+            "ORDER BY decided_at, {tiebreak}",
+            (collection_id,),
+        ).fetchall()
+        return [
+            RegistryDecision(
+                collection_id=str(row["collection_id"]),
+                action=str(row["action"]),
+                source_id=str(row["source_id"]),
+                target_id=str(row["target_id"]),
+                forms=tuple(json.loads(row["forms"])),
+                decided_at=str(row["decided_at"]),
+                note=row["note"],
+            )
+            for row in rows
+        ]
+
+    def merged_into(self, collection_id: str) -> dict[str, str]:
+        """Where each retired character went, followed all the way to a standing one.
+
+        Chains are resolved here rather than by every caller: merging B into A and then A into
+        C must leave B pointing at C, or human work recorded against B stops being found the
+        moment A is merged on.
+        """
+        rows = self.connection.execute(
+            "SELECT id, merged_into FROM characters "
+            "WHERE collection_id = ? AND merged_into IS NOT NULL",
+            (collection_id,),
+        ).fetchall()
+        direct = {str(row["id"]): str(row["merged_into"]) for row in rows}
+
+        settled: dict[str, str] = {}
+        for start in direct:
+            seen = {start}
+            at = direct[start]
+            while at in direct and at not in seen:
+                seen.add(at)
+                at = direct[at]
+            settled[start] = at
+        return settled
 
     # -- analyses and snapshots ---------------------------------------------------------
 
@@ -937,6 +1197,53 @@ class Store:
         found = [self.get_snapshot(row["id"]) for row in rows]
         return [snapshot for snapshot in found if snapshot is not None]
 
+    # -- following a merge --------------------------------------------------------------
+    #
+    # Reviews (5.1) and corrections (5.2) are recorded against an identifier, and 5.3 lets a
+    # person change which identifier a character has. Folding the two together here rather
+    # than in each reader is the same choice the origin guard made: a caller that has to
+    # remember is a caller that will forget, and forgetting means somebody's rejection quietly
+    # stops applying the moment two characters are merged.
+    #
+    # The raw logs are never rewritten. What moves is the answer to "where does this stand
+    # now", which is the only question whose answer a merge changes.
+
+    def _collection_of(self, work_id: str) -> str | None:
+        row = self.connection.execute(
+            "SELECT collection_id FROM works WHERE id = ?", (work_id,)
+        ).fetchone()
+        return None if row is None else str(row["collection_id"])
+
+    def _redirects_for_work(self, work_id: str) -> dict[str, str]:
+        collection_id = self._collection_of(work_id)
+        return {} if collection_id is None else self.merged_into(collection_id)
+
+    @staticmethod
+    def subject_after_merges(
+        redirects: Mapping[str, str], subject_kind: str, subject_id: str
+    ) -> str:
+        """One review or correction subject, seen through every merge since it was recorded.
+
+        A character redirects directly. A relation redirects through its endpoints, because
+        merging one of them changes which pair the edge joins and therefore its identifier —
+        so a correction to an edge would otherwise be stranded by a merge at either end.
+        """
+        if not redirects:
+            return subject_id
+        if subject_kind == "character":
+            return redirects.get(subject_id, subject_id)
+
+        endpoints = ids.relation_endpoints(subject_id)
+        if endpoints is None:
+            return subject_id
+        source, target, provenance = endpoints
+        moved = (redirects.get(source, source), redirects.get(target, target))
+        # An edge whose two ends became one person is not an edge any more. Left as it was
+        # rather than pointed at a self-loop the graph will never contain.
+        if moved[0] == moved[1]:
+            return subject_id
+        return ids.relation_id(moved[0], moved[1], provenance)
+
     # -- reviews ------------------------------------------------------------------------
     #
     # Append-only, newest wins. Nothing here decides whether a decision is *allowed* — that
@@ -1004,10 +1311,19 @@ class Store:
 
         Folded here rather than asked of the database, so both backends answer identically
         and the ordering rule ``list_reviews`` documents is applied once.
+
+        Subjects are reported under the identifier they have *now*: a ruling made before a
+        merge follows the character that absorbed it (**5.3**). Where both characters had been
+        ruled on, the later ruling stands, which is the rule already governing two rulings on
+        one subject.
         """
+        redirects = self._redirects_for_work(work_id)
         standing: dict[tuple[str, str], ReviewDecision] = {}
         for decision in self.list_reviews(work_id):
-            standing[(decision.subject_kind, decision.subject_id)] = decision
+            now = self.subject_after_merges(redirects, decision.subject_kind, decision.subject_id)
+            standing[(decision.subject_kind, now)] = (
+                decision if now == decision.subject_id else replace(decision, subject_id=now)
+            )
         return standing
 
     # -- corrections --------------------------------------------------------------------
@@ -1083,11 +1399,20 @@ class Store:
 
         Folded here rather than asked of the database, so both backends answer identically and
         the ordering rule ``list_corrections`` documents is applied once.
+
+        As with reviews, a correction made before a merge follows the character that absorbed
+        it (**5.3**), and where both had a correction to one field the later one stands.
         """
+        redirects = self._redirects_for_work(work_id)
         standing: dict[tuple[str, str, str], Correction] = {}
         for correction in self.list_corrections(work_id):
-            key = (correction.subject_kind, correction.subject_id, correction.field)
-            standing[key] = correction
+            now = self.subject_after_merges(
+                redirects, correction.subject_kind, correction.subject_id
+            )
+            key = (correction.subject_kind, now, correction.field)
+            standing[key] = (
+                correction if now == correction.subject_id else replace(correction, subject_id=now)
+            )
         return standing
 
     def append_correction_conflicts(self, conflicts: Sequence[CorrectionConflict]) -> int:

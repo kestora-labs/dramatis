@@ -2640,3 +2640,148 @@ not what was asked for and is close to **5.3**'s territory.
 *Reversible.* Two tables, one module, one endpoint pair, one CLI verb, one client module, and
 four lines in `analyse`. Dropping `corrections` returns snapshots to being rendered exactly as
 5.1 left them.
+
+---
+
+## D52 — Merging and splitting are one shape, and the registry is the whole mechanism
+
+**Phase 5.3.** `resolution` has said since **1.5** that it cannot merge two characters the
+registry already knows, and why: *merging is destructive and cannot be reviewed after the
+fact, so it stays a human act*. This is that act, in both directions.
+
+### One shape, two directions
+
+A merge and a split are the same operation — surface forms moving from one character to
+another. A merge moves all of a character's forms and retires it; a split moves some of them
+to a new character and leaves the source standing. Holding them as one shape is not tidiness:
+it is what makes a split the undo of a merge, which is the only undo either has, and it is why
+one `registry_decisions` table records both.
+
+### Nothing is applied, because nothing needs to be
+
+**5.2** had to write corrections into a document as it was built. This needs no equivalent.
+Once the registry says a form denotes the surviving character, the next reading resolves it
+there, and aggregation groups edges by character — so the graph comes out merged on its own,
+with the two characters' edges to a third combining and their weights adding. That is what the
+bullet means by *recorded in the registry*: the record **is** the mechanism, not a note beside
+one.
+
+The proof is that no module outside `identity.py` and the store learned anything. In
+particular `diff` did not: **3.4** already recognises a merge because *the surviving character
+now lists the absorbed one's name among its own surface forms, which is exactly what the
+registry writes down when it merges two*. That sentence was written a phase and a half before
+anything could merge. A test now runs the whole loop — merge, re-analyse, diff — and gets
+`MERGED` back, so the anticipation and the implementation are held together rather than
+assumed to agree.
+
+### Retired, not deleted
+
+A merged-away character keeps its row, loses every claim including the one on its own name,
+and points at the character that absorbed it. Deleting it would be tidier and wrong: snapshots
+already written name that identifier, and a reader following one back is owed better than
+nothing. It leaves `list_characters` by default so nothing can resolve to it and no registry
+reader is shown somebody with no part in the work; `include_retired=True` brings it back for
+whoever is tracing.
+
+### Human work follows the character, or this bullet would undo the last two
+
+Reviews (**5.1**) and corrections (**5.2**) are recorded against an identifier. Merging would
+strand everything recorded against the absorbed one — a correction reported as unappliable on
+every run for ever, and a rejection that silently stops applying. So `current_reviews` and
+`current_corrections` read through `merged_into`: a ruling made before a merge goes on applying
+to the character that survived it, and where both characters had been ruled on, the later
+ruling stands, which is already the rule for two rulings on one subject.
+
+Chains are followed to the end — merge B into A, then A into C, and B answers to C — because
+stopping at the first hop would lose the work on the second merge instead of the first.
+
+Edges follow too. Merging one endpoint changes which pair an edge joins and therefore its
+identifier, so a correction to `rel:bram--miss-ada` would be stranded by a merge at either end.
+`ids.relation_endpoints` reads an identifier back into the endpoints it was built from — the
+inverse of `relation_id`, living in the module that owns the `--` join, so no caller has to
+treat that convention as a rule.
+
+The redirect is folded into the store rather than into each reader, for the reason the origin
+guard is a middleware: a caller that has to remember is a caller that will forget. The raw logs
+are never rewritten; what moves is the answer to *where does this stand now*, which is the only
+question a merge changes.
+
+### A merge is `corrected`, not `human`
+
+**5.2** made a corrected node `human`, because Invariant 5 defines `human` as *entered or
+corrected in the app* and a correction replaces what a reading claimed. A merge does not: the
+character is still enacted by the narrative, and what a person settled is who it is. So the
+survivor's review status becomes `corrected` and its provenance is left alone — a merged
+character stays in **4.4**'s declared-against-enacted comparison, where a human-provenance one
+would drop out for a reason that is about naming rather than evidence.
+
+A **split** is the other way round: it puts a node in the graph that no reading proposed, so
+the character it creates is `human`.
+
+### Two human decisions that can disagree
+
+A standing correction to a character's `aliases` (**5.2**) replaces the whole list when a
+snapshot is built — including the names a merge has just handed over, and with them the record
+`diff` reads to recognise the merge. The merge reports this and proceeds. Picking a winner
+silently between two decisions a person made is the one thing this phase exists not to do, and
+refusing the merge over an unrelated earlier edit would be worse than saying what will happen.
+
+### What is refused
+
+- **Merging a character into itself**, or into one already retired.
+- **A split that moves every form.** That is a rename, not a split: there would be no second
+  person, only the same one under a new identifier, and the registry would have lost the
+  identity that makes two snapshots comparable.
+- **A split naming the new character something the collection already claims**, which would
+  make one form denote two people — the thing `character_aliases`' primary key exists to make
+  unstorable.
+
+### No browser view, and why
+
+`/api/registry` has been served since **4.5** and no client has ever read it; there is no
+registry view to add a merge button to, and building one is its own piece of work rather than a
+corner of this bullet. Merge and split are available on the command line and over the API,
+which is exactly how the registry has been reachable since it existed. It is also the right
+pace for the operation: a merge is the most consequential write in the application — the only
+one a later analysis *acts on* — and typing two identifiers is not the friction to be sorry
+about.
+
+### Verified
+
+1,178 tests against SQLite and a live Postgres, including the whole loop on the pipeline: two
+characters that are one person, merged, re-analysed, and the resulting graph holding one
+character whose edge to a third carries both passages. `rewrite_characters` is exercised on
+both backends because handing a form from one character to another has to land whole — the
+alias primary key refuses it half-way, which is what a partial move would be.
+
+And on the real corpus, which is where the bug below was found. *Miss Bennet* — whom the run
+registered separately from *Jane Bennet*, though in Austen the eldest Miss Bennet is Jane —
+merged, and the novel re-analysed from its checkpoint at zero live model calls. Her four edges
+folded into Jane's (Bingley 27+4, Elizabeth 40+2, Mrs Bennet 14+1, Wickham 0+1), the cast went
+from 102 to 101, and `diff` reported one merge and **nothing removed**.
+
+### The bug only an existing project file could find
+
+`CREATE TABLE IF NOT EXISTS` adds tables and never columns, and `merged_into` is the first
+column this schema has ever added to a table that already existed. Every store made before
+5.3 therefore failed on the first query naming it — which is every read of the registry. The
+store's own docstring claimed the DDL was enough to bring an older file up to date; it was
+true of tables and false of columns, and had never been tested because no column had ever been
+added.
+
+`ADDED_COLUMNS` now carries additive columns and `Store.open` applies any that are missing.
+The column list is asked of the cursor's `description` rather than of `PRAGMA table_info` or
+`information_schema`, because the DB-API has one and the dialects do not agree on the others.
+A test asserts every column in `ADDED_COLUMNS` is also in the DDL, so one can never be added
+for new stores and forgotten for old ones; another opens a store built without the column;
+and the Postgres suite drops the column and reopens.
+
+### What is deliberately not here
+
+**Undo of a merge as its own verb** — a split does it, which is why they share a shape.
+**Renaming in the registry**, which **5.2** also left alone. **The manual**, until its next
+rebuild.
+
+*Reversible.* One module, one table, one column, two CLI verbs, two endpoints. Nothing outside
+`identity.py` decides anything: dropping it and the column returns the registry to where 5.2
+left it.

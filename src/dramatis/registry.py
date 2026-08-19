@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from dramatis.store import RegisteredCharacter, Store
+from dramatis.store import RegisteredCharacter, RegistryDecision, Store
 
 
 class RegistryError(Exception):
@@ -80,6 +80,17 @@ class Registry:
     entries: tuple[RegistryEntry, ...] = ()
     works: tuple[tuple[str, str], ...] = ()
     """(id, title) for every work in the collection, including any with no snapshot yet."""
+
+    decisions: tuple[RegistryDecision, ...] = field(default_factory=tuple)
+    """Every merge and split somebody has made here (**5.3**).
+
+    Carried with the cast rather than fetched separately, because the cast is the outcome of
+    these decisions and reading one without the other invites mistaking a curated identity for
+    one a model proposed.
+    """
+
+    retired: tuple[RegisteredCharacter, ...] = field(default_factory=tuple)
+    """Characters merged away, kept so an identifier in an older snapshot can be traced."""
 
     unanalysed: tuple[str, ...] = field(default_factory=tuple)
     """Titles of works holding no snapshot.
@@ -159,6 +170,12 @@ def build_registry(store: Store, collection_id: str) -> Registry:
         collection_name=str(collection["name"]),
         entries=tuple(entries),
         works=tuple((str(work["id"]), str(work["title"])) for work in works),
+        decisions=tuple(store.list_registry_decisions(collection_id)),
+        retired=tuple(
+            character
+            for character in store.list_characters(collection_id, include_retired=True)
+            if character.retired
+        ),
         unanalysed=tuple(unanalysed),
     )
 
@@ -169,6 +186,21 @@ def as_json(registry: Registry) -> dict[str, object]:
         "collection": {"id": registry.collection_id, "name": registry.collection_name},
         "works": [{"id": work_id, "title": title} for work_id, title in registry.works],
         "unanalysed": list(registry.unanalysed),
+        "decisions": [
+            {
+                "action": decision.action,
+                "source_id": decision.source_id,
+                "target_id": decision.target_id,
+                "forms": list(decision.forms),
+                "note": decision.note,
+                "decided_at": decision.decided_at,
+            }
+            for decision in registry.decisions
+        ],
+        "retired": [
+            {"id": character.id, "name": character.name, "merged_into": character.merged_into}
+            for character in registry.retired
+        ],
         "characters": [
             {
                 "id": entry.id,

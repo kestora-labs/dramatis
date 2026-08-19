@@ -3038,3 +3038,74 @@ and the release should not wait for it. If the name is ever granted, publishing 
 costs nothing.
 
 *Reversible.* One line of `pyproject.toml`. Nothing imports it.
+
+---
+
+## D56 — Invariant 7 admits a named corpus source, and phase 4 reopens for one
+
+**Before phase 6.** Every corpus this application has ever seen was on a local disk. Most of
+the corpora it is wanted for are not: they are Google Docs in Drive folders, and the only way
+to analyse them today is to export the lot by hand, which is a chore that has to be repeated
+on every revision and which quietly breaks the one thing revisions are for.
+
+### The invariant had to move first, and that was not mine to decide
+
+Invariant 7 read *"No egress except to the user's chosen provider"*, and reading a Drive folder
+is egress to Google. The spirit survives the change easily — a manuscript already kept in
+somebody's Drive is not newly exposed by being read back out of it — but the letter did not,
+and the roadmap says invariants "are not negotiable and are not re-litigated per phase". So the
+amendment was put to the owner rather than assumed, and it is narrow by construction:
+
+> …and to a source the user has named as holding their corpus.
+
+with three conditions written into the invariant itself. A named source is **read-only**; it is
+contacted **only while ingesting**; and it is **never contacted unless a person named it in
+that run**. Nothing becomes reachable by default, and no stored project reaches anything.
+
+**Invariant 6 is untouched, and that is the load-bearing part.** `documents` stores `content`,
+deliberately — *"a path on somebody's laptop is not a durable reference"* — so a Drive document
+is copied into the store at ingest and every later operation reads the store. Analysing,
+diffing, opening a passage, running a continuity report and exporting all stay offline exactly
+as they are today. The network appears in one place and disappears again.
+
+### Why this is phase 4 reopening rather than a new phase
+
+Phase 4 is *Heterogeneous corpora*, and it is the phase about where a corpus comes from and how
+its shape is inferred and confirmed. A Drive folder is a heterogeneous corpus that happens not
+to be local. Renumbering 6 and 7 to make room for a new phase would break the cross-references
+in a dozen decision entries — **D45** alone points at 7.4–7.5 — and Phase 4 has grown bullets
+mid-flight twice already (**4.10** split from 4.7, **4.11** from 4.9). So it gains **4.12**–
+**4.15** and one more sentence of acceptance.
+
+### The shape the code is already in
+
+The seam turned out to be one line wide. `ingest_folder` reduces a directory to a list of
+`(relative path, text)` pairs plus a root string for the structure map, and *everything*
+downstream — content hashing, document identity, revisions, structure maps, region exclusion —
+is defined on that list. So a source is an interface with two questions, the filesystem is one
+implementation, and Drive is another. **4.12** is that refactor and changes no behaviour, which
+is precisely why it is its own bullet: it is the one that must not be entangled with a network
+client.
+
+Two details fall out rather than needing decisions. Google Docs export as **Markdown**, which
+preserves the headings structure inference reads and lands on `.md`, already in
+`TEXT_SUFFIXES`. And **D32**'s document identity — path plus content hash — works untouched if
+the hash is taken over the exported text, so an edited Doc becomes a new document in a new
+revision exactly as an edited file does.
+
+### Authentication: an installed-app OAuth flow
+
+Chosen over a service account, which would mean re-sharing every folder with a robot address,
+and over a pasted access token, which expires hourly. The user brings a client secret once and
+consents in a browser; the refresh token is cached **outside the project file**, because a
+project store is a thing people send to each other and a credential must not travel in one.
+Read-only scope.
+
+### What was ruled out
+
+**Google Drive for Desktop**, which looks like it should make this unnecessary and does not:
+Google Docs appear there as `.gdoc` files containing a URL rather than the text. The workaround
+this bullet exists to avoid is not actually available.
+
+*Reversible.* The invariant amendment is additive and the bullets are unbuilt; deleting both
+returns the project to a local-disk-only tool.

@@ -12,8 +12,14 @@
  *
  * **Node size is on the same scale, by degree.** For the same reason, and so the two
  * encodings read consistently rather than one compressing while the other does not.
+ *
+ * **Confidence is a class, not a third scale.** An element the reading was unsure of carries
+ * `uncertain`; one it said nothing about carries nothing, because an absent confidence is not
+ * a low one. What that class looks like is the stylesheet's business — see `confidence.ts`
+ * for why it is the mark it is.
  */
 
+import { isUncertain } from "./confidence.js";
 import { NO_FILTERS, passes, type Filters } from "./filters.js";
 
 export type Provenance = "observed" | "asserted" | "human";
@@ -236,10 +242,17 @@ export function buildGraph(
         aliases: character.aliases ?? [],
         kind: character.kind ?? "unknown",
         provenance: character.provenance,
+        confidence: character.confidence,
         degree,
         size: nodeSize(degree, maxDegree),
       },
-      classes: degree === 0 ? "isolated" : undefined,
+      // `uncertain` only where a confidence was recorded and is below the midpoint. An
+      // element the reading said nothing about keeps whatever class it would have had, so an
+      // unqualified graph looks exactly as it does today.
+      classes:
+        [degree === 0 ? "isolated" : "", isUncertain(character) ? "uncertain" : ""]
+          .filter(Boolean)
+          .join(" ") || undefined,
     });
   }
 
@@ -252,9 +265,11 @@ export function buildGraph(
         weight: relation.weight,
         weightBasis: relation.weight_basis,
         provenance: relation.provenance,
+        confidence: relation.confidence,
         evidenceCount: relation.evidence?.length ?? 0,
         width: edgeWidth(relation.weight, maxByBasis.get(relation.weight_basis) ?? maxWeight),
       },
+      classes: isUncertain(relation) ? "uncertain" : undefined,
     });
   }
 

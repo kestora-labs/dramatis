@@ -505,12 +505,16 @@ command line, and a preface excluded there produces a cast free of the people it
       cannot produce, checked between *documents* — the grain the mistake actually has, and
       what removes the need for a stop-list. It reports and never repairs: each finding has
       more than one right answer. *(See **D53**.)*
-- [ ] **5.5** — Confidence surfaced in the UI — low-confidence edges visually distinct.
+- [x] **5.5** — Confidence surfaced in the UI — low-confidence edges visually distinct.
+      Dotted below the midpoint of the declared interval, since dashed already means two other
+      things; an *absent* confidence is never drawn as a low one. **Nothing in the pipeline
+      records confidence**, so on Dramatis's own readings the sidebar says exactly that —
+      asking a model for it changes the prompt hash and belongs to **7**. *(See **D54**.)*
 
 **Acceptance:** A correction made in snapshot *n* survives re-analysis into snapshot *n+1*
 and is reported as `human` provenance. Renaming an entity across one document of fixture
 **C** while leaving stale references in another produces a continuity report naming every
-stale location.
+stale location. *Both met — see **D51** and **D53**.*
 
 ---
 

@@ -391,3 +391,16 @@ describe("marking the built graph", () => {
     expect(elements.every((element) => element.classes === undefined)).toBe(true);
   });
 });
+
+describe("marks and the confidence class", () => {
+  it("adds an overlay mark without dropping one already there", () => {
+    // 5.5 marks an uncertain edge in `buildGraph`; the overlays mark elements afterwards.
+    // Replacing rather than appending would lose whichever ran first, and the stylesheet —
+    // not this function — is where the two are ranked.
+    const elements = [{ data: { id: "rel:ada--tomas@asserted" }, classes: "uncertain" }];
+
+    const marked = applyMarks(elements, compareProvenance(aDocument()));
+
+    expect(marked[0].classes?.split(" ").sort()).toEqual(["declared-only", "uncertain"]);
+  });
+});

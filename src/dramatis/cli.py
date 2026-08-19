@@ -33,6 +33,10 @@ from dramatis.correction import (
 from dramatis.correction import as_json as corrections_as_json
 from dramatis.correction import history as correction_history
 from dramatis.correction import record as record_correction
+from dramatis.identity import IdentityError
+from dramatis.identity import describe as describe_decisions
+from dramatis.identity import merge as merge_characters
+from dramatis.identity import split as split_character
 from dramatis.ingest import IngestError, ingest_file, ingest_folder, read_text
 from dramatis.locate import STORE_FILENAME, StoreNotFound, resolve_store
 from dramatis.providers import Provider, ProviderError
@@ -43,7 +47,7 @@ from dramatis.review import history as review_history
 from dramatis.review import overlay as review_overlay
 from dramatis.review import record as record_review
 from dramatis.schema import schema_version
-from dramatis.store import COLLECTIVES_ARE_ACTORS, Store
+from dramatis.store import COLLECTIVES_ARE_ACTORS, AmbiguousAliasError, Store
 from dramatis.validation import Issue, validate_file
 
 CHARACTER_CORRECTABLE = tuple(entry.name for entry in CHARACTER_FIELDS)
@@ -500,6 +504,15 @@ def _run_characters(args: argparse.Namespace) -> int:
         # every work leaves out is a real state, and a blank line reads as a bug.
         print(f"    appears in  {where or 'no current reading of any work'}")
 
+    # Merges and splits last, and never only counted: after a merge the cast above shows one
+    # character answering to two names, which is the outcome. Only this says a person decided
+    # it, and that is the difference between a curated identity and one a model proposed.
+    if registry.decisions:
+        print()
+        print(f"decisions   {len(registry.decisions)}")
+        for line in describe_decisions(registry.decisions):
+            print(f"  {line}")
+
     for title in registry.unanalysed:
         print(
             f"note: {title} has never been analysed, so nobody appears in it yet", file=sys.stderr
@@ -818,6 +831,128 @@ def _run_correct(args: argparse.Namespace) -> int:
         )
 
     return 0
+
+
+# -- merge and split ------------------------------------------------------------------
+
+
+def _collection_for(store: Store, named: str | None) -> str | None:
+    """Which collection to act on. A project holds one, so naming it is rarely needed."""
+    collections = store.list_collections()
+    if named is not None:
+        return named if any(str(entry["id"]) == named for entry in collections) else None
+    return str(collections[0]["id"]) if collections else None
+
+
+def _report_decision(store: Store, collection_id: str, warnings: tuple[str, ...]) -> None:
+    for warning in warnings:
+        print(f"note: {warning}", file=sys.stderr)
+    remaining = len(store.list_characters(collection_id))
+    print(f"  registry now holds {remaining} character(s)")
+    print("  the next analysis of this collection reads it this way")
+
+
+def _run_merge(args: argparse.Namespace) -> int:
+    """Declare that two registered characters are one person.
+
+    Calls no model and reaches no network (Invariant 6), and rewrites no snapshot: the
+    registry is the mechanism, and the next reading resolves both names to one character.
+    """
+    try:
+        path = resolve_store(args.store).require()
+    except StoreNotFound as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
+    with Store(path) as store:
+        collection_id = _collection_for(store, args.collection)
+        if collection_id is None:
+            print("error: this project holds no such collection", file=sys.stderr)
+            return 1
+
+        try:
+            result = merge_characters(
+                store,
+                collection_id,
+                into=args.into,
+                absorb=args.character,
+                note=args.note,
+            )
+        except (IdentityError, AmbiguousAliasError) as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 1
+
+        if args.as_json:
+            json.dump(
+                {
+                    "action": result.decision.action,
+                    "absorbed": result.absorbed.id,
+                    "survivor": result.survivor.id,
+                    "forms": list(result.decision.forms),
+                    "aliases": list(result.survivor.aliases),
+                    "warnings": list(result.warnings),
+                },
+                sys.stdout,
+                indent=2,
+                ensure_ascii=False,
+            )
+            sys.stdout.write("\n")
+            return 0
+
+        print(f"merged {result.absorbed.id} into {result.survivor.id}")
+        print(f"  {result.survivor.name} now answers to {', '.join(result.survivor.surface_forms)}")
+        _report_decision(store, collection_id, result.warnings)
+        return 0
+
+
+def _run_split(args: argparse.Namespace) -> int:
+    """Declare that one registered character is two people."""
+    try:
+        path = resolve_store(args.store).require()
+    except StoreNotFound as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
+    with Store(path) as store:
+        collection_id = _collection_for(store, args.collection)
+        if collection_id is None:
+            print("error: this project holds no such collection", file=sys.stderr)
+            return 1
+
+        try:
+            result = split_character(
+                store,
+                collection_id,
+                character=args.character,
+                forms=list(args.forms),
+                name=args.name,
+                note=args.note,
+            )
+        except (IdentityError, AmbiguousAliasError) as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 1
+
+        if args.as_json:
+            json.dump(
+                {
+                    "action": result.decision.action,
+                    "source": result.source.id,
+                    "created": result.created.id,
+                    "forms": list(result.decision.forms),
+                    "warnings": list(result.warnings),
+                },
+                sys.stdout,
+                indent=2,
+                ensure_ascii=False,
+            )
+            sys.stdout.write("\n")
+            return 0
+
+        print(f"split {result.created.id} out of {result.source.id}")
+        print(f"  {result.created.name} answers to {', '.join(result.created.surface_forms)}")
+        print(f"  {result.source.name} answers to {', '.join(result.source.surface_forms)}")
+        _report_decision(store, collection_id, result.warnings)
+        return 0
 
 
 # -- status ---------------------------------------------------------------------------
@@ -1377,6 +1512,65 @@ def _build_parser() -> argparse.ArgumentParser:
     correct.add_argument("--json", dest="as_json", action="store_true", help="machine-readable")
     correct.set_defaults(handler=_run_correct)
 
+    merge = subcommands.add_parser(
+        "merge",
+        help="declare that two registered characters are one person",
+        description=(
+            "Give one character's names to another and retire it. The registry is the whole "
+            "mechanism: the next analysis resolves every one of those names to the surviving "
+            "character, so the graph comes out merged without any snapshot being rewritten. "
+            "The retired character keeps its row so an identifier in an older snapshot can "
+            "still be traced. Calls no model."
+        ),
+    )
+    merge.add_argument("character", metavar="ID", help="the character to absorb, by identifier")
+    merge.add_argument(
+        "--into", required=True, metavar="ID", help="the character that survives, by identifier"
+    )
+    merge.add_argument("--store", default=None, help=STORE_HELP)
+    merge.add_argument(
+        "--collection",
+        default=None,
+        help="which collection to act on. A project holds one, so this is rarely needed.",
+    )
+    merge.add_argument("--note", default=None, help="why, for whoever reads this later")
+    merge.add_argument("--json", dest="as_json", action="store_true", help="machine-readable")
+    merge.set_defaults(handler=_run_merge)
+
+    split = subcommands.add_parser(
+        "split",
+        help="declare that one registered character is two people",
+        description=(
+            "Move some of a character's names onto a new character. Everything not named "
+            "stays where it is, and at least one name must: moving every name is a rename "
+            "rather than a split. As with merge, the registry is the mechanism and no stored "
+            "snapshot changes. Calls no model."
+        ),
+    )
+    split.add_argument("character", metavar="ID", help="the character to split, by identifier")
+    split.add_argument(
+        "--form",
+        dest="forms",
+        action="append",
+        required=True,
+        metavar="FORM",
+        help="a surface form to move to the new character. Repeat for several.",
+    )
+    split.add_argument(
+        "--name",
+        default=None,
+        help="what to call the new character. Without this, the first form moved.",
+    )
+    split.add_argument("--store", default=None, help=STORE_HELP)
+    split.add_argument(
+        "--collection",
+        default=None,
+        help="which collection to act on. A project holds one, so this is rarely needed.",
+    )
+    split.add_argument("--note", default=None, help="why, for whoever reads this later")
+    split.add_argument("--json", dest="as_json", action="store_true", help="machine-readable")
+    split.set_defaults(handler=_run_split)
+
     status = subcommands.add_parser(
         "status",
         help="say which project this is and what is in it",
@@ -1472,10 +1666,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="browse stored snapshots in a browser",
         description=(
             "Serve a project in a browser on this machine. Reads snapshots, and accepts "
-            "writes to project metadata, review status and corrections from the local client "
-            "only — every write refuses a cross-origin request. A stored snapshot is never "
-            "altered: a correction is applied when the next one is built. It never calls a "
-            "model, and never leaves the loopback interface unless told to."
+            "writes to project metadata, review status, corrections and registry decisions "
+            "from the local client only — every write refuses a cross-origin request. A "
+            "stored snapshot is never altered: a correction or a merge is applied when the "
+            "next one is built. It never calls a model, and never leaves the loopback "
+            "interface unless told to."
         ),
     )
     serve.add_argument("--store", default=None, help=STORE_HELP)

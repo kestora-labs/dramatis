@@ -493,8 +493,12 @@ command line, and a preface excluded there produces a cast free of the people it
       per Invariant 5. Where a later reading proposes something else the correction stands and
       the reading's competing claim is recorded rather than swallowed — the promise cuts both
       ways. *(See **D51**.)*
-- [ ] **5.3** — Manual merge and split of characters, with the decision recorded in the
-      registry.
+- [x] **5.3** — Manual merge and split of characters, with the decision recorded in the
+      registry. Both are one operation — surface forms moving between characters — so a split
+      is the undo of a merge. The record *is* the mechanism: the next reading resolves the
+      moved forms to whoever now claims them, so nothing rewrites a snapshot and **3.4**'s
+      merge detection needed no change. Reviews and corrections follow a merged character, or
+      **5.1** and **5.2** would be undone by it. *(See **D52**.)*
 - [ ] **5.4** — Continuity report: entities renamed between revisions with references to
       the old name still present elsewhere; references to structural positions that no
       longer exist; documents superseded but still referenced.

@@ -109,6 +109,7 @@ class PostgresDriver:
         "reviews",
         "corrections",
         "correction_conflicts",
+        "registry_decisions",
     )
 
     def connect(self, target: Path | str) -> Any:
@@ -188,6 +189,17 @@ class Connection:
             cursor.executemany(self.translate(sql), rows)
             return cursor
         return self._raw.executemany(self.translate(sql), rows)
+
+    def columns(self, table: str) -> set[str]:
+        """Which columns a table actually has.
+
+        Asked of the cursor rather than of a catalogue, because `description` is in the DB-API
+        and `PRAGMA table_info` and `information_schema` are not each other. The table name is
+        interpolated because a placeholder cannot name one; every caller passes a literal from
+        this package.
+        """
+        cursor = self._raw.execute(f"SELECT * FROM {table} LIMIT 0")
+        return {column[0] for column in cursor.description or ()}
 
     def executescript(self, sql: str) -> None:
         """Run the schema. SQLite has a verb for it; Postgres takes the whole string."""

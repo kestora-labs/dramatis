@@ -117,6 +117,28 @@ def relation_id(first: str, second: str, provenance: str = "observed") -> str:
     return stem if provenance == "observed" else f"{stem}@{provenance}"
 
 
+def relation_endpoints(identifier: str) -> tuple[str, str, str] | None:
+    """Read a relation identifier back into the endpoints and provenance it was built from.
+
+    The inverse of `relation_id`, and it lives here for that reason: the `--` join and the
+    `@provenance` suffix are this module's conventions, and a caller that took them apart
+    itself would be treating a convention as a rule. Returns None for anything not built here.
+
+    The split is unambiguous because `slugify` collapses runs of hyphens, so no character slug
+    can contain `--`.
+
+    Needed by **5.3**: merging two characters changes which pair an edge joins, and a review or
+    a correction recorded against the old pair has to be able to follow it.
+    """
+    if not identifier.startswith("rel:"):
+        return None
+    stem, _, provenance = identifier.removeprefix("rel:").partition("@")
+    left, separator, right = stem.partition("--")
+    if not separator or not left or not right:
+        return None
+    return f"char:{left}", f"char:{right}", provenance or "observed"
+
+
 def revision_id(content_hash: str) -> str:
     """Derive a revision identifier from the hash of its content.
 

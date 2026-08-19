@@ -98,6 +98,12 @@ outright, with `provenance: human` and `review_status: corrected`. The reading i
 not in the document — it is kept in the project store, so a corrected claim can always be
 traced back to what the analysis said.
 
+Two characters somebody **merges** produce one node in every snapshot built afterwards, and a
+`split` produces two. Neither is visible in the document as such: what a reader sees is a
+character answering to more names, or a new one carrying `provenance: human`. The decision
+itself lives in the project's registry, which is what makes it durable and what a diff reads
+to tell a merge from a character leaving the work.
+
 ## Weights
 
 `weight` drives rendered edge thickness. `weight_basis` is **required** alongside it and

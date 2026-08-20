@@ -645,6 +645,10 @@ file with a version and a hash, and no prompt reaches a model from inside a modu
 
 Not scheduled. Do not build without promotion to a phase.
 
+Design directions, considered and parked. Things found by *using* the tool — defects not yet
+fixed, and wishes that may never be selected — live in [`AI/FINDINGS.md`](FINDINGS.md), which
+binds nothing.
+
 - **Epistemic layer** — who knows what about whom, and as of when. Valuable for concealed
   identity plots; needs its own design pass.
 - **Narrative-time scrubber** — the graph assembling as the work progresses, using the

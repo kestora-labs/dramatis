@@ -86,14 +86,56 @@ pagination across a 20-folder tree of 130 entries, `files/{id}/export?mimeType=t
 `files/{id}?alt=media`, and the mime-and-suffix rules that decide what is read. That is most of
 the module, and it is no longer guesswork.
 
-**What that run did not exercise, and remains unverified:** the `403 exportSizeLimitExceeded`
+A second, larger corpus the same day added a 38-document tree, a document of 1.1MB, a curly
+apostrophe in a filename (`Take 2/Gioconda’s war.md`, handled correctly), and the fact that
+**export is byte-stable**: reading one Doc twice gives identical content hashes, which is what
+**D32**'s identity and **4.15**'s revision chain both rest on.
+
+**What those runs did not exercise, and remains unverified:** the `403 exportSizeLimitExceeded`
 branch, `401` on an expired credential mid-walk, `429` rate limiting, shortcuts, and Google
-native types other than Docs (no Sheet, Slide or Form was present). Those four error branches
-are the ones written most speculatively and tested least.
+native types other than Docs (no Sheet, Slide or Form was present in either folder). Those four
+error branches are the ones written most speculatively and tested least.
 
 Not a defect in behaviour — a gap in evidence, recorded here so it is not mistaken for one.
 Re-recording with `pytest -m live -k RealDrive` needs a folder whose contents can be published,
 since an exported Doc lands in the recording.
+
+### F4 — A Google Doc's Markdown export inlines its images as base64, and they become "text"
+
+**D56** chose Markdown export because it keeps the headings structure inference reads. Nobody
+asked what else it keeps. It keeps the images, as data URIs:
+
+```
+[image2]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAggAAAFbCAIAAAA/bOHw...
+```
+
+**Measured on a real corpus.** `Pictures/Unmade_Weapons_Wunderfrau_Costume_Reference_v1.md`
+exports to **1,099,064 characters**, of which a few hundred are prose and one single line is
+393,762 characters of base64 PNG. That one document is **65% of the entire 1.7M-character
+corpus**. Forty-two lines, and the file dwarfs thirty-seven other documents combined.
+
+Four consequences, in the order they bite:
+
+- **Cost.** Roughly a quarter of a million tokens of image data would be sent to a model for
+  no possible return. On this corpus that is most of the bill.
+- **Segmentation.** A 393,762-character "paragraph" is one blank-line section (**D27**), so a
+  single segment is larger than any window the pipeline reads in.
+- **Evidence.** Invariant 3 verifies quotations against the stored text. Base64 in that text is
+  not wrong, exactly, but it is a large region of a document that can never carry a quotation
+  and can never be read.
+- **The character count means something different.** Every number a person uses to decide
+  whether a corpus is worth analysing is inflated by however many images it contains.
+
+**Not a hashing problem, checked rather than assumed.** Exporting the same Doc twice produced
+identical content hashes, base64 included, so **D32**'s document identity holds and a re-ingest
+does not report an unedited image-bearing document as `changed`. That was the obvious second
+failure and it is not there.
+
+**Shape of a fix.** Strip data-URI image definitions from the exported Markdown at read time,
+the way an excluded region is dropped at ingest (**4.11**): the stored text is then what every
+locator and quotation resolves against, and stays self-consistent. What needs deciding is
+whether a stripped image leaves a marker behind — a document that says "an image was here" is
+more honest than one that silently omits it, and the structure map may one day want to know.
 
 ---
 
@@ -130,7 +172,9 @@ argument against is that a path is how a document is tracked between revisions, 
 synthesised one is a path nobody chose.
 
 Needs **F2** fixed first either way, because the current message cannot even tell you which
-document you lost.
+document you lost. Both real corpora hit this — two Docs named `Susie_Swell_Visual_Canon` in
+one, two named `Unmade_Weapons_Issue2_Synopsis_v1` in the other — so it is ordinary rather than
+exotic, and losing half a synopsis is worse than losing a duplicate image.
 
 ### W3 — Collapse the skipped list
 
@@ -146,7 +190,8 @@ the full list behind `--json`, which already carries it.
 `structure` reports each document's size and no total. Deciding whether to analyse a corpus
 means knowing how much of it there is, and that currently means adding twenty numbers by hand.
 The first real folder came to ~213,000 characters, which is a real amount of money at a hosted
-provider and a real amount of time at a local one.
+provider and a real amount of time at a local one. The second came to 1,698,937 — of which,
+per **F4**, 65% is base64 image data that nobody would knowingly pay to send anywhere.
 
 A total, and — separately, and only if it can be done honestly — some indication of what a run
 would cost against the configured provider.

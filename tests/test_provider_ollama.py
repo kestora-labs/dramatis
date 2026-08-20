@@ -20,7 +20,10 @@ import pytest
 from dramatis.providers import ModelRequest, ProviderError, ProviderUnavailable
 from dramatis.providers.ollama_provider import (
     DEFAULT_HOST,
+    MAXIMUM_CONTEXT,
+    MINIMUM_CONTEXT,
     OllamaProvider,
+    context_for,
     default_host,
 )
 
@@ -137,6 +140,74 @@ class TestSpeakingOllama:
     def test_an_unspecified_model_falls_back_rather_than_sending_nothing(self) -> None:
         # Callers forward an optional setting they did not choose; None must not become "".
         assert OllamaProvider(model=None).model == "llama3.1"
+
+
+class TestTheContextWindowIsAskedForRatherThanAssumed:
+    """**F5**: Ollama enforces `num_ctx` by discarding the *head* of the prompt, silently.
+
+    Measured against a real `llama3.2:3b`: a prompt of some 11,600 tokens came back with
+    `prompt_eval_count` of 2,050. No error, no warning, HTTP 200. The instruction at the end
+    of the prompt survived and the passage it referred to did not — so the model was asked to
+    find characters in text it had never seen, and answered plausibly having read nothing.
+
+    That is the worst failure this project can have: not a crash, but a confident answer to a
+    question nobody asked, which would be recorded in a snapshot as a reading of the work.
+    """
+
+    def test_every_call_states_the_context_it_needs(self) -> None:
+        seen: list = []
+        provider = OllamaProvider(transport=a_transport(a_chat_reply(), seen=seen))
+        provider.complete(ModelRequest(prompt="Ada met Bram.", max_tokens=64))
+
+        assert "num_ctx" in seen[0]["body"]["options"]
+
+    def test_the_window_grows_with_the_passage(self) -> None:
+        # An extraction window is thousands of characters; the default Ollama would have
+        # applied is 2,048 tokens for everything.
+        small = context_for(ModelRequest(prompt="Ada met Bram.", max_tokens=64))
+        large = context_for(ModelRequest(prompt="x" * 60_000, max_tokens=4096))
+
+        assert large > small
+        assert large > 8192
+
+    def test_it_never_asks_for_less_than_the_floor(self) -> None:
+        # A short prompt must still not land near Ollama's own default, or a slightly longer
+        # one next call would silently cross it.
+        assert context_for(ModelRequest(prompt="", max_tokens=16)) == MINIMUM_CONTEXT
+        assert MINIMUM_CONTEXT > 2048
+
+    def test_it_never_asks_for_more_than_the_ceiling(self) -> None:
+        # Context costs memory on the machine the user is sitting at, and a model asked for
+        # more than the hardware has fails to load at all.
+        assert context_for(ModelRequest(prompt="x" * 5_000_000, max_tokens=4096)) == (
+            MAXIMUM_CONTEXT
+        )
+
+    def test_the_system_prompt_counts_towards_it(self) -> None:
+        # It is sent in the same request and occupies the same window; leaving it out of the
+        # estimate is how an under-ask happens on exactly the calls that carry instructions.
+        without = context_for(ModelRequest(prompt="x" * 30_000, max_tokens=64))
+        with_system = context_for(
+            ModelRequest(prompt="x" * 30_000, system="y" * 30_000, max_tokens=64)
+        )
+
+        assert with_system > without
+
+    def test_the_estimate_is_pessimistic_about_tokenisation(self) -> None:
+        # Three characters per token, not four: a corpus of names, German and markup
+        # tokenises worse than English prose, and under-asking is what truncates.
+        wanted = context_for(ModelRequest(prompt="x" * 30_000, max_tokens=1000))
+
+        assert wanted >= 30_000 / 4 + 1000
+
+    def test_a_caller_may_overrule_it(self) -> None:
+        # A smaller window is a real choice on modest hardware. Making it explicitly is not
+        # the same as having a server default make it silently.
+        seen: list = []
+        provider = OllamaProvider(context=4096, transport=a_transport(a_chat_reply(), seen=seen))
+        provider.complete(ModelRequest(prompt="x" * 60_000, max_tokens=64))
+
+        assert seen[0]["body"]["options"]["num_ctx"] == 4096
 
 
 class TestRunningOutOfBudget:

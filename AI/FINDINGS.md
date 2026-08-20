@@ -113,6 +113,43 @@ Kept here rather than deleted because the measurement is the useful part: **65% 
 corpus** was three PNGs, and the next person to widen what Dramatis reads should know that a
 format's incidental payload can dwarf the work.
 
+### F5 — Ollama silently discards the head of an over-long prompt — *fixed*
+
+The Ollama provider set `num_predict` and never `num_ctx`, so every local call ran inside
+whatever context window the server defaulted to. **Ollama does not error when a prompt exceeds
+that window. It drops the beginning of the prompt and answers from what is left.**
+
+Measured against a real `llama3.2:3b` on 2026-08-20:
+
+```
+characters sent  : 46,689     (~11,600 tokens)
+prompt_eval_count: 2,050
+reply            : "OK"
+```
+
+83% of the prompt was discarded, HTTP 200, no warning anywhere. And the part that survives is
+the *tail* — so an extraction call would keep its trailing instruction and lose the passage
+above it, and the model would be asked to find characters in text it had never seen. It would
+answer. The answer would be recorded in a snapshot as a reading of the work.
+
+That is the worst failure shape this project has: not a crash, but a confident answer to a
+question nobody asked. It also quietly falsified Phase 4's acceptance — *a full analysis
+completes against a local model with the machine offline* — which would have completed, having
+read a fraction of the corpus.
+
+**Fixed** by asking for the window every call needs: `context_for` sizes it from the prompt and
+system text at a pessimistic three characters per token, with a floor of 8,192 (well clear of
+the server default) and a ceiling of 32,768 (context costs memory, and a model asked for more
+than the hardware has fails to load at all). A caller may overrule it, because a smaller window
+is a real choice on modest hardware — making it deliberately is not the same as having a server
+default make it silently.
+
+**Not closed by the fix:** nothing yet *detects* truncation if it happens anyway. Ollama returns
+`prompt_eval_count`, so a provider could compare it against what it sent and refuse a reply that
+read less than it was given. It is not done here because Ollama also reports a lower count when
+it reuses a cached prefix, and a check that cries wolf on every second call is worse than none.
+Worth solving properly — see **W9**.
+
 ---
 
 ## Wishes
@@ -208,3 +245,18 @@ told that before they pay for it rather than after they read the graph.
 `diff_snapshots` exists and the browser uses it; the CLI has no `diff`. Every other thing a
 person can do to a project has a command. Minor, and listed mostly so the asymmetry is written
 down somewhere.
+
+### W9 — Notice when a local model read less than it was sent
+
+**F5** stops Ollama truncating by asking for a big enough window. Nothing checks that the
+window was honoured, and the failure it guards against is silent by nature — a plausible answer
+to a passage the model never received.
+
+`prompt_eval_count` comes back on every reply and is the raw material. The obstacle is that
+Ollama also reports a low count when it reuses a cached prefix between calls, so the naive
+check fires constantly on exactly the workload extraction has. Distinguishing the two — perhaps
+by tracking the prefix the previous call shared, or by asking for the window and verifying the
+server's own reported `num_ctx` rather than the token count — is the actual work.
+
+Worth doing before anybody trusts a local run of a long corpus, because today the guarantee is
+"we asked for enough" rather than "it read it all".

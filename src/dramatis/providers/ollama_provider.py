@@ -59,6 +59,40 @@ itself forever on exactly the machines that could run it.
 """
 
 
+MINIMUM_CONTEXT = 8192
+MAXIMUM_CONTEXT = 32768
+"""Bounds on the context window asked for per call.
+
+The floor clears Ollama's own default comfortably, so an ordinary extraction window is never
+near the edge. The ceiling exists because context costs memory on the machine the user is
+sitting at, and a model asked for more than the hardware has fails to load at all — which is
+a worse failure than a window that has to be smaller.
+"""
+
+CHARACTERS_PER_TOKEN = 3
+"""Deliberately pessimistic. Four is the usual rule of thumb for English prose; three leaves
+room for a corpus that tokenises worse — names, German, markup — because under-asking here is
+what silently truncates."""
+
+
+def context_for(request: ModelRequest) -> int:
+    """How much context to ask Ollama for, given what is being sent.
+
+    **Ollama does not error when a prompt exceeds `num_ctx`. It discards the beginning of the
+    prompt and answers from what is left.** Measured against `llama3.2:3b`: a prompt of some
+    11,600 tokens came back with `prompt_eval_count` of 2,050. The instruction at the end of
+    the prompt survived and the passage it referred to did not, so the model was asked to find
+    characters in text it had never seen — and answered, plausibly, having read nothing.
+
+    That is the worst failure shape this project has: not an error, but a confident answer to
+    a question nobody asked. Hence asking for a window big enough by construction rather than
+    trusting a server default that is small, silent, and not ours to set.
+    """
+    wanted = len(request.prompt or "") + len(request.system or "")
+    estimate = wanted // CHARACTERS_PER_TOKEN + request.max_tokens + 512
+    return max(MINIMUM_CONTEXT, min(MAXIMUM_CONTEXT, estimate))
+
+
 def default_host() -> str:
     """Where Ollama is expected, honouring ``OLLAMA_HOST`` as the tool itself does.
 
@@ -105,6 +139,7 @@ class OllamaProvider:
         host: str | None = None,
         timeout: float | None = None,
         transport: Transport | None = None,
+        context: int | None = None,
     ) -> None:
         # None means unspecified rather than "no model", for the reason the Anthropic
         # provider gives: callers forward an optional setting they did not choose, and a
@@ -113,6 +148,13 @@ class OllamaProvider:
         self.host = (host or default_host()).rstrip("/")
         self.timeout = DEFAULT_TIMEOUT if timeout is None else timeout
         self._transport = transport or _send
+        self.context = context
+        """Context window to ask for, overriding what `context_for` would work out.
+
+        Here for the machine that cannot afford the computed answer: a smaller window is a
+        real choice on modest hardware, and making it explicitly is not the same as having a
+        server default silently make it.
+        """
 
         scheme = urlparse(self.host).scheme
         if scheme not in ("http", "https"):
@@ -241,7 +283,12 @@ class OllamaProvider:
             # One reply, not a stream of fragments. Streaming would buy a progress bar and
             # cost the reassembly of every partial message.
             "stream": False,
-            "options": {"num_predict": request.max_tokens},
+            "options": {
+                "num_predict": request.max_tokens,
+                # Asked for explicitly, because Ollama's own default is small and it
+                # enforces it by *discarding the head of the prompt* — see `context_for`.
+                "num_ctx": self.context or context_for(request),
+            },
         }
         if request.output_schema:
             # Ollama constrains decoding to a JSON Schema given here, the same job

@@ -177,6 +177,11 @@ def _run_structure(args: argparse.Namespace) -> int:
         save,
     )
 
+    if bool(args.path) == bool(args.drive):
+        which = "both a path and --drive" if args.path else "neither a path nor --drive"
+        print(f"error: name one corpus to look at; this named {which}.", file=sys.stderr)
+        return 2
+
     needs_store = args.confirm or args.forget or args.store is not None
     store_path = None
     if needs_store:
@@ -187,17 +192,25 @@ def _run_structure(args: argparse.Namespace) -> int:
             return 1
 
     try:
+        # Whether this command reaches a network is decided by --drive and by nothing else,
+        # exactly as it is for `ingest`. A path is never inspected to see whether it might be
+        # a Drive address (**D59**).
+        source = _drive_source(args.drive) if args.drive else FileSystemSource(args.path)
+        named = args.drive or args.path
+
         if args.forget:
+            # The source's root, not a resolved path: a Drive corpus has no path to resolve,
+            # and resolving one would key the forget against something no map was saved under.
             with Store(store_path) as store:
-                forgotten = store.forget_structure_map(str(Path(args.path).resolve()))
-            print(f"forgot {forgotten} confirmed document(s) for {args.path}")
+                forgotten = store.forget_structure_map(source.root)
+            print(f"forgot {forgotten} confirmed document(s) for {named}")
             return 0
 
         # Read the corpus once and pass the reading on. Every later step here wants the
         # same texts, and asking the source again for them would be a second read — free
-        # for a folder, not free for anything else.
-        reading = FileSystemSource(args.path).read()
-        structure = propose_structure(args.path, reading)
+        # for a folder, not free for a Drive folder.
+        reading = source.read()
+        structure = propose_structure(source, reading)
         texts = reading.texts
 
         if args.ask:
@@ -370,6 +383,7 @@ def _report_folder_ingest(args: argparse.Namespace, location, result) -> int:
                     for entry in result.documents
                 ],
                 "skipped": [{"path": path, "why": why} for path, why in result.skipped],
+                "omitted": list(result.omitted),
             },
             sys.stdout,
             indent=2,
@@ -398,6 +412,10 @@ def _report_folder_ingest(args: argparse.Namespace, location, result) -> int:
     # contaminate a pipeline reading stdout.
     for path, why in result.skipped:
         print(f"note: skipped {path}: {why}", file=sys.stderr)
+    # Said separately from a skip, because it is a different fact: nothing failed to be read,
+    # somebody said this file is not part of the work.
+    for path in result.omitted:
+        print(f"note: left out {path}: no part of the work", file=sys.stderr)
 
     return 0
 
@@ -1524,14 +1542,25 @@ def _build_parser() -> argparse.ArgumentParser:
 
     structure = subcommands.add_parser(
         "structure",
-        help="show what a folder appears to hold",
+        help="show what a corpus appears to hold",
         description=(
-            "Propose a structure map for a folder: which documents appear to be revisions "
+            "Propose a structure map for a corpus: which documents appear to be revisions "
             "of which, how each is addressed, and what still needs deciding. Calls no model "
-            "and writes nothing unless you ask it to with --ask or --confirm."
+            "and writes nothing unless you ask it to with --ask or --confirm. "
+            "With --drive, the corpus is a Google Drive folder instead of a local path; a "
+            "map confirmed against it is keyed by its Drive root, so a later "
+            "`ingest --drive` of the same folder reuses it rather than asking again."
         ),
     )
-    structure.add_argument("path", type=Path, metavar="FOLDER")
+    structure.add_argument("path", type=Path, metavar="FOLDER", nargs="?")
+    structure.add_argument(
+        "--drive",
+        metavar="FOLDER",
+        help=(
+            "a Google Drive folder address or identifier, instead of a local path. Needs "
+            "`dramatis authorise` to have been run once."
+        ),
+    )
     structure.add_argument("--store", default=None, help=STORE_HELP)
     structure.add_argument(
         "--ask",
@@ -1545,7 +1574,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--set",
         action="append",
         metavar="PATH=ROLE",
-        help="correct one document, as PATH=narrative or PATH=reference. Repeatable.",
+        help=(
+            "correct one document, as PATH=narrative, PATH=reference, or PATH=excluded "
+            "for a file that is in the folder but is no part of the work. Repeatable."
+        ),
     )
     structure.add_argument(
         "--confirm",

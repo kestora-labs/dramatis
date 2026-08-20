@@ -499,11 +499,11 @@ graph.
       people send to each other, and a credential must not travel in one. Read-only scope.
       Refused unless the run names a Drive source, so a typo cannot reach the network.
       *(See **D59**.)*
-- [ ] **4.15** — **Re-ingest over a Drive root**, so revisions work: a second ingest of the
+- [x] **4.15** — **Re-ingest over a Drive root**, so revisions work: a second ingest of the
       same folder picks up edited documents as a new text revision, and the structure map
       confirmed against that root is reused rather than asked again. This is what makes
       **3.x**'s diff and **5.4**'s continuity report usable on a corpus nobody ever
-      downloads.
+      downloads. *(See **D60**.)*
 
 **Acceptance:** Fixture **C** ingests without any code specific to its filing conventions.
 The structure map is editable and persists. A relation asserted in reference material and
@@ -644,6 +644,10 @@ file with a version and a hash, and no prompt reaches a model from inside a modu
 ## Backlog
 
 Not scheduled. Do not build without promotion to a phase.
+
+Design directions, considered and parked. Things found by *using* the tool — defects not yet
+fixed, and wishes that may never be selected — live in [`AI/FINDINGS.md`](FINDINGS.md), which
+binds nothing.
 
 - **Epistemic layer** — who knows what about whom, and as of when. Valuable for concealed
   identity plots; needs its own design pass.

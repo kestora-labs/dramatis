@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from dramatis.ingest import IngestError, ingest_file, ingest_folder, kept_text
-from dramatis.store import EXCLUDED, NARRATIVE, Store
+from dramatis.store import EXCLUDED, NARRATIVE, REFERENCE, Store
 from dramatis.structure import propose_structure, save
 
 FIXTURE_A = (
@@ -220,6 +220,147 @@ class TestIngestFileExclusion:
 
         assert "region was excluded" in summary
         summary.encode("ascii")
+
+
+class TestADocumentThatIsNoPartOfTheWork:
+    """**W1**: a third answer, for a file that is in the folder and is not the work.
+
+    Found by a real corpus. A Drive folder of comic-book development held a to-do roadmap, a
+    script format spec, a production pipeline spec and five sheets of image-generation prompts
+    — none of them narrative, none of them a character bible, and no way to say so. Calling
+    them reference material feeds production vocabulary into the cast.
+
+    The mechanism is **D47**'s, one level up: the text is not stored, rather than stored and
+    filtered by everything downstream. What is excluded is not a third *kind* of document; it
+    is the absence of one, which is why `documents.role` still takes exactly two values.
+    """
+
+    def a_corpus(self, root: Path) -> Path:
+        root.mkdir(exist_ok=True)
+        (root / "chapter.md").write_text(NOVEL, encoding="utf-8", newline="")
+        (root / "cast.md").write_text("Ada is Bram's sister.\n", encoding="utf-8", newline="")
+        (root / "TODO.md").write_text(
+            "Redraw page 4. Chase the letterer. Ask Bram about the cover.\n",
+            encoding="utf-8",
+            newline="",
+        )
+        return root
+
+    def a_map(self, store: Store, root: Path, **roles: str) -> None:
+        plans = {path: a_plan(path, [a_region(role)], role) for path, role in roles.items()}
+        store.save_structure_map(str(root.resolve()), plans, "2026-01-01T00:00:00Z")
+
+    def test_an_excluded_document_is_left_out_of_the_revision(self, tmp_path: Path) -> None:
+        root = self.a_corpus(tmp_path / "corpus")
+        with Store(tmp_path / "p.sqlite") as store:
+            self.a_map(
+                store,
+                root,
+                **{"chapter.md": NARRATIVE, "cast.md": REFERENCE, "TODO.md": EXCLUDED},
+            )
+            result = ingest_folder(store, root, work_title="W")
+
+            assert [entry.path for entry in result.documents] == ["cast.md", "chapter.md"]
+            assert result.omitted == ("TODO.md",)
+
+    def test_its_text_never_enters_the_store(self, tmp_path: Path) -> None:
+        # The point of dropping rather than filtering: text that is not stored cannot reach a
+        # model, whatever any later stage forgets.
+        root = self.a_corpus(tmp_path / "corpus")
+        with Store(tmp_path / "p.sqlite") as store:
+            self.a_map(
+                store,
+                root,
+                **{"chapter.md": NARRATIVE, "cast.md": REFERENCE, "TODO.md": EXCLUDED},
+            )
+            result = ingest_folder(store, root, work_title="W")
+
+            assert "Chase the letterer" not in store.revision_text(result.revision_id)
+
+    def test_excluding_a_document_changes_the_revision(self, tmp_path: Path) -> None:
+        # It is a different corpus, so it is a different revision. Anything else would let two
+        # different studies share an identifier.
+        root = self.a_corpus(tmp_path / "corpus")
+        with Store(tmp_path / "p.sqlite") as store:
+            whole = ingest_folder(store, root, work_title="W")
+            self.a_map(
+                store,
+                root,
+                **{"chapter.md": NARRATIVE, "cast.md": REFERENCE, "TODO.md": EXCLUDED},
+            )
+            without = ingest_folder(store, root, work_title="W")
+
+            assert whole.revision_id != without.revision_id
+
+    def test_the_summary_says_it_out_loud(self, tmp_path: Path) -> None:
+        root = self.a_corpus(tmp_path / "corpus")
+        with Store(tmp_path / "p.sqlite") as store:
+            self.a_map(
+                store,
+                root,
+                **{"chapter.md": NARRATIVE, "cast.md": REFERENCE, "TODO.md": EXCLUDED},
+            )
+            result = ingest_folder(store, root, work_title="W")
+
+            assert "1 left out as no part of the work" in result.summary
+
+    def test_excluding_everything_is_refused_rather_than_producing_an_empty_work(
+        self, tmp_path: Path
+    ) -> None:
+        root = self.a_corpus(tmp_path / "corpus")
+        with Store(tmp_path / "p.sqlite") as store:
+            self.a_map(
+                store,
+                root,
+                **{"chapter.md": EXCLUDED, "cast.md": EXCLUDED, "TODO.md": EXCLUDED},
+            )
+            with pytest.raises(IngestError, match="nothing left to study"):
+                ingest_folder(store, root, work_title="W")
+
+    def test_a_single_file_corpus_cannot_exclude_itself(self, tmp_path: Path) -> None:
+        source = tmp_path / "notes.md"
+        source.write_text(NOVEL, encoding="utf-8", newline="")
+        with Store(tmp_path / "p.sqlite") as store:
+            store.save_structure_map(
+                str(source.resolve()),
+                {"notes.md": a_plan("notes.md", [a_region(EXCLUDED)], EXCLUDED)},
+                "2026-01-01T00:00:00Z",
+            )
+            with pytest.raises(IngestError, match="nothing left to study"):
+                ingest_file(store, source, work_title="W")
+
+    def test_omitted_is_not_the_same_thing_as_excluded(self, tmp_path: Path) -> None:
+        """Three different facts, and a person needs them apart.
+
+        `skipped` could not be read, `excluded` is here with a span removed, `omitted` was read
+        and deliberately not kept.
+        """
+        root = tmp_path / "corpus"
+        root.mkdir()
+        (root / "book.md").write_text(PREFACE + NOVEL, encoding="utf-8", newline="")
+        (root / "TODO.md").write_text("Chase the letterer.\n", encoding="utf-8", newline="")
+        (root / "cover.png").write_bytes(b"\x89PNG\r\n")
+
+        with Store(tmp_path / "p.sqlite") as store:
+            store.save_structure_map(
+                str(root.resolve()),
+                {
+                    "book.md": a_plan(
+                        "book.md",
+                        [
+                            a_region(EXCLUDED),
+                            a_region(NARRATIVE, begins="It is a truth universally acknowledged"),
+                        ],
+                    ),
+                    "TODO.md": a_plan("TODO.md", [a_region(EXCLUDED)], EXCLUDED),
+                },
+                "2026-01-01T00:00:00Z",
+            )
+            result = ingest_folder(store, root, work_title="W")
+
+        assert result.excluded == ("book.md",)
+        assert result.omitted == ("TODO.md",)
+        assert [path for path, _ in result.skipped] == ["cover.png"]
 
 
 class TestIngestFolderExclusion:

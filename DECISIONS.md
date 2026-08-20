@@ -3384,3 +3384,219 @@ It is not in this bullet, and 4.15 is where it is wanted, so it waits.
 *Reversible.* Additive: a new module, a new command, one flag, and no schema or stored data
 changed. Deleting `google_auth.py`, the `authorise` parser and the `--drive` branch returns
 `ingest` to exactly what it was.
+
+---
+
+## D60 — A corpus is identified by where it came from, not by what it is called
+
+**Phase 4.15**, which closes the four bullets **D56** reopened phase 4 for.
+
+### The half that already worked, and the half that could not
+
+*A second ingest of the same folder picks up edited documents as a new text revision.*
+Measured before building anything: that already worked, because per-document tracking is
+defined on `(path, text)` pairs and **4.12** put every source on those. What did not work was
+the sentence after it — *the structure map confirmed against that root is reused rather than
+asked again* — because a map could be **stored** against a Drive root since **4.13** and there
+was no way to **confirm** one. `dramatis structure` took a local path. It takes `--drive` now,
+on exactly the terms `ingest` does (**D59**): that flag is the only thing that makes the
+command reach a network, and a path is never inspected to see whether it might be one.
+
+`--forget` was quietly wrong for the same reason. It resolved its argument as a filesystem
+path, so forgetting a Drive folder's map keyed the deletion against a directory nobody had
+ever saved a map under, and reported success. It asks the source for its root now, like
+everything else.
+
+### A work is keyed to its root, because a title is a guess about identity
+
+The first half worked *by accident*, and the accident was ugly. A work is identified by its
+title, and a Drive root's last component is a folder identifier, so re-ingesting worked only
+because `1rootFOLDERid` is a stable — and appalling — name for somebody's novel. Name the work
+properly with `--work` and forget the flag on the second run, and Dramatis minted a *second
+work* with no revision chain between them, silently. So did renaming the folder in Drive,
+once the title came from the folder's name.
+
+`works.source_root` records where a corpus was read from, and a second ingest of that root
+reuses the work it found there. A nullable column and one entry in `ADDED_COLUMNS`, which is
+the whole migration — a project file made last month opens, matches nothing, and reads as a
+corpus nobody has seen, which is what a nullable column is for. It applies to every source, so
+a local folder is keyed the same way.
+
+That change is what makes the folder's *name* safe to use as the default title, so the flagship
+Drive flow stops naming a novel after a base64 identifier. The name costs no request: the reply
+that proves the root is a folder already carries it. It travels as `Reading.label`, an optional
+field, and it is deliberately **not** identity — renaming a folder changes what a corpus is
+called and not which corpus it is, which is the whole point.
+
+### The evidence: two traffic files that differ in exactly two places
+
+The pair is the argument. `drive-folder-edited.json` is derived from `drive-folder.json` by a
+script that changes two bodies and nothing else — one Google Doc's exported text, and the
+folder's name — so every address is identical, because it is the same folder read later rather
+than a different folder. One work, two revisions, one document reported `changed` and four
+`unchanged`.
+
+### What is proven about the diff, and what is not
+
+The bullet's purpose is *"what makes 3.x's diff and 5.4's continuity report usable on a corpus
+nobody ever downloads"*. A full continuity report checks a **reading** against the text, so it
+needs a snapshot and therefore a provider, which this suite does not have. What it does on top
+of that snapshot is compare the documents of two revisions by path, and that half is
+model-free. So the test exercises `continuity`'s own machinery over two Drive-borne revisions
+rather than asserting a report nothing here could produce.
+
+### Phase 4's acceptance, and the caveat it still carries
+
+*"A corpus held in a cloud drive is ingested from where it lives, with Google Docs read as text
+and nothing downloaded by hand; re-ingesting it produces a second revision the diff runs
+across."* Every clause of that is now built and tested — **against traffic written to the
+Drive v3 contract rather than captured from a live account**, which is **D58**'s open caveat
+and is not closed by this bullet. **4.14** built the credential flow that makes re-recording
+possible; doing it needs somebody with a Google account, a folder, and five minutes. Until
+then the phase is complete in code and its cloud half is unverified against the real API.
+
+*Reversible.* One nullable column, one optional field on `Reading`, one flag. Dropping them
+returns identity to the title and `structure` to local paths.
+
+---
+
+## D61 — An exported Doc's images are not its text
+
+**Found in use, after 4.15.** **D56** chose Markdown for Google Doc export because the
+headings survive it and structure inference reads headings. Nobody asked what else survives.
+The images do, as `data:` URIs, and they are enormous.
+
+### The measurement, which is the whole argument
+
+The second real corpus this application was pointed at holds
+`Pictures/Unmade_Weapons_Wunderfrau_Costume_Reference_v1.md`. It exports to **1,099,064
+characters**. Some 2,300 of those are prose; the rest is three PNGs, one of them a single line
+of 393,762 characters. That one document was **65% of the entire 1.7M-character corpus**, and
+the corpus has thirty-seven others.
+
+Four consequences, in the order they bite:
+
+- **Cost.** Roughly a quarter of a million tokens of base64 sent to a model for no possible
+  return, which on that corpus is most of the bill.
+- **Segmentation.** A 393,762-character line is one blank-line section (**D27**) — a single
+  segment larger than any window the pipeline reads in.
+- **Evidence.** Invariant 3 says a quotation verifies or it does not ship. A large region of
+  stored text that can never carry a quotation is not wrong, but it is not text either.
+- **Every count a person judges a corpus by** is inflated by however many images it holds,
+  including the one they use to decide whether to spend anything.
+
+### Replaced, not deleted
+
+Google exports an image as a reference definition: `![][image1]` in the body, `[image1]:
+<data:image/png;base64,...>` at the foot. So the body's marker survives untouched — the
+document still says an image was there — and only the definition changes:
+
+    [image1]: <image/png omitted by Dramatis, 314,531 bytes of base64>
+
+A document that quietly has fewer words than its author wrote would be the worse artefact, and
+this project does not do silent removals anywhere else: an excluded region is confirmed by a
+person and reported, an unreadable file is skipped *with its reason*.
+
+**The byte count is kept deliberately.** Swapping one image for another still changes the
+stored text, so **D32** still calls it a new document and **4.15**'s revision chain still
+reports it `changed` — which is true, because the document did change. Dropping the count
+would have made an image swap invisible to the one mechanism built to notice edits.
+
+A 512-byte floor, below which nothing is touched. Rewriting a document costs something — it is
+no longer what Google returned — and an inline icon is not worth paying it for.
+
+### Only what Dramatis's own decision introduced
+
+**An exported Doc is rewritten. A file somebody uploaded is not.** A `.md` file in Drive is the
+author's file exactly as a `.md` file on a disk is, and rewriting one would mean the same
+document read two ways gave two different texts and two different hashes. The line is: Dramatis
+removes what its own choice of export format put there, and edits nothing anybody else
+authored. That is also why this does not touch `FileSystemSource`, whose behaviour **4.12**
+fixed and whose corpora nobody exported.
+
+### What was checked rather than assumed
+
+The obvious second failure would be an export that is not byte-stable — if Google re-encoded an
+image on each export, every re-ingest would report an untouched document as `changed` and the
+revision chain would mean nothing. Exporting one real Doc twice produced identical content
+hashes, base64 included, so **D32** and **4.15** were never at risk here.
+
+### The one migration consequence
+
+A Drive corpus ingested before this and re-ingested after it will report every image-bearing
+document as `changed`, and mint new document identifiers for them. That is correct — the stored
+text genuinely differs — but it is a one-off step in the revision history that nothing in the
+work itself caused, and anybody reading a diff across it should know why.
+
+*Reversible.* One function and one call site. Removing them returns exported Docs to whatever
+Google sends, base64 and all.
+
+---
+
+## D62 — A document may be no part of the work, and that is the absence of one rather than a third kind
+
+**Found in use, after 4.15** (**W1**). A document's role was `narrative` or `reference` and
+there was no third answer. Only *regions* could be `excluded` (**4.11**), so leaving a whole
+document out meant confirming a region that happened to cover it, which `--set` could not
+express.
+
+### What made it urgent
+
+A real Drive corpus of comic-book development held a to-do roadmap, a script format
+specification, a production pipeline specification, a style canon, and five sheets of
+image-generation prompts describing how characters should look to an *image* model. None of
+them is narrative. None of them is a character bible. Calling them reference material feeds
+production vocabulary into the cast, and the only alternative was not pointing Dramatis at the
+folder at all.
+
+### A role in the map, and not a role in the store
+
+**D47** kept `documents.role` at two values on the grounds that *an excluded region is not a
+kind of document but a span of one*. The same sentence settles this bullet: an excluded
+document is not a third kind of document either. It is the absence of one.
+
+So `EXCLUDED` joins `MAP_ROLES` — what a person may confirm — and stays out of
+`DOCUMENT_ROLES`, which is what the column accepts. Every document the store holds is
+narrative or reference, exactly as before; the excluded ones are not there to be asked about,
+and nothing downstream of ingest learns a third role or grows a filter.
+
+The mechanism is **D47**'s, one level up: the text is not stored, rather than stored and
+skipped by everything that reads it. Text that never enters the store can never reach a model,
+whatever a later stage forgets.
+
+### Three facts that had to stay apart
+
+An ingest now reports `skipped`, `excluded` and `omitted`, and collapsing any two of them
+would lose something a person needs:
+
+- **skipped** — the source could not read it. A PNG, a file that is not UTF-8.
+- **excluded** — it *is* in the revision, with a span of it removed. A preface, an appendix.
+- **omitted** — it was read, understood, and deliberately not kept.
+
+### What it changes, and two things it refuses
+
+Excluding a document changes the revision identifier, because it is a different corpus and two
+different studies must not share one. Excluding *every* document is refused — there would be
+nothing left to study — and so is excluding the single file that is the whole of a one-file
+corpus.
+
+### Both surfaces, because 4.9's point was confirming before spending
+
+`--set path=excluded` at the command line, and a third button in the browser flow. A document
+marked excluded there hides the "where does the narrative begin" box, since a document that is
+no part of the work has no narrative to begin — and `plansFor` drops any boundary already
+typed, rather than saving two regions describing a narrative it has just said is not there.
+
+### What was considered and not built
+
+**A separate `included` boolean**, orthogonal to the role. Rejected because it adds a second
+axis for a person to confirm and a second thing to get wrong, when *narrative*, *reference* and
+*no part of this* are three answers to one question: what is this document to the study?
+
+That does leave a real thing unbuilt. A document can be genuine reference material and still be
+something a person wants left out of *one particular run* — a per-run inclusion set, which is a
+different feature with a different lifetime, and not this one. Nothing here forecloses it.
+
+*Reversible.* One value added to a tuple, one branch in `ingest_source`, one button. Removing
+them returns the map to two answers; a store that has never seen the third is unaffected, since
+nothing excluded was ever written to it.

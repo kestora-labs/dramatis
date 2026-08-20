@@ -31,8 +31,9 @@ smaller the transport, the cheaper it is for somebody to check the claim. The sa
 picked `urllib` for Ollama (**D44**).
 
 **Authentication is not here.** This takes a bearer token from its caller and never obtains
-one; the OAuth installed-app flow, the cached refresh token and the CLI that refuses to run
-without a named Drive source are **4.14**.
+one. The OAuth installed-app flow, the refresh token cached outside every project, and the
+CLI that reaches a network only when a run names a Drive source are `google_auth` and
+``dramatis authorise`` (**4.14**).
 """
 
 from __future__ import annotations
@@ -154,8 +155,11 @@ def _send(method: str, url: str, headers: Mapping[str, str], timeout: float) -> 
     """
     if method != "GET":
         raise IngestError(f"the Drive source issues no {method} requests; this is a bug")
-    if urllib.parse.urlparse(url).hostname != HOST:
-        raise IngestError(f"the Drive source contacts {HOST} and nothing else; this is a bug")
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https" or parsed.hostname != HOST:
+        # The scheme as well as the host: `http://www.googleapis.com` passes a host check and
+        # puts a bearer token on the wire in clear.
+        raise IngestError(f"the Drive source contacts https://{HOST} and nothing else; a bug")
 
     request = urllib.request.Request(url, headers=dict(headers), method=method)  # noqa: S310
     with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310

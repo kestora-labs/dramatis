@@ -36,6 +36,7 @@ from dramatis.drive import (
     DriveSource,
     folder_id,
     root_of,
+    without_image_data,
 )
 from dramatis.ingest import ingest_source
 from dramatis.sources import IngestError, Source
@@ -250,6 +251,100 @@ class TestReadingADocument:
         text = dict(DriveSource(FOLDER, credentials="t", transport=transport).read().documents)
 
         assert text["only.md"] == "# One\n\nAda met Tomas.\n"
+
+
+class TestAnExportedDocsImagesAreNotItsText:
+    """**F4**: Markdown export keeps the headings *and* inlines every image as base64.
+
+    Found by a real corpus, and worth stating in numbers because the size is the argument: one
+    costume-reference Doc exported to 1,099,064 characters of which some 2,300 were prose.
+    Three PNGs were 65% of that entire corpus.
+    """
+
+    def a_doc_with_images(self, payload: str = "A" * 4000) -> str:
+        """The shape Google actually produces: markers in the body, definitions at the foot."""
+        return (
+            "# Costume\n\n![][image1]\n\nWunderfrau wears the field uniform.\n\n"
+            "![][image2]\n\nAnd the formal one.\n\n"
+            f"[image1]: <data:image/png;base64,{payload}>\n"
+            f"[image2]: <data:image/jpeg;base64,{payload}>\n"
+        )
+
+    def test_the_payload_goes_and_the_prose_stays(self) -> None:
+        text, removed = without_image_data(self.a_doc_with_images())
+
+        assert removed == 2
+        assert "base64,AAAA" not in text
+        assert "Wunderfrau wears the field uniform." in text
+        assert len(text) < 300
+
+    def test_the_document_still_says_an_image_was_there(self) -> None:
+        # A document that quietly has fewer words than its author wrote is worse than one that
+        # says what happened to it. The body's marker is untouched and the definition explains
+        # itself.
+        text, _ = without_image_data(self.a_doc_with_images())
+
+        assert "![][image1]" in text
+        assert "image/png omitted by Dramatis, 4,000 bytes of base64" in text
+        assert "image/jpeg omitted by Dramatis" in text
+
+    def test_swapping_an_image_still_changes_the_document(self) -> None:
+        # The byte count is kept for this reason: D32 must still call it a new document and
+        # 4.15 must still report it `changed`, because the document did change.
+        one, _ = without_image_data(self.a_doc_with_images("A" * 4000))
+        other, _ = without_image_data(self.a_doc_with_images("B" * 5000))
+
+        assert one != other
+
+    def test_a_small_inline_image_is_left_alone(self) -> None:
+        # Rewriting a document costs something — it is no longer what Google returned — so it
+        # is not done for an icon.
+        small = "![a dot](data:image/gif;base64,R0lGODdh)\n"
+        text, removed = without_image_data(small)
+
+        assert removed == 0
+        assert text == small
+
+    def test_a_document_with_no_images_is_returned_unchanged(self) -> None:
+        prose = "# One\n\nAda met Tomas at the relay.\n"
+
+        assert without_image_data(prose) == (prose, 0)
+
+    def test_the_payload_never_runs_past_its_delimiter(self) -> None:
+        # The pattern must stop at the `>` Google wrapped it in, or it would eat the rest of
+        # the document — the next definition included, and anything after it.
+        text, removed = without_image_data(
+            f"[a]: <data:image/png;base64,{'A' * 4000}>\n\nThe prose after it survives.\n"
+        )
+
+        assert removed == 1
+        assert text.endswith("The prose after it survives.\n")
+
+    def test_an_exported_doc_reaches_the_source_stripped(self) -> None:
+        # The whole point, at the level a corpus is actually read.
+        transport = _a_tree_with(self.a_doc_with_images())
+        reading = DriveSource(FOLDER, credentials="t", transport=transport).read()
+        text = dict(reading.documents)["only.md"]
+
+        assert "base64,AAAA" not in text
+        assert "Wunderfrau wears the field uniform." in text
+
+    def test_a_file_somebody_uploaded_is_left_exactly_as_it_is(self) -> None:
+        """Dramatis removes what its own export decision introduced, and edits nothing else.
+
+        A `.md` file in Drive is the author's file exactly as a `.md` file on a disk is, and
+        rewriting one would mean the same document read two ways gave two different texts.
+        """
+        uploaded = self.a_doc_with_images()
+
+        def transport(method: str, url: str, headers, timeout: float) -> bytes:
+            if "alt=media" in url:
+                return uploaded.encode("utf-8")
+            return _tree_reply(url, "notes.md", "text/markdown")
+
+        reading = DriveSource(FOLDER, credentials="t", transport=transport).read()
+
+        assert dict(reading.documents)["notes.md"] == uploaded
 
 
 class TestAnythingItCannotReadIsSkippedWithItsReason:

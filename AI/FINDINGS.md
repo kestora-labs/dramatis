@@ -3,7 +3,8 @@
 Things learned by *using* Dramatis, rather than by building it.
 
 Two lists. **Defects** are confirmed faults with a known cause; they will be fixed, but they
-are not scheduled and none of them is promoted to a phase until somebody says so. **Wishes**
+are not scheduled and none of them is promoted to a phase until somebody says so. One marked
+*fixed* is kept only where the measurement behind it is worth more than the fault was. **Wishes**
 are things the tool could plausibly do and currently cannot; most of them will never be built,
 and that is the point of keeping them here rather than in the roadmap.
 
@@ -24,7 +25,7 @@ imagined at a desk, and the difference should survive into whoever reads this ne
 `drive.py` marks a path as taken *before* attempting to read the document at it:
 
 ```python
-seen.add(entry.path)          # drive.py:234
+seen.add(entry.path)  # drive.py:234
 try:
     documents.append((entry.path, self._read_one(entry)))
 except IngestError as error:
@@ -100,42 +101,17 @@ Not a defect in behaviour — a gap in evidence, recorded here so it is not mist
 Re-recording with `pytest -m live -k RealDrive` needs a folder whose contents can be published,
 since an exported Doc lands in the recording.
 
-### F4 — A Google Doc's Markdown export inlines its images as base64, and they become "text"
+### F4 — A Google Doc's Markdown export inlines its images as base64 — *fixed*
 
-**D56** chose Markdown export because it keeps the headings structure inference reads. Nobody
-asked what else it keeps. It keeps the images, as data URIs:
+Exported Docs carried their images as `data:` URIs, and one real costume-reference document
+came to 1,099,064 characters of which some 2,300 were prose. Fixed by replacing the payload
+with a note that says what was removed; the body's `![][image1]` marker survives, so the
+document still says an image was there. See **D61** for the reasoning, including why an
+uploaded file is left exactly as it is and why the byte count is kept.
 
-```
-[image2]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAggAAAFbCAIAAAA/bOHw...
-```
-
-**Measured on a real corpus.** `Pictures/Unmade_Weapons_Wunderfrau_Costume_Reference_v1.md`
-exports to **1,099,064 characters**, of which a few hundred are prose and one single line is
-393,762 characters of base64 PNG. That one document is **65% of the entire 1.7M-character
-corpus**. Forty-two lines, and the file dwarfs thirty-seven other documents combined.
-
-Four consequences, in the order they bite:
-
-- **Cost.** Roughly a quarter of a million tokens of image data would be sent to a model for
-  no possible return. On this corpus that is most of the bill.
-- **Segmentation.** A 393,762-character "paragraph" is one blank-line section (**D27**), so a
-  single segment is larger than any window the pipeline reads in.
-- **Evidence.** Invariant 3 verifies quotations against the stored text. Base64 in that text is
-  not wrong, exactly, but it is a large region of a document that can never carry a quotation
-  and can never be read.
-- **The character count means something different.** Every number a person uses to decide
-  whether a corpus is worth analysing is inflated by however many images it contains.
-
-**Not a hashing problem, checked rather than assumed.** Exporting the same Doc twice produced
-identical content hashes, base64 included, so **D32**'s document identity holds and a re-ingest
-does not report an unedited image-bearing document as `changed`. That was the obvious second
-failure and it is not there.
-
-**Shape of a fix.** Strip data-URI image definitions from the exported Markdown at read time,
-the way an excluded region is dropped at ingest (**4.11**): the stored text is then what every
-locator and quotation resolves against, and stays self-consistent. What needs deciding is
-whether a stripped image leaves a marker behind — a document that says "an image was here" is
-more honest than one that silently omits it, and the structure map may one day want to know.
+Kept here rather than deleted because the measurement is the useful part: **65% of a real
+corpus** was three PNGs, and the next person to widen what Dramatis reads should know that a
+format's incidental payload can dwarf the work.
 
 ---
 

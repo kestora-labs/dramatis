@@ -3457,3 +3457,76 @@ then the phase is complete in code and its cloud half is unverified against the 
 
 *Reversible.* One nullable column, one optional field on `Reading`, one flag. Dropping them
 returns identity to the title and `structure` to local paths.
+
+---
+
+## D61 — An exported Doc's images are not its text
+
+**Found in use, after 4.15.** **D56** chose Markdown for Google Doc export because the
+headings survive it and structure inference reads headings. Nobody asked what else survives.
+The images do, as `data:` URIs, and they are enormous.
+
+### The measurement, which is the whole argument
+
+The second real corpus this application was pointed at holds
+`Pictures/Unmade_Weapons_Wunderfrau_Costume_Reference_v1.md`. It exports to **1,099,064
+characters**. Some 2,300 of those are prose; the rest is three PNGs, one of them a single line
+of 393,762 characters. That one document was **65% of the entire 1.7M-character corpus**, and
+the corpus has thirty-seven others.
+
+Four consequences, in the order they bite:
+
+- **Cost.** Roughly a quarter of a million tokens of base64 sent to a model for no possible
+  return, which on that corpus is most of the bill.
+- **Segmentation.** A 393,762-character line is one blank-line section (**D27**) — a single
+  segment larger than any window the pipeline reads in.
+- **Evidence.** Invariant 3 says a quotation verifies or it does not ship. A large region of
+  stored text that can never carry a quotation is not wrong, but it is not text either.
+- **Every count a person judges a corpus by** is inflated by however many images it holds,
+  including the one they use to decide whether to spend anything.
+
+### Replaced, not deleted
+
+Google exports an image as a reference definition: `![][image1]` in the body, `[image1]:
+<data:image/png;base64,...>` at the foot. So the body's marker survives untouched — the
+document still says an image was there — and only the definition changes:
+
+    [image1]: <image/png omitted by Dramatis, 314,531 bytes of base64>
+
+A document that quietly has fewer words than its author wrote would be the worse artefact, and
+this project does not do silent removals anywhere else: an excluded region is confirmed by a
+person and reported, an unreadable file is skipped *with its reason*.
+
+**The byte count is kept deliberately.** Swapping one image for another still changes the
+stored text, so **D32** still calls it a new document and **4.15**'s revision chain still
+reports it `changed` — which is true, because the document did change. Dropping the count
+would have made an image swap invisible to the one mechanism built to notice edits.
+
+A 512-byte floor, below which nothing is touched. Rewriting a document costs something — it is
+no longer what Google returned — and an inline icon is not worth paying it for.
+
+### Only what Dramatis's own decision introduced
+
+**An exported Doc is rewritten. A file somebody uploaded is not.** A `.md` file in Drive is the
+author's file exactly as a `.md` file on a disk is, and rewriting one would mean the same
+document read two ways gave two different texts and two different hashes. The line is: Dramatis
+removes what its own choice of export format put there, and edits nothing anybody else
+authored. That is also why this does not touch `FileSystemSource`, whose behaviour **4.12**
+fixed and whose corpora nobody exported.
+
+### What was checked rather than assumed
+
+The obvious second failure would be an export that is not byte-stable — if Google re-encoded an
+image on each export, every re-ingest would report an untouched document as `changed` and the
+revision chain would mean nothing. Exporting one real Doc twice produced identical content
+hashes, base64 included, so **D32** and **4.15** were never at risk here.
+
+### The one migration consequence
+
+A Drive corpus ingested before this and re-ingested after it will report every image-bearing
+document as `changed`, and mint new document identifiers for them. That is correct — the stored
+text genuinely differs — but it is a one-off step in the revision history that nothing in the
+work itself caused, and anybody reading a diff across it should know why.
+
+*Reversible.* One function and one call site. Removing them returns exported Docs to whatever
+Google sends, base64 and all.

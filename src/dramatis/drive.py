@@ -331,7 +331,11 @@ class DriveSource:
                 f"/files/{entry.identifier}/export",
                 {"mimeType": EXPORT_MIME, "supportsAllDrives": "true"},
             )
-            return _as_text(entry.name, raw)
+            # Only an exported Doc is rewritten, and only ever by removing what Dramatis's own
+            # choice of export format put there. A file somebody uploaded is theirs as it
+            # stands, exactly as a file on disk is.
+            text, _ = without_image_data(_as_text(entry.name, raw))
+            return text
 
         if entry.mime_type == SHORTCUT_MIME:
             raise IngestError(
@@ -401,6 +405,55 @@ class DriveSource:
 
 
 # -- helpers ----------------------------------------------------------------------------
+
+
+DATA_URI = re.compile(r"data:([\w.+-]+/[\w.+-]+);base64,([A-Za-z0-9+/=]+)")
+"""A base64 payload inlined into exported Markdown.
+
+The character class deliberately excludes `>`, `)` and whitespace, so a match stops at the
+delimiter Google wrapped it in rather than running to the end of the document.
+"""
+
+
+def without_image_data(text: str, *, limit: int = 512) -> tuple[str, int]:
+    """Exported Markdown with its inlined image payloads replaced by a note (**F4**).
+
+    `_document_path` explains why a Doc is exported as Markdown: the headings survive, and
+    structure inference reads headings. What **D56** did not consider is that the *images*
+    survive too, as `data:` URIs, and they are enormous. One real costume-reference document
+    exported to 1,099,064 characters of which some 2,300 were prose — 65% of that whole
+    corpus was three PNGs.
+
+    That is not a cosmetic problem. It would be a quarter of a million tokens of base64 sent
+    to a model for no possible return; a single blank-line section (**D27**) larger than any
+    window the pipeline reads in; and a region of stored text that can never carry a
+    quotation, in a project where Invariant 3 says evidence verifies or it does not ship.
+
+    **The payload is replaced rather than deleted**, because a document that says an image was
+    here is more honest than one that quietly has fewer words than its author wrote. Google
+    exports images as reference definitions — `![][image1]` in the body, `[image1]: <data:…>`
+    at the foot — so the body's marker survives untouched and only the definition changes:
+
+        [image1]: <image/png omitted by Dramatis, 314,531 bytes of base64>
+
+    The byte count is kept deliberately. Swapping one image for another still changes the
+    text, so **D32** still calls it a new document and **4.15**'s revision chain still reports
+    it as `changed`, which is true: the document did change.
+
+    ``limit`` is the shortest payload worth removing. A tiny inline icon costs nothing to
+    keep, and leaving it means a document is not rewritten for no reason.
+    """
+    removed = 0
+
+    def replace(match: re.Match[str]) -> str:
+        nonlocal removed
+        media, payload = match.group(1), match.group(2)
+        if len(payload) < limit:
+            return match.group(0)
+        removed += 1
+        return f"{media} omitted by Dramatis, {len(payload):,} bytes of base64"
+
+    return DATA_URI.sub(replace, text), removed
 
 
 def _suffix_of(name: str) -> str:

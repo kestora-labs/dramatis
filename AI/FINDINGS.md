@@ -260,3 +260,24 @@ server's own reported `num_ctx` rather than the token count — is the actual wo
 
 Worth doing before anybody trusts a local run of a long corpus, because today the guarantee is
 "we asked for enough" rather than "it read it all".
+
+### W10 — `analyse` cannot raise the timeout the error message tells you to raise
+
+`OllamaProvider` defaults to a ten-minute per-call timeout and, when it expires, says:
+
+> Ollama at http://127.0.0.1:11434 did not answer within 600s. A local model on modest
+> hardware can be slow; raise the timeout or use a smaller model.
+
+There is no way to raise it. `analyse` exposes `--provider`, `--host`, `--model` and
+`--effort`; the timeout is a constructor argument no command line reaches. The advice is
+sound and unfollowable.
+
+**Felt on a real machine.** Measured throughput on CPU-only inference was ~31 tokens/second of
+prompt evaluation, which puts a 12,000-character extraction window at roughly four to nine
+minutes — either side of the ten-minute default depending on how much the model writes back.
+A run of six windows can therefore fail on the fourth for no reason but arithmetic, and the
+only remedy today is to drive `pipeline.analyse` from Python with a provider built by hand.
+
+A `--timeout` flag is the whole fix. It is listed here rather than done because it is not the
+defect the session was chasing, and because the more interesting question is whether the
+default should scale with the window size instead of being a constant.

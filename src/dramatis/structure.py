@@ -52,7 +52,7 @@ from dramatis.providers import ModelRequest, Provider, ProviderError
 from dramatis.reanchor import Anchor, reanchor
 from dramatis.segmentation import DEFAULT_SEGMENT_TYPE
 from dramatis.sources import Reading, Source, as_source
-from dramatis.store import NARRATIVE, REFERENCE, utc_now
+from dramatis.store import EXCLUDED, MAP_ROLES, NARRATIVE, REFERENCE, utc_now
 from dramatis.text import normalise_whitespace
 
 PROMPT_PACKAGE = "dramatis.prompts"
@@ -587,10 +587,12 @@ def confirm(structure: StructureMap, corrections: Mapping[str, str] | None = Non
             "nothing to correct there"
         )
 
-    wrong = {path: role for path, role in corrections.items() if role not in (NARRATIVE, REFERENCE)}
+    wrong = {path: role for path, role in corrections.items() if role not in MAP_ROLES}
     if wrong:
         path, role = next(iter(wrong.items()))
-        raise StructureError(f"{path}: {role!r} is not a role; use {NARRATIVE} or {REFERENCE}")
+        raise StructureError(
+            f"{path}: {role!r} is not a role; use {', '.join(MAP_ROLES[:-1])} or {MAP_ROLES[-1]}"
+        )
 
     unknown = [
         plan.path
@@ -600,8 +602,8 @@ def confirm(structure: StructureMap, corrections: Mapping[str, str] | None = Non
     if unknown:
         raise StructureError(
             f"{len(unknown)} document(s) have no role yet, starting with {unknown[0]}. "
-            f"Set each to '{NARRATIVE}' or '{REFERENCE}' before confirming - a saved "
-            "'unknown' would never be asked about again."
+            f"Set each to '{NARRATIVE}', '{REFERENCE}' or '{EXCLUDED}' before confirming - a "
+            "saved 'unknown' would never be asked about again."
         )
 
     documents = []

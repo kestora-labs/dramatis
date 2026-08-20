@@ -253,6 +253,11 @@ def ingest_file(
     # excluded, its text never enters the store, so it never reaches extraction (4.11).
     source_root = FileSystemSource(path).root
     plan = store.structure_map(source_root).get(path.name, {})
+    if (plan.get("role") or {}).get("value") == EXCLUDED:
+        raise IngestError(
+            f"{path.name} is marked as no part of the work, and it is the whole corpus, so "
+            "there would be nothing left to study."
+        )
     kept, exclusion_note = kept_text(text, plan)
     if exclusion_note:
         # A confirmed exclusion that cannot be applied is refused, not ignored: keeping the
@@ -353,6 +358,15 @@ class FolderIngestResult:
     excluded: tuple[str, ...] = ()
     """Documents a confirmed region was dropped from before storing (**4.11**)."""
 
+    omitted: tuple[str, ...] = ()
+    """Documents left out of the revision entirely, being no part of the work (**W1**).
+
+    Three different things, kept apart because conflating them would lose the distinction a
+    person needs: ``skipped`` is a document the source could not read, ``excluded`` is a
+    document that *is* in the revision with a span of it removed, and this one was read,
+    understood, and deliberately not kept.
+    """
+
     @property
     def characters(self) -> int:
         return sum(document.characters for document in self.documents)
@@ -376,12 +390,14 @@ class FolderIngestResult:
         excluded = (
             f"\n  {len(self.excluded)} had a confirmed region excluded" if self.excluded else ""
         )
+        omitted = f"\n  {len(self.omitted)} left out as no part of the work" if self.omitted else ""
         return (
             f"{state}: {self.revision_id} ({len(self.documents)} documents, "
             f"{self.characters:,} characters, sha256 {self.sha256[:12]}...)"
             + (f"\n  {counts}" if counts else "")
             + confirmed
             + excluded
+            + omitted
         )
 
 
@@ -515,6 +531,21 @@ def ingest_source(
     }
     roles = {relative: confirmed.get(relative) or role for relative, _ in readable}
 
+    # A document somebody confirmed as `excluded` is no part of the work, and is left out of
+    # the revision entirely (**W1**) — a production spec, a to-do list, a style guide, a sheet
+    # of image prompts. Dropped here rather than stored and filtered later, for **D47**'s
+    # reason: exclusion is a configuration a person set, not a behaviour every later stage has
+    # to remember, and text that is never stored can never reach a model.
+    omitted = tuple(sorted(path for path, kept in roles.items() if kept == EXCLUDED))
+    if omitted:
+        readable = [(path, text) for path, text in readable if roles[path] != EXCLUDED]
+        roles = {path: kept for path, kept in roles.items() if kept != EXCLUDED}
+    if not readable:
+        raise IngestError(
+            f"every document in {source_root} is marked as no part of the work, so there "
+            "would be nothing left to study. Set at least one to narrative or reference."
+        )
+
     # A confirmed excluded region — a preface bound into a chapter file — is dropped before
     # the text is hashed or stored, so it never reaches extraction (4.11). Refused, not
     # ignored, when its boundary cannot be found, for the reason `ingest_file` gives.
@@ -603,4 +634,5 @@ def ingest_source(
         compared_with=previous_id,
         confirmed=tuple(sorted(relative for relative in roles if relative in confirmed)),
         excluded=tuple(sorted(excluded_paths)),
+        omitted=omitted,
     )

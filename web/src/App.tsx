@@ -956,7 +956,7 @@ function CreateProject({ onCreated }: { onCreated: () => void }) {
               <li key={document.path}>
                 <span className="change-subject">{document.path}</span>
                 <span className="change-detail">
-                  {(["narrative", "reference"] as Role[]).map((role) => (
+                  {(["narrative", "reference", "excluded"] as Role[]).map((role) => (
                     <button
                       key={role}
                       type="button"
@@ -966,14 +966,18 @@ function CreateProject({ onCreated }: { onCreated: () => void }) {
                       {role}
                     </button>
                   ))}
-                  <input
-                    type="text"
-                    value={choices[document.path]?.excludeBefore ?? ""}
-                    placeholder="drop everything before this line (optional)"
-                    onChange={(event) =>
-                      setChoice(document.path, { excludeBefore: event.target.value })
-                    }
-                  />
+                  {/* A document that is no part of the work has no narrative to begin, so
+                      asking where its narrative begins would be asking about nothing. */}
+                  {choices[document.path]?.role !== "excluded" && (
+                    <input
+                      type="text"
+                      value={choices[document.path]?.excludeBefore ?? ""}
+                      placeholder="drop everything before this line (optional)"
+                      onChange={(event) =>
+                        setChoice(document.path, { excludeBefore: event.target.value })
+                      }
+                    />
+                  )}
                 </span>
               </li>
             ))}

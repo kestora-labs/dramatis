@@ -100,6 +100,54 @@ class TestLookingCostsNothing:
         assert main(["structure", str(tmp_path / "absent")]) == 1
         assert "no such file or folder" in capsys.readouterr().err
 
+    def test_a_document_can_be_confirmed_as_no_part_of_the_work(
+        self, corpus: Path, store_path: Path, capsys
+    ) -> None:
+        """**W1**, end to end at the command line.
+
+        A folder holds a file that is not the work — here the notes; in the corpus that found
+        this, a to-do roadmap and five sheets of image prompts. Saying so is a third answer to
+        the same question, and the ingest that follows leaves the document out entirely rather
+        than storing it as reference material nobody wanted read.
+        """
+        from dramatis.cli import main as run
+        from dramatis.ingest import ingest_folder
+
+        code = run(
+            [
+                "structure",
+                str(corpus),
+                "--store",
+                str(store_path),
+                "--set",
+                "book.md=narrative",
+                "--set",
+                "notes.md=excluded",
+                "--confirm",
+            ]
+        )
+        assert code == 0
+
+        with Store(store_path) as store:
+            assert store.structure_map(str(corpus.resolve()))["notes.md"]["role"]["value"] == (
+                "excluded"
+            )
+            result = ingest_folder(store, corpus, work_title="W")
+
+        assert [entry.path for entry in result.documents] == ["book.md"]
+        assert result.omitted == ("notes.md",)
+
+    def test_a_role_that_is_not_one_still_names_the_three_that_are(
+        self, corpus: Path, store_path: Path, capsys
+    ) -> None:
+        code = main(
+            ["structure", str(corpus), "--store", str(store_path), "--set", "book.md=maybe"]
+        )
+
+        assert code == 1
+        error = capsys.readouterr().err
+        assert "narrative" in error and "reference" in error and "excluded" in error
+
     def test_a_single_file_is_a_corpus_of_one(self, corpus: Path, capsys) -> None:
         """The shape 4.11 made a structure-map root, which this command could not read.
 

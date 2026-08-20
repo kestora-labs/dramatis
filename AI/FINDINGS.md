@@ -119,22 +119,22 @@ format's incidental payload can dwarf the work.
 
 Ordered by how sharply each was felt, not by how likely it is to be built.
 
-### W1 — A way to say "this document is not part of the work"
+### W1 — A way to say "this document is not part of the work" — *built*
 
-A document's role is `narrative` or `reference`, and there is no third answer. Only *regions*
-may be `excluded` (**4.11**), so excluding a whole document means confirming a region that
-happens to cover it — which `--set` cannot express, since it takes a role and validates it
-against those two.
+A document's role was `narrative` or `reference` with no third answer, and the first two real
+corpora both held files that were neither: a to-do roadmap, a script format spec, a production
+pipeline spec, a style canon, and five sheets of image-generation prompts.
 
-**Felt immediately.** The first real corpus holds five image-generation prompt files —
-`Susie_Swell_Victory_Maid_LoRA_Prompt_List_v5.md` and four `Victory_Maid_*_Prompt.md` — which
-describe how characters should *look to an image model*. They are not narrative and they are
-not a character bible. Classifying them as reference feeds prompt vocabulary into extraction;
-there is currently no way to leave them out short of not pointing Dramatis at the folder.
+`--set path=excluded` now says so, at the command line and in the browser flow, and ingest
+leaves the document out of the revision entirely rather than storing it as reference material
+nobody wanted read. The question this entry asked first — whether "not part of the work" is a
+role or a separate property — was answered *role*, for **D47**'s reason: what is excluded is
+not a third kind of document but the absence of one, so `documents.role` still takes exactly
+two values. See **D62**.
 
-The cheap version is `--set path=excluded`, storing a whole-document excluded region. The
-question worth answering first is whether "not part of the work" is a *role* or a separate
-property, because a document can be reference material and still be excluded from a run.
+**What it deliberately does not do**, and what this entry becomes: a document can be genuine
+reference material and still be something to leave out of *one particular run*. That is a
+per-run inclusion set — a different feature with a different lifetime — and it is not built.
 
 ### W2 — Disambiguate colliding paths instead of dropping one
 

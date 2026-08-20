@@ -140,6 +140,41 @@ describe("the map it saves", () => {
     expect(plan.regions[1].begins_with).toBe("It is a truth");
   });
 
+  it("lets a document be no part of the work at all", () => {
+    // W1: a file that is in the folder and is not the work — a to-do list, a production spec,
+    // a sheet of image prompts. Ingest leaves it out of the revision entirely.
+    const plans = plansFor(aStructure([aProposal()]), {
+      "novel.txt": { role: "excluded", excludeBefore: "" },
+    }) as Record<string, any>;
+
+    expect(plans["novel.txt"].role.value).toBe("excluded");
+    expect(plans["novel.txt"].role.settled).toBe(true);
+  });
+
+  it("does not ask where the narrative begins in a document that has none", () => {
+    // An excluded document with a boundary would be describing a narrative it has just said
+    // is not there, and would save two regions nothing will ever cut on.
+    const plans = plansFor(aStructure([aProposal()]), {
+      "novel.txt": { role: "excluded", excludeBefore: "It is a truth" },
+    }) as Record<string, any>;
+
+    expect(plans["novel.txt"].regions).toHaveLength(1);
+    expect(plans["novel.txt"].regions[0].label).toBe("whole document");
+  });
+
+  it("counts an excluded document as decided", () => {
+    // The flow may finish with one: saying a file is not the work is an answer, not the
+    // absence of one.
+    const structure = aStructure([aProposal(), aProposal({ path: "TODO.md" })]);
+    const choices: Record<string, Choice> = {
+      "novel.txt": { role: "narrative", excludeBefore: "" },
+      "TODO.md": { role: "excluded", excludeBefore: "" },
+    };
+
+    expect(undecided(structure, choices)).toEqual([]);
+    expect(isReady(structure, choices)).toBe(true);
+  });
+
   it("keeps a document whole when nothing is excluded", () => {
     const plans = plansFor(aStructure([aProposal()]), {
       "novel.txt": { role: "narrative", excludeBefore: "" },

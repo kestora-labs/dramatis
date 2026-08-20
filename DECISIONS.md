@@ -3530,3 +3530,73 @@ work itself caused, and anybody reading a diff across it should know why.
 
 *Reversible.* One function and one call site. Removing them returns exported Docs to whatever
 Google sends, base64 and all.
+
+---
+
+## D62 — A document may be no part of the work, and that is the absence of one rather than a third kind
+
+**Found in use, after 4.15** (**W1**). A document's role was `narrative` or `reference` and
+there was no third answer. Only *regions* could be `excluded` (**4.11**), so leaving a whole
+document out meant confirming a region that happened to cover it, which `--set` could not
+express.
+
+### What made it urgent
+
+A real Drive corpus of comic-book development held a to-do roadmap, a script format
+specification, a production pipeline specification, a style canon, and five sheets of
+image-generation prompts describing how characters should look to an *image* model. None of
+them is narrative. None of them is a character bible. Calling them reference material feeds
+production vocabulary into the cast, and the only alternative was not pointing Dramatis at the
+folder at all.
+
+### A role in the map, and not a role in the store
+
+**D47** kept `documents.role` at two values on the grounds that *an excluded region is not a
+kind of document but a span of one*. The same sentence settles this bullet: an excluded
+document is not a third kind of document either. It is the absence of one.
+
+So `EXCLUDED` joins `MAP_ROLES` — what a person may confirm — and stays out of
+`DOCUMENT_ROLES`, which is what the column accepts. Every document the store holds is
+narrative or reference, exactly as before; the excluded ones are not there to be asked about,
+and nothing downstream of ingest learns a third role or grows a filter.
+
+The mechanism is **D47**'s, one level up: the text is not stored, rather than stored and
+skipped by everything that reads it. Text that never enters the store can never reach a model,
+whatever a later stage forgets.
+
+### Three facts that had to stay apart
+
+An ingest now reports `skipped`, `excluded` and `omitted`, and collapsing any two of them
+would lose something a person needs:
+
+- **skipped** — the source could not read it. A PNG, a file that is not UTF-8.
+- **excluded** — it *is* in the revision, with a span of it removed. A preface, an appendix.
+- **omitted** — it was read, understood, and deliberately not kept.
+
+### What it changes, and two things it refuses
+
+Excluding a document changes the revision identifier, because it is a different corpus and two
+different studies must not share one. Excluding *every* document is refused — there would be
+nothing left to study — and so is excluding the single file that is the whole of a one-file
+corpus.
+
+### Both surfaces, because 4.9's point was confirming before spending
+
+`--set path=excluded` at the command line, and a third button in the browser flow. A document
+marked excluded there hides the "where does the narrative begin" box, since a document that is
+no part of the work has no narrative to begin — and `plansFor` drops any boundary already
+typed, rather than saving two regions describing a narrative it has just said is not there.
+
+### What was considered and not built
+
+**A separate `included` boolean**, orthogonal to the role. Rejected because it adds a second
+axis for a person to confirm and a second thing to get wrong, when *narrative*, *reference* and
+*no part of this* are three answers to one question: what is this document to the study?
+
+That does leave a real thing unbuilt. A document can be genuine reference material and still be
+something a person wants left out of *one particular run* — a per-run inclusion set, which is a
+different feature with a different lifetime, and not this one. Nothing here forecloses it.
+
+*Reversible.* One value added to a tuple, one branch in `ingest_source`, one button. Removing
+them returns the map to two answers; a store that has never seen the third is unaffected, since
+nothing excluded was ever written to it.

@@ -64,14 +64,25 @@ what the database will accept. `structure` proposes these values, `ingest` recor
 """
 
 EXCLUDED = "excluded"
-"""A third value a *region* role can take, alongside the two document roles.
+"""A third value a role can take in a structure map, for a region or for a whole document.
 
-Not in ``DOCUMENT_ROLES`` and not a value the ``documents.role`` column will accept: an
-excluded region is not a kind of document but a span of one that ingest drops (**4.11**) — a
-critical preface, a transcriber's note, an appendix. It lives only in the structure map's
-JSON. It is here, beside the roles it stands with, so `structure` and `ingest` spell it the
-same way. A model never proposes it; throwing text away is a person's call.
+Not in ``DOCUMENT_ROLES``, and still not a value the ``documents.role`` column will ever
+accept — for the same reason in both cases: what is excluded is not *stored*. An excluded
+region is a span ingest drops (**4.11**); an excluded document is one ingest leaves out of the
+revision entirely (**W1**), which is how a person says a file in the folder is not part of the
+work — a production spec, a to-do list, a style guide, an image-prompt sheet.
+
+Not part of the work is not a *third kind of document*. It is the absence of one, which is why
+this stays out of `DOCUMENT_ROLES` rather than joining it: every document the store holds is
+narrative or reference, and the excluded ones are not there to be asked about.
+
+It lives only in the structure map's JSON, beside the roles it stands with so that `structure`
+and `ingest` spell it the same way. A model never proposes it; throwing text away is a person's
+call.
 """
+
+MAP_ROLES = (NARRATIVE, REFERENCE, EXCLUDED)
+"""Every role a person may confirm in a structure map, as opposed to store in a document."""
 
 SETTING_PREFIX = "setting:"
 """Namespace separating a project's settings from the store's own machinery.

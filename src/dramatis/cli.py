@@ -383,6 +383,7 @@ def _report_folder_ingest(args: argparse.Namespace, location, result) -> int:
                     for entry in result.documents
                 ],
                 "skipped": [{"path": path, "why": why} for path, why in result.skipped],
+                "omitted": list(result.omitted),
             },
             sys.stdout,
             indent=2,
@@ -411,6 +412,10 @@ def _report_folder_ingest(args: argparse.Namespace, location, result) -> int:
     # contaminate a pipeline reading stdout.
     for path, why in result.skipped:
         print(f"note: skipped {path}: {why}", file=sys.stderr)
+    # Said separately from a skip, because it is a different fact: nothing failed to be read,
+    # somebody said this file is not part of the work.
+    for path in result.omitted:
+        print(f"note: left out {path}: no part of the work", file=sys.stderr)
 
     return 0
 
@@ -1569,7 +1574,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--set",
         action="append",
         metavar="PATH=ROLE",
-        help="correct one document, as PATH=narrative or PATH=reference. Repeatable.",
+        help=(
+            "correct one document, as PATH=narrative, PATH=reference, or PATH=excluded "
+            "for a file that is in the folder but is no part of the work. Repeatable."
+        ),
     )
     structure.add_argument(
         "--confirm",

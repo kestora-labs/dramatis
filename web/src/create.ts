@@ -19,7 +19,13 @@
  * than some browser-only spelling of "skip this bit".
  */
 
-export type Role = "narrative" | "reference";
+/**
+ * What a person may say a document is. `excluded` means it is in the folder and is no part
+ * of the work — a production spec, a to-do list, a sheet of image prompts — and ingest
+ * leaves it out of the revision entirely rather than storing it as reference material
+ * nobody wanted read.
+ */
+export type Role = "narrative" | "reference" | "excluded";
 
 export interface ProposedRegion {
   label: string;
@@ -77,7 +83,7 @@ export function initialChoices(structure: ProposedStructure): Record<string, Cho
 }
 
 function isRole(value: string | null): boolean {
-  return value === "narrative" || value === "reference";
+  return value === "narrative" || value === "reference" || value === "excluded";
 }
 
 /** A boundary already confirmed for this document, so re-opening the flow keeps it. */
@@ -117,7 +123,7 @@ export function plansFor(
     if (!choice || !isRole(choice.role)) continue;
     const role = choice.role as Role;
     const confirmed = (value: string) => ({ value, basis: CONFIRMED, settled: true });
-    const boundary = choice.excludeBefore.trim();
+    const boundary = role === "excluded" ? "" : choice.excludeBefore.trim();
 
     const regions = boundary
       ? [

@@ -493,11 +493,12 @@ graph.
       *(The committed traffic is written to the API's documented shape rather than captured,
       since the credential flow that would capture it is **4.14**; the recorder and a live
       test are in place, and the file says which it is. See **D58**.)*
-- [ ] **4.14** — **Authentication, and `dramatis ingest` against a Drive folder.** An OAuth
+- [x] **4.14** — **Authentication, and `dramatis ingest` against a Drive folder.** An OAuth
       installed-app flow: the user brings a client secret, consents in a browser once, and
       the refresh token is cached outside the project file — a project store is a thing
       people send to each other, and a credential must not travel in one. Read-only scope.
       Refused unless the run names a Drive source, so a typo cannot reach the network.
+      *(See **D59**.)*
 - [ ] **4.15** — **Re-ingest over a Drive root**, so revisions work: a second ingest of the
       same folder picks up edited documents as a new text revision, and the structure map
       confirmed against that root is reused rather than asked again. This is what makes

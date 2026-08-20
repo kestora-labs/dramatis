@@ -47,6 +47,20 @@ ollama pull llama3.1
 dramatis analyse rev:abc123 --provider ollama
 ```
 
+If the corpus lives in a Google Drive folder rather than on disk, read it from where it is.
+Consent once, in a browser, to read-only access; the refresh token is cached in your
+configuration directory and never in the project file, which is a thing people send to each
+other:
+
+```bash
+dramatis authorise --client-secret ~/Downloads/client_secret_....json
+dramatis ingest --drive https://drive.google.com/drive/folders/<id> --work "My Novel"
+```
+
+Google Docs are exported as Markdown, so their headings survive; anything that cannot be read
+is named with its reason. `--drive` is the only thing that makes `ingest` reach a network — a
+path that happens to look like a Drive address is read as a path.
+
 Or start with nothing and build the project in the browser — point `serve` at a file that
 does not exist yet, open it, and choose a source, a role for each document, and any front
 matter to leave out:

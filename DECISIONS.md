@@ -3286,3 +3286,101 @@ where it lives"* is not yet met by evidence.
 *Reversible.* Nothing stored and no schema changed; the module is additive and nothing else
 imports it. Deleting `drive.py`, its tests and its traffic returns the project to a
 local-disk-only tool with **4.12**'s interface still in place.
+
+---
+
+## D59 — Consent is a command of its own, and --drive is the only thing that reaches a network
+
+**Phase 4.14.** **4.13** built a source that takes a bearer token. This obtains one, and it is
+the whole of what Dramatis knows about Google accounts.
+
+### The user brings the OAuth client, as they bring the model key
+
+Dramatis ships no client identifier, for the reason it ships no model keys: one published in
+an open-source repository is a shared secret with the whole internet, and the consent screen
+it drives would name a project the user has no control over. So `dramatis authorise
+--client-secret <file>` takes the JSON Google hands out for a **Desktop app**, and says so by
+name when handed a Web application client instead — which is the mistake anybody following a
+half-remembered tutorial makes first.
+
+### Consent is its own command, not a prompt inside `ingest`
+
+An ingest that opened a browser part way through would be a conversation, and this CLI is
+deliberately not one — the same reason **4.2** made `structure` take `--set` arguments rather
+than ask questions on stdin. `authorise` runs once; `ingest --drive` uses what it cached and,
+where there is none, names the command that makes one rather than trying to.
+
+`--status` and `--forget` come with it, and `--forget` says every time that it has stopped
+*this machine* using the grant and has not ended it at Google. Those are different things,
+the difference is not obvious, and a tool that let somebody believe it had revoked their
+access would be worse than one that never offered.
+
+### The refresh token is cached outside the project, and the test looks
+
+The bullet is specific: *a project store is a thing people send to each other, and a
+credential must not travel in one*. The cache is the user's own configuration directory -
+`%APPDATA%`, `~/Library/Application Support`, `$XDG_CONFIG_HOME` — overridable by
+`DRAMATIS_GOOGLE_CREDENTIAL`, and nothing in `store` can reach it.
+
+It is created through `os.open` with mode `0o600` rather than written and then `chmod`-ed:
+between those two calls the file exists and is readable by everybody on the machine, and a
+credential does not get a window like that. On Windows the mode is very nearly meaningless -
+`chmod` there sets a read-only flag and nothing more — so the sentence this module makes is
+*owner-only where the platform has permissions at all*, and the test asserts the mode only
+where there is one.
+
+The claim is checked by looking rather than by reasoning: a test ingests a Drive corpus into a
+real store and then greps the file for the refresh token and the client secret.
+
+### `--drive` is the only thing that reaches a network
+
+*Refused unless the run names a Drive source, so a typo cannot reach the network.* The
+obvious convenience would be to sniff the positional argument — if it parses as a Drive
+address, treat it as one. That is rejected. It would mean a mistyped path could send a folder
+name to Google, and worse, a person could not tell by reading a command whether it was about
+to reach out.
+
+So `ingest` takes a path *or* `--drive`, refuses both and refuses neither, and
+`gdrive:folder/<id>` typed as a path is a path — it fails as a missing file, and the failure
+message contains no invitation to authorise. The test proves it by replacing both real
+transports with something that raises if it is called at all, rather than by inspecting a spy
+that was merely not called.
+
+### One sign-in is not one exchange per request
+
+A walk of a large folder is hundreds of requests. `AccessToken` mints once and reuses until a
+minute before expiry, so a walk that starts with thirty seconds left on the clock does not
+fail half way through a folder, and one consent does not become a rate limit.
+
+### PKCE and `state`, because a loopback port is not private
+
+The browser comes back to `127.0.0.1` on a port the operating system chooses, and the listener
+is alive for exactly one exchange. `state` is checked, so a stray or forged redirect cannot
+finish somebody's sign-in for them. PKCE means an authorisation code seen by anything else on
+the machine is worthless without a verifier that never left the process.
+
+The address is printed as well as opened, because a browser cannot be opened over SSH and a
+flow that failed silently there would be unusable on exactly the machines corpora live on.
+
+### Two host allowlists, and a hole the tests found in one
+
+A client secret is the one genuinely dangerous thing this project sends anywhere, and the
+address it goes to arrives in a JSON file the user downloaded — a file that can be edited,
+mistyped, or swapped. So `auth_uri` and `token_uri` are checked against
+`accounts.google.com` and `oauth2.googleapis.com` before anything is posted.
+
+The first version checked only the *host*, and a test with `http://oauth2.googleapis.com`
+walked straight through it — putting a client secret on the wire in clear. The scheme is now
+checked too, and **4.13**'s `_send` had the same hole for the same reason, so it was closed
+there as well: `drive.py`'s own docstring claims the host is *checked rather than promised*,
+and a check that ignores the scheme is not the check it claims to be.
+
+### What was deliberately left out
+
+`dramatis structure --drive`. **4.15** wants a structure map confirmed against a Drive root
+reused rather than asked again, and confirming one from the command line would need that flag.
+It is not in this bullet, and 4.15 is where it is wanted, so it waits.
+
+*Reversible.* Additive: a new module, a new command, one flag, and no schema or stored data
+changed. Deleting `google_auth.py`, the `authorise` parser and the `--drive` branch returns
+`ingest` to exactly what it was.

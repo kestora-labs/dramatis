@@ -1,8 +1,10 @@
 """The ``dramatis`` command line interface.
 
 ``validate`` checks documents against the published schema and ``ingest`` reads a text into
-a project store. Neither requires a model or a network connection (Invariant 6), so both
-work offline and always will.
+a project store. Neither requires a model, and neither reaches a network unless ``ingest`` is
+given ``--drive`` — which is the only thing that makes it name a Drive source, and is never
+inferred from what a path looks like. ``authorise`` is the browser consent that flag needs,
+and it writes its credential outside every project.
 
 ``analyse`` calls a provider, and ``structure`` does too but only when asked with
 ``--ask``. Their provider imports are deferred so the other commands keep working when no
@@ -20,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -42,7 +45,7 @@ from dramatis.identity import IdentityError
 from dramatis.identity import describe as describe_decisions
 from dramatis.identity import merge as merge_characters
 from dramatis.identity import split as split_character
-from dramatis.ingest import ingest_file, ingest_folder
+from dramatis.ingest import ingest_file, ingest_folder, ingest_source
 from dramatis.locate import STORE_FILENAME, StoreNotFound, resolve_store
 from dramatis.providers import Provider, ProviderError
 from dramatis.review import STATUSES as REVIEW_STATUSES
@@ -377,6 +380,10 @@ def _report_folder_ingest(args: argparse.Namespace, location, result) -> int:
     print(result.summary)
     created = "" if location.exists else "  (new project)"
     print(f"  store       {location.path}{created}")
+    if getattr(args, "drive", None):
+        # The root, not the address that was typed: it is what a confirmed structure map is
+        # keyed by, and the two spellings are not the same string.
+        print(f"  source      {_drive_root(args.drive)}")
     print(f"  collection  {result.collection_id}")
     print(f"  work        {result.work_id}")
     print(f"  revision    {result.revision_id}")
@@ -395,20 +402,141 @@ def _report_folder_ingest(args: argparse.Namespace, location, result) -> int:
     return 0
 
 
+def _drive_root(address: str) -> str:
+    from dramatis.drive import folder_id, root_of
+
+    return root_of(folder_id(address))
+
+
+def _drive_source(address: str):
+    """A Drive source with whatever credential this machine has cached (**4.14**).
+
+    Built here rather than in `ingest` because this is the seam where "the run named a Drive
+    source" is decided, and nothing below it may make that decision on a path's behalf.
+    """
+    from dramatis.drive import DriveSource
+    from dramatis.google_auth import drive_credentials
+
+    # The folder is parsed first, so a mistyped address is a message rather than a reason to
+    # go looking for a credential and then fail about the credential instead.
+    source = DriveSource(address)
+    return DriveSource(source.folder, credentials=drive_credentials())
+
+
+REVOKE_URL = "https://myaccount.google.com/permissions"
+
+
+def _run_authorise(args: argparse.Namespace) -> int:
+    """Consent once to read Google Drive, and say where the answer was put (**4.14**).
+
+    Nothing here touches a project. The credential is written to the user's own configuration
+    directory precisely because a project store is a thing people send to each other, and a
+    refresh token must not travel in one.
+    """
+    from dramatis.google_auth import (
+        CLIENT_SECRET_ENV,
+        AuthError,
+        ClientSecret,
+        authorise,
+        credential_path,
+        forget_credential,
+        load_credential,
+        save_credential,
+    )
+
+    where = credential_path()
+
+    if args.forget:
+        forgotten = forget_credential(where)
+        had = "forgot the Google credential at" if forgotten else "no Google credential at"
+        print(f"{had} {where}")
+        # Said every time, because the difference matters and is not obvious: deleting a
+        # cached token stops this machine using the grant and does not end it at Google.
+        print(
+            f"note: the grant itself is still live. End it at {REVOKE_URL}.",
+            file=sys.stderr,
+        )
+        return 0
+
+    if args.status:
+        try:
+            credential = load_credential(where)
+        except AuthError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 1
+        print(f"authorised: {where}")
+        print(f"  scope     {credential.scope}")
+        print(f"  client    {credential.client_id}")
+        print(f"  obtained  {credential.obtained_at or '(unrecorded)'}")
+        return 0
+
+    secret_path = args.client_secret or os.environ.get(CLIENT_SECRET_ENV)
+    if not secret_path:
+        print(
+            "error: no client secret. Dramatis ships no OAuth client of its own — a client "
+            "identifier published in an open-source repository is a shared secret with the "
+            "whole internet — so create one of type Desktop app in your own Google Cloud "
+            "project, download its JSON, and pass it with --client-secret.",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        credential = authorise(ClientSecret.load(secret_path))
+        saved = save_credential(credential, where)
+    except AuthError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        # Somebody walked away from a consent screen. 130 is the conventional exit for an
+        # interrupt, and the sentence says what was not written rather than what was.
+        print(file=sys.stderr)
+        print("aborted; nothing was written.", file=sys.stderr)
+        return 130
+
+    print(f"authorised: {saved}")
+    print(f"  scope     {credential.scope}")
+    print()
+    print("this file is not part of any project. Ingest a folder with:")
+    print("  dramatis ingest --drive https://drive.google.com/drive/folders/<id>")
+    return 0
+
+
 def _run_ingest(args: argparse.Namespace) -> int:
+    if bool(args.path) == bool(args.drive):
+        which = "both a path and --drive" if args.path else "neither a path nor --drive"
+        print(f"error: name one corpus to read; this named {which}.", file=sys.stderr)
+        return 2
+
     location = resolve_store(args.store)
     collectives = _collectives_setting(args, location)
-    # A folder and a file are one command, because which one a draft is kept in is a fact
-    # about the writer's habits rather than a decision the user should have to spell out.
-    folder = Path(args.path).is_dir()
+
+    # Whether this run reaches a network is decided *here*, by whether --drive was given, and
+    # never by what the positional argument looks like. A path that happens to read like a
+    # Drive address is a path: sniffing it would mean a typo could send somebody's folder
+    # name to Google, which is exactly what 4.14 says must not be possible.
+    corpus: Any
+    if args.drive:
+        try:
+            corpus = _drive_source(args.drive)
+        except IngestError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 1
+        folder = True
+    else:
+        # A folder and a file are one command, because which one a draft is kept in is a fact
+        # about the writer's habits rather than a decision the user should have to spell out.
+        corpus = args.path
+        folder = Path(args.path).is_dir()
+
     try:
         with Store(location.path) as store:
             if collectives is not None and location.exists:
                 _warn_if_changing_collectives(store, collectives)
-            ingest = ingest_folder if folder else ingest_file
+            ingest = ingest_source if args.drive else (ingest_folder if folder else ingest_file)
             result = ingest(
                 store,
-                args.path,
+                corpus,
                 work_title=args.work,
                 collection_name=args.collection,
                 creator=args.creator,
@@ -1446,16 +1574,59 @@ def _build_parser() -> argparse.ArgumentParser:
     structure.add_argument("--json", dest="as_json", action="store_true", help="machine-readable")
     structure.set_defaults(handler=_run_structure)
 
+    authorise = subcommands.add_parser(
+        "authorise",
+        help="consent once to read Google Drive folders",
+        description=(
+            "Ask Google, in a browser, for read-only access to Drive, and cache the grant "
+            "outside any project. Bring your own OAuth client of type Desktop "
+            "app: Dramatis ships none, because a client identifier published in an "
+            "open-source repository is a shared secret with the whole internet. The "
+            "credential is written to your configuration directory and never into a project "
+            "store, which is a file people send to each other."
+        ),
+    )
+    authorise.add_argument(
+        "--client-secret",
+        metavar="FILE",
+        help=(
+            "the client_secret JSON downloaded from the Google Cloud console "
+            "(or set DRAMATIS_GOOGLE_CLIENT_SECRET)"
+        ),
+    )
+    authorise.add_argument(
+        "--status",
+        action="store_true",
+        help="say whether this machine is authorised, and where the credential is",
+    )
+    authorise.add_argument(
+        "--forget",
+        action="store_true",
+        help="delete the cached credential from this machine (does not revoke it at Google)",
+    )
+    authorise.set_defaults(handler=_run_authorise)
+
     ingest = subcommands.add_parser(
         "ingest",
         help="read a text into a project store",
         description=(
             "Read a plain-text file, hash it, and record it as a text revision. Ingesting "
             "the same content twice is a no-op: the revision identifier is derived from the "
-            "content hash, so identical text always yields the same revision."
+            "content hash, so identical text always yields the same revision. "
+            "With --drive, the corpus is read from a Google Drive folder instead; that flag "
+            "is the only thing that makes this command reach a network, and a path is never "
+            "inspected to see whether it might be one."
         ),
     )
-    ingest.add_argument("path", type=Path, metavar="FILE|FOLDER")
+    ingest.add_argument("path", type=Path, metavar="FILE|FOLDER", nargs="?")
+    ingest.add_argument(
+        "--drive",
+        metavar="FOLDER",
+        help=(
+            "a Google Drive folder address or identifier, instead of a local path. Needs "
+            "`dramatis authorise` to have been run once."
+        ),
+    )
     ingest.add_argument("--store", default=None, help=STORE_HELP)
     ingest.add_argument("--work", help="work title (default: derived from the filename)")
     ingest.add_argument("--collection", help="collection name (default: the work title)")

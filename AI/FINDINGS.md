@@ -150,6 +150,64 @@ read less than it was given. It is not done here because Ollama also reports a l
 it reuses a cached prefix, and a check that cries wolf on every second call is worse than none.
 Worth solving properly — see **W9**.
 
+### F6 — Resolution left two nodes joined by an alias it already held
+
+The first full-corpus run produced `Der Würfel` and `Julius Weber` as two separate characters,
+six edges and three edges respectively. They are one person, and **the equivalence was already
+in the data**: `Der Würfel`'s own alias list contains the string
+
+```
+"Der Würfel/Julius Weber"
+```
+
+So resolution recorded a surface form that names both identities and did not treat it as a
+claim that the two are the same. A slash-joined form like this is exactly how the corpus writes
+a codename against a legal name — `RESI BRANDMEIER / WUNDERFRAU`, `GIOCONDA VALLERANI / LA
+STREGA SUPERIORE` — and in those two cases resolution *did* merge, which is what makes this one
+a miss rather than a policy.
+
+**Found on real data, and it is the interesting kind of miss**: not a hallucination, not a
+verification failure, but a correct extraction whose implication was not followed. The pair
+was already visible from the scripts-only run of the same corpus, where the split was expected
+because the reference material naming the equivalence had been excluded — it survived adding
+the reference material back, which is what makes it a defect.
+
+Worth attention before **7.7**, which is the bullet about what counts as a name: a form
+containing a separator and two known surface forms is arguably not one alias but two, and
+saying so is a resolution rule rather than a prompt change.
+
+**Corrected by hand, which is what 5.3 is for.** `dramatis merge char:der-wurfel --into
+char:julius-weber` moved the surface forms across and retired the absorbed node; the legal name
+survives, matching how the rest of the registry reads (`Resi Brandmeier`, `Fulvia Valli`,
+`Odette Fabron`). The mechanism behaved as **D52** describes: the snapshot was not rewritten
+and still holds both identifiers, the retired row is kept so an old identifier still traces,
+and the *next* analysis will resolve all five forms to one character. So this entry stays open
+— the defect is that resolution needed correcting, not that correcting it was hard.
+
+### F7 — A three-way scene is discarded rather than decomposed
+
+The full-corpus run reported ten extractions thrown away:
+
+```
+  6  discarded an interaction with 3 participant(s); an interaction joins exactly two
+  4  discarded a relationship with 3 participant(s); a relationship joins exactly two
+```
+
+The model found a scene involving three people, said so, and the pipeline dropped the whole
+observation because a relation is a pair. Nothing wrong is recorded — the message is clear and
+goes on screen — but the evidence is lost rather than reduced.
+
+**Not obviously a defect, which is why it is recorded rather than fixed.** A three-way
+interaction could be decomposed into three pairs, and that would be wrong for some shapes: "A
+tells B about C" is not evidence that B and C ever met, and a graph that says it does is worse
+than a graph missing an edge. But "A, B and C argue in a room" plainly is three pairs, and
+losing it is a real cost — a comic-book ensemble is mostly three-way scenes.
+
+Deciding needs the extraction prompt to distinguish *joint presence* from *mention*, which is a
+prompt question and therefore **7**'s business, not something to settle by loosening the
+validator. Ten discards in fifty calls on a script-heavy corpus is the measurement to argue
+from.
+
 ---
 
 ## Wishes

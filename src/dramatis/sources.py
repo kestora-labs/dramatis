@@ -106,6 +106,16 @@ class Reading:
     skipped: tuple[tuple[str, str], ...] = ()
     """(path, why), so a document left out of the revision is a thing the user is told."""
 
+    label: str | None = None
+    """What the source calls this corpus, where it has a name distinct from its root.
+
+    A folder's root already ends in its own name, so the filesystem leaves this alone. A
+    Drive root ends in an identifier, and `1rootFOLDERid` is a poor title for somebody's
+    novel — the folder's name is on the wire already, so it is carried rather than fetched.
+    Never an identity: **4.15** keys a work to the *root*, precisely so that renaming a
+    folder changes what it is called and not which corpus it is.
+    """
+
     @property
     def texts(self) -> dict[str, str]:
         """The documents keyed by path, for the callers that want them that way."""

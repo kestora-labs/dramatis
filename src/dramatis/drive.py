@@ -210,7 +210,7 @@ class DriveSource:
         half of a corpus that happened to answer is worse than no revision at all. The whole
         tree is walked before any document is read, for that reason.
         """
-        self._require_folder()
+        label = self._require_folder()
 
         # Sorted before anything is read, and by identifier as well as path. The order decides
         # the revision hash and the order Drive returns pages in is not a promise — and where
@@ -239,16 +239,20 @@ class DriveSource:
                 skipped.append((entry.path, str(error)))
 
         skipped.sort(key=lambda pair: pair[0])
-        return Reading(documents=tuple(documents), skipped=tuple(skipped))
+        return Reading(documents=tuple(documents), skipped=tuple(skipped), label=label or None)
 
     # -- walking ------------------------------------------------------------------------
 
-    def _require_folder(self) -> None:
+    def _require_folder(self) -> str:
         """Fail on a folder that is not there, rather than returning an empty corpus.
 
         `files.list` answers a query about a nonexistent parent with an empty list, so without
         this a mistyped identifier reads as a folder holding nothing — and the message a user
         would get is about their corpus being empty rather than about their typo.
+
+        Returns the folder's name, which the same reply already carries. It becomes the
+        `Reading`'s label and so the default title of the work, because an identifier is a
+        poor name for somebody's novel and this costs no second request.
         """
         payload = self._json(f"/files/{self.identifier}", {"fields": "id,name,mimeType"})
         if payload.get("mimeType") != FOLDER_MIME:
@@ -256,6 +260,7 @@ class DriveSource:
                 f"{self.root} is not a folder; it is {payload.get('mimeType', 'something else')}. "
                 "Name the folder holding the corpus."
             )
+        return str(payload.get("name") or "")
 
     def _walk(self) -> Iterable[Entry]:
         """Every document under the root, folders expanded in place."""

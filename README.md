@@ -61,6 +61,12 @@ Google Docs are exported as Markdown, so their headings survive; anything that c
 is named with its reason. `--drive` is the only thing that makes `ingest` reach a network — a
 path that happens to look like a Drive address is read as a path.
 
+Ingest the same folder again after editing it and you get a second revision of the same work,
+with each document reported as added, changed or unchanged — even if the folder was renamed in
+Drive meanwhile, because a corpus is identified by where it is and not by what it is called.
+`dramatis structure --drive <folder>` settles what each document is, once; later ingests reuse
+that answer rather than asking again.
+
 Or start with nothing and build the project in the browser — point `serve` at a file that
 does not exist yet, open it, and choose a source, a role for each document, and any front
 matter to leave out:

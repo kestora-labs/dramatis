@@ -3384,3 +3384,76 @@ It is not in this bullet, and 4.15 is where it is wanted, so it waits.
 *Reversible.* Additive: a new module, a new command, one flag, and no schema or stored data
 changed. Deleting `google_auth.py`, the `authorise` parser and the `--drive` branch returns
 `ingest` to exactly what it was.
+
+---
+
+## D60 — A corpus is identified by where it came from, not by what it is called
+
+**Phase 4.15**, which closes the four bullets **D56** reopened phase 4 for.
+
+### The half that already worked, and the half that could not
+
+*A second ingest of the same folder picks up edited documents as a new text revision.*
+Measured before building anything: that already worked, because per-document tracking is
+defined on `(path, text)` pairs and **4.12** put every source on those. What did not work was
+the sentence after it — *the structure map confirmed against that root is reused rather than
+asked again* — because a map could be **stored** against a Drive root since **4.13** and there
+was no way to **confirm** one. `dramatis structure` took a local path. It takes `--drive` now,
+on exactly the terms `ingest` does (**D59**): that flag is the only thing that makes the
+command reach a network, and a path is never inspected to see whether it might be one.
+
+`--forget` was quietly wrong for the same reason. It resolved its argument as a filesystem
+path, so forgetting a Drive folder's map keyed the deletion against a directory nobody had
+ever saved a map under, and reported success. It asks the source for its root now, like
+everything else.
+
+### A work is keyed to its root, because a title is a guess about identity
+
+The first half worked *by accident*, and the accident was ugly. A work is identified by its
+title, and a Drive root's last component is a folder identifier, so re-ingesting worked only
+because `1rootFOLDERid` is a stable — and appalling — name for somebody's novel. Name the work
+properly with `--work` and forget the flag on the second run, and Dramatis minted a *second
+work* with no revision chain between them, silently. So did renaming the folder in Drive,
+once the title came from the folder's name.
+
+`works.source_root` records where a corpus was read from, and a second ingest of that root
+reuses the work it found there. A nullable column and one entry in `ADDED_COLUMNS`, which is
+the whole migration — a project file made last month opens, matches nothing, and reads as a
+corpus nobody has seen, which is what a nullable column is for. It applies to every source, so
+a local folder is keyed the same way.
+
+That change is what makes the folder's *name* safe to use as the default title, so the flagship
+Drive flow stops naming a novel after a base64 identifier. The name costs no request: the reply
+that proves the root is a folder already carries it. It travels as `Reading.label`, an optional
+field, and it is deliberately **not** identity — renaming a folder changes what a corpus is
+called and not which corpus it is, which is the whole point.
+
+### The evidence: two traffic files that differ in exactly two places
+
+The pair is the argument. `drive-folder-edited.json` is derived from `drive-folder.json` by a
+script that changes two bodies and nothing else — one Google Doc's exported text, and the
+folder's name — so every address is identical, because it is the same folder read later rather
+than a different folder. One work, two revisions, one document reported `changed` and four
+`unchanged`.
+
+### What is proven about the diff, and what is not
+
+The bullet's purpose is *"what makes 3.x's diff and 5.4's continuity report usable on a corpus
+nobody ever downloads"*. A full continuity report checks a **reading** against the text, so it
+needs a snapshot and therefore a provider, which this suite does not have. What it does on top
+of that snapshot is compare the documents of two revisions by path, and that half is
+model-free. So the test exercises `continuity`'s own machinery over two Drive-borne revisions
+rather than asserting a report nothing here could produce.
+
+### Phase 4's acceptance, and the caveat it still carries
+
+*"A corpus held in a cloud drive is ingested from where it lives, with Google Docs read as text
+and nothing downloaded by hand; re-ingesting it produces a second revision the diff runs
+across."* Every clause of that is now built and tested — **against traffic written to the
+Drive v3 contract rather than captured from a live account**, which is **D58**'s open caveat
+and is not closed by this bullet. **4.14** built the credential flow that makes re-recording
+possible; doing it needs somebody with a Google account, a folder, and five minutes. Until
+then the phase is complete in code and its cloud half is unverified against the real API.
+
+*Reversible.* One nullable column, one optional field on `Reading`, one flag. Dropping them
+returns identity to the title and `structure` to local paths.

@@ -1,0 +1,73 @@
+{
+  "traffic_version": 1,
+  "recorded": false,
+  "note": "The same Google Drive folder as drive-folder.json, read again after one Google Doc was edited and the folder itself was renamed. WRITTEN TO THE DOCUMENTED SHAPE OF THE API, NOT CAPTURED FROM A LIVE ACCOUNT: `recorded` is false, exactly as its pair is. Every address is identical to the first reading, because it is the same folder.",
+  "exchanges": [
+    {
+      "method": "GET",
+      "url": "https://www.googleapis.com/drive/v3/files/1rootFOLDERid?fields=id%2Cname%2CmimeType",
+      "status": 200,
+      "body": "{\"id\": \"1rootFOLDERid\", \"name\": \"The Quorum (second draft)\", \"mimeType\": \"application/vnd.google-apps.folder\"}"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.googleapis.com/drive/v3/files/id-doc-appendix/export?mimeType=text%2Fmarkdown&supportsAllDrives=true",
+      "status": 200,
+      "body": "\n   \n"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.googleapis.com/drive/v3/files/id-doc-cast/export?mimeType=text%2Fmarkdown&supportsAllDrives=true",
+      "status": 200,
+      "body": "# The cast\n\nAda Mbeki chairs the Quorum. Tomas Reiner answers to her, and resents it.\n"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.googleapis.com/drive/v3/files/id-doc-chapter-01/export?mimeType=text%2Fmarkdown&supportsAllDrives=true",
+      "status": 200,
+      "body": "# Chapter 01\n\nAda met Tomas at the relay. She told him what she had come for, and he pretended not to have understood.\n"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.googleapis.com/drive/v3/files/id-doc-chapter-02/export?mimeType=text%2Fmarkdown&supportsAllDrives=true",
+      "status": 200,
+      "body": "# Chapter 02\n\nTomas filed the report Ada had asked for, and left out the part that mattered.\n"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.googleapis.com/drive/v3/files/id-doc-notes/export?mimeType=text%2Fmarkdown&supportsAllDrives=true",
+      "status": 200,
+      "body": "Ada Mbeki is Tomas Reiner's superior, and was once his student.\n"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.googleapis.com/drive/v3/files/id-doc-whole-novel/export?mimeType=text%2Fmarkdown&supportsAllDrives=true",
+      "status": 403,
+      "body": "{\"error\": {\"code\": 403, \"message\": \"This file is too large to be exported.\", \"errors\": [{\"domain\": \"global\", \"reason\": \"exportSizeLimitExceeded\", \"message\": \"This file is too large to be exported.\"}]}}"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.googleapis.com/drive/v3/files/id-file-readme?alt=media&supportsAllDrives=true",
+      "status": 200,
+      "body": "Drafts in progress. Nothing here is final.\n"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.googleapis.com/drive/v3/files?q=%271rootFOLDERid%27+in+parents+and+trashed+%3D+false&fields=nextPageToken%2Cfiles%28id%2Cname%2CmimeType%29&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true",
+      "status": 200,
+      "body": "{\"nextPageToken\": \"page-2\", \"files\": [{\"id\": \"id-doc-cast\", \"name\": \"cast\", \"mimeType\": \"application/vnd.google-apps.document\"}, {\"id\": \"id-doc-chapter-01\", \"name\": \"Chapter 01\", \"mimeType\": \"application/vnd.google-apps.document\"}, {\"id\": \"id-file-notes\", \"name\": \"notes.md\", \"mimeType\": \"text/markdown\"}, {\"id\": \"id-file-cover\", \"name\": \"cover.png\", \"mimeType\": \"image/png\"}, {\"id\": \"id-folder-drafts\", \"name\": \"drafts\", \"mimeType\": \"application/vnd.google-apps.folder\"}]}"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.googleapis.com/drive/v3/files?q=%271rootFOLDERid%27+in+parents+and+trashed+%3D+false&fields=nextPageToken%2Cfiles%28id%2Cname%2CmimeType%29&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true&pageToken=page-2",
+      "status": 200,
+      "body": "{\"files\": [{\"id\": \"id-sheet-ledger\", \"name\": \"Ledger\", \"mimeType\": \"application/vnd.google-apps.spreadsheet\"}, {\"id\": \"id-shortcut-ch3\", \"name\": \"Chapter 03\", \"mimeType\": \"application/vnd.google-apps.shortcut\"}, {\"id\": \"id-doc-appendix\", \"name\": \"Appendix\", \"mimeType\": \"application/vnd.google-apps.document\"}, {\"id\": \"id-doc-whole-novel\", \"name\": \"Whole Novel\", \"mimeType\": \"application/vnd.google-apps.document\"}, {\"id\": \"id-doc-notes\", \"name\": \"notes\", \"mimeType\": \"application/vnd.google-apps.document\"}]}"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.googleapis.com/drive/v3/files?q=%27id-folder-drafts%27+in+parents+and+trashed+%3D+false&fields=nextPageToken%2Cfiles%28id%2Cname%2CmimeType%29&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true",
+      "status": 200,
+      "body": "{\"files\": [{\"id\": \"id-doc-chapter-02\", \"name\": \"Chapter 02\", \"mimeType\": \"application/vnd.google-apps.document\"}, {\"id\": \"id-file-readme\", \"name\": \"readme.txt\", \"mimeType\": \"text/plain\"}]}"
+    }
+  ]
+}

@@ -150,6 +150,11 @@ def _role_of(region: Mapping[str, Any]) -> Any:
     return (region.get("role") or {}).get("value")
 
 
+def _titled(named: str) -> str:
+    """A filename or a folder name as a work's title, where nobody supplied one."""
+    return named.replace("_", " ").replace("-", " ").strip() or named
+
+
 @dataclass(frozen=True)
 class IngestResult:
     collection_id: str
@@ -246,7 +251,8 @@ def ingest_file(
     # here so that only one thing in the project decides what a root is. Absent a confirmed
     # map this is empty and nothing is dropped; where a preface region was confirmed
     # excluded, its text never enters the store, so it never reaches extraction (4.11).
-    plan = store.structure_map(FileSystemSource(path).root).get(path.name, {})
+    source_root = FileSystemSource(path).root
+    plan = store.structure_map(source_root).get(path.name, {})
     kept, exclusion_note = kept_text(text, plan)
     if exclusion_note:
         # A confirmed exclusion that cannot be applied is refused, not ignored: keeping the
@@ -276,6 +282,7 @@ def ingest_file(
         creator=creator,
         language=language,
         segment_types=[],
+        source_root=source_root,
     )
     store.upsert_document(
         Document(
@@ -471,15 +478,24 @@ def ingest_source(
     source = as_source(corpus)
     if reading is None:
         reading = source.read()
+    source_root = source.root
 
     if collectives_are_actors is not None:
         store.set_setting(COLLECTIVES_ARE_ACTORS, bool(collectives_are_actors))
 
-    # The last component of the root, which for a folder is the folder's name. A source that
-    # is not a filesystem should name the work itself rather than rely on this.
-    named = Path(source.root).name
-    title = work_title or named.replace("_", " ").replace("-", " ").strip() or named
-    work_id = ids.work_id(title)
+    # Which work this is, in order of how much the answer is worth trusting: what the caller
+    # said, then what this corpus was ingested into last time, then what the source calls
+    # itself, then the last component of the root.
+    #
+    # The middle one is **4.15**, and it is why a re-ingest adds a revision rather than
+    # minting a second work. A title is a poor answer to *is this the same corpus as last
+    # time*: a Drive folder can be renamed, and a title can simply not be typed twice. The
+    # root is stable through both.
+    previous = store.work_at(source_root)
+    named = reading.label or Path(source_root).name
+    title = work_title or str((previous or {}).get("title") or "") or _titled(named)
+    keep = previous is not None and not work_title
+    work_id = str(previous["id"]) if keep else ids.work_id(title)
     collection_id = _resolve_collection(store, work_id, collection_name, title)
 
     readable = list(reading.documents)
@@ -487,13 +503,13 @@ def ingest_source(
 
     if not readable:
         raise IngestError(
-            f"{source.root} holds no readable text files. Expected one of "
+            f"{source_root} holds no readable text files. Expected one of "
             f"{', '.join(sorted(TEXT_SUFFIXES))}."
         )
 
     # The shape read here is what `structure.as_json` writes. Read through the store rather
     # than by importing that module, which imports this one.
-    plans = store.structure_map(source.root)
+    plans = store.structure_map(source_root)
     confirmed = {
         relative: (entry.get("role") or {}).get("value") for relative, entry in plans.items()
     }
@@ -526,6 +542,7 @@ def ingest_source(
         creator=creator,
         language=language,
         segment_types=[],
+        source_root=source_root,
     )
 
     outcomes: list[FileOutcome] = []

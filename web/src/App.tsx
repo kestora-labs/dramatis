@@ -83,6 +83,7 @@ import {
   canRecord,
   decisionBody,
   indexReviews,
+  keyOf,
   reviewsUrl,
   statusFor,
   tally,
@@ -445,7 +446,7 @@ function CorrectionControl({
  * terms rather than single values, and run together in a definition list they read as one
  * run-on string.
  */
-function DetailPanel({
+export function DetailPanel({
   detail,
   selection,
   document_,
@@ -490,9 +491,11 @@ function DetailPanel({
 
       {review && (
         // Keyed on the subject so switching selection starts with a fresh reason box rather
-        // than carrying one claim's note across to the next.
+        // than carrying one claim's note across to the next. The name of the control is part
+        // of the key: these are siblings, and the subject alone would key both of them the
+        // same — see the note on the correction control below.
         <ReviewControl
-          key={`${review.kind} ${review.id}`}
+          key={`review ${keyOf(review.kind, review.id)}`}
           subject={review}
           viewing={reviewing}
           busy={reviewBusy}
@@ -503,8 +506,12 @@ function DetailPanel({
       {selection && (
         <CorrectionControl
           // Keyed on the subject, so switching selection starts a fresh form rather than
-          // carrying one claim's half-typed value across to the next.
-          key={`${selection.kind} ${selection.id}`}
+          // carrying one claim's half-typed value across to the next — and prefixed, because
+          // two siblings of a keyed list may not share a key. Both controls are about the
+          // same subject, so `${kind} ${id}` alone named both; React then kept the review
+          // control's DOM alive at every change of selection while replacing it, and the
+          // panel grew a review control per click. `App.test.tsx` holds this.
+          key={`correction ${keyOf(selection.kind, selection.id)}`}
           selection={selection}
           document_={document_}
           payload={corrections}

@@ -3600,3 +3600,59 @@ different feature with a different lifetime, and not this one. Nothing here fore
 *Reversible.* One value added to a tuple, one branch in `ingest_source`, one button. Removing
 them returns the map to two answers; a store that has never seen the third is unaffected, since
 nothing excluded was ever written to it.
+
+---
+
+## D63 — Two sibling controls may not share one key, and the client learns to render in a test
+
+**Found in use, after 5.2.** Clicking from one character to an edge to another character left
+the detail panel holding two review controls, then three, then four. `section.detail` stayed
+at one and `section.correction` stayed at one; only the review control accumulated, and only
+across a *change* of selection. Selecting a single subject after a fresh load was always
+correct.
+
+### The panel was right; React's bookkeeping was not
+
+Both controls are about the same subject, and both were keyed on it:
+
+```tsx
+<ReviewControl key={`${review.kind} ${review.id}`} … />
+<CorrectionControl key={`${selection.kind} ${selection.id}`} … />
+```
+
+`review` is fetched from `/api/snapshots/{id}/reviews` and `selection` is not, so the two look
+unrelated — but `statusFor` builds its subject *from* the selection, so `review.kind` and
+`review.id` are always the selection's. The two keys were the same string, on two siblings of
+one children array.
+
+React reconciles a keyed children array by building a map of the old children keyed on `key`,
+matching the new children against it, and deleting whatever is left over. With one key naming
+two fibers, the second overwrites the first in that map: the correction control was found and
+replaced, and the review control was never in the map to be found, never left over, and so
+never deleted. Its DOM outlived it, once per click. React says this out loud —
+*"non-unique keys may cause children to be duplicated and/or omitted"* — into a console
+nobody was reading.
+
+The fix is the key: `review …` and `correction …`. The subject still keys each control, which
+is what makes a change of selection start with an empty reason box rather than the last
+claim's note, and that behaviour is unchanged.
+
+### The client can now render in a test, because nothing else would have caught this
+
+Every rule the panel applies is decided in `detail.ts`, `review.ts` and `correction.ts` and
+tested there without a DOM — deliberately, and that stands. But this fault was not in what the
+panel decided to show. It was in what React did with the children when the decision changed,
+and no test of a pure function can see it.
+
+So `web/` gains **jsdom** and one rendering test, `App.test.tsx`, which mounts `DetailPanel`
+over a run of selections and counts the controls. It asserts across a *transition*: a single
+selection has never been wrong, and a test that renders one subject would have passed
+throughout. `DetailPanel` is exported for it, and that is the only production change the test
+asked for.
+
+This qualifies **D3**'s argument against carrying unused dependency trees rather than
+contradicting it. jsdom is a development dependency of a suite that had a real fault it could
+not express; the shipped bundle is unchanged.
+
+*Reversible.* The fix is two string literals. The test is one file and one `devDependencies`
+line, and deleting them returns the client to a suite with no DOM in it.

@@ -1,6 +1,6 @@
 /* Print styling for the Dramatis manual.
-   Built for Chrome's --print-to-pdf at A4. Screen rules are incidental; the page is the
-   target, so everything here is sized in millimetres and points where it matters. */
+   Built for Chrome's page.pdf at A4. Screen rules are incidental; the page is the target,
+   so everything here is sized in millimetres and points where it matters. */
 
 /* Page size and margins are supplied by the PDF renderer so that a running footer can be
    reserved; see build.mjs. */
@@ -38,6 +38,9 @@ body {
   text-rendering: optimizeLegibility;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
+  /* Chapter numbers are counted rather than typed. An edition that inserts five chapters
+     into the middle should not be able to get its own numbering wrong. */
+  counter-reset: chapter toc;
 }
 
 /* -- the cover ---------------------------------------------------------------------- */
@@ -67,10 +70,19 @@ body {
   margin: 4mm 0 0;
 }
 
+.cover .edition {
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 9pt;
+  letter-spacing: 1.8pt;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 14mm 0 0;
+}
+
 .cover .subtitle {
   font-size: 17pt;
   color: var(--ink-soft);
-  margin: 16mm 0 0;
+  margin: 3mm 0 0;
   line-height: 1.35;
   max-width: 120mm;
 }
@@ -144,10 +156,17 @@ h2 {
   border-bottom: 0.4mm solid var(--rule);
 }
 
-h2 .num {
+h2::before {
+  counter-increment: chapter;
+  content: counter(chapter) "\00a0\00a0";
   color: var(--accent);
   font-variant-numeric: tabular-nums;
-  margin-right: 2mm;
+}
+
+/* End matter is lettered, and does not disturb the chapter count. */
+h2.lettered::before {
+  counter-increment: none;
+  content: attr(data-mark) "\00a0\00a0";
 }
 
 h3 {
@@ -202,11 +221,15 @@ li {
   margin: 0 0 6mm;
 }
 
+.contents .columns {
+  columns: 2;
+  column-gap: 10mm;
+}
+
 .contents ol {
   list-style: none;
   padding: 0;
-  columns: 2;
-  column-gap: 10mm;
+  margin: 0;
 }
 
 .contents .toc-part {
@@ -228,13 +251,58 @@ li {
   font-size: 9.5pt;
   margin-bottom: 0.8mm;
   color: var(--ink-soft);
+  padding-left: 8mm;
+  text-indent: -8mm;
 }
 
-.contents li .n {
+.contents li::before {
+  counter-increment: toc;
+  content: counter(toc);
   display: inline-block;
   width: 8mm;
+  text-indent: 0;
   color: var(--ink-faint);
   font-variant-numeric: tabular-nums;
+}
+
+.contents li.lettered::before {
+  counter-increment: none;
+  content: attr(data-mark);
+}
+
+.contents li.fresh {
+  color: var(--ink);
+}
+
+.contents li.fresh::after {
+  content: "new";
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 6.5pt;
+  letter-spacing: 0.8pt;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 0.25mm solid var(--accent);
+  border-radius: 1mm;
+  padding: 0 1mm;
+  margin-left: 1.5mm;
+  vertical-align: 0.4mm;
+}
+
+/* -- what's new --------------------------------------------------------------------- */
+
+.whatsnew {
+  page-break-after: always;
+}
+
+.whatsnew h1 {
+  font-size: 20pt;
+  margin: 0 0 2mm;
+}
+
+.whatsnew .since {
+  font-size: 10pt;
+  color: var(--ink-faint);
+  margin-bottom: 6mm;
 }
 
 /* -- code --------------------------------------------------------------------------- */
@@ -292,12 +360,8 @@ pre .c {
   font-style: italic;
 }
 
-pre .p {
-  color: #f6ad55;
-}
-
-pre .o {
-  color: #90cdf4;
+pre.out .c {
+  color: #a0aec0;
 }
 
 /* -- figures ------------------------------------------------------------------------ */
@@ -447,6 +511,14 @@ table.glossary td:first-child {
   font-weight: 600;
 }
 
+table.long {
+  page-break-inside: auto;
+}
+
+table.long tr {
+  page-break-inside: avoid;
+}
+
 /* -- notes -------------------------------------------------------------------------- */
 
 .note,
@@ -462,7 +534,9 @@ table.glossary td:first-child {
 
 .note p:last-child,
 .caution p:last-child,
-.aside p:last-child {
+.aside p:last-child,
+.note ul:last-child,
+.caution ul:last-child {
   margin-bottom: 0;
 }
 
@@ -497,11 +571,6 @@ table.glossary td:first-child {
 }
 
 /* -- milestones --------------------------------------------------------------------- */
-
-.milestone {
-  page-break-inside: avoid;
-  margin: 0 0 7mm;
-}
 
 h3.milestone-head {
   display: flex;
@@ -551,6 +620,11 @@ h3.milestone-head .tag {
 
 .dashed-key {
   border-style: dashed;
+  background: none !important;
+}
+
+.dotted-key {
+  border-style: dotted;
   background: none !important;
 }
 

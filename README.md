@@ -34,6 +34,7 @@ dramatis review                                # what the reading proposed, and 
 dramatis correct --character char:elizabeth-bennet --field aliases --value Lizzy Eliza
 dramatis merge char:miss-eliza-bennet --into char:elizabeth-bennet   # one person, two names
 dramatis continuity                            # what the corpus no longer agrees with itself about
+dramatis export gexf -o my-novel               # also graphml, csv, jsonld
 
 npm ci --prefix web && npm --prefix web run build
 dramatis serve                                 # http://127.0.0.1:7373

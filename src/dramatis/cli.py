@@ -14,8 +14,8 @@ a folder holds should never cost anything.
 Every command locates the project file rather than assuming it (see ``dramatis.locate``),
 and only ``ingest`` may bring one into existence. ``status`` answers which project is in
 use and what is in it, ``review`` and ``correct`` record what a person made of what a reading
-proposed, ``merge`` and ``split`` settle who is who, and ``continuity`` reports what the corpus
-no longer agrees with itself about.
+proposed, ``merge`` and ``split`` settle who is who, ``continuity`` reports what the corpus
+no longer agrees with itself about, and ``export`` hands a reading to somebody else's tool.
 """
 
 from __future__ import annotations
@@ -41,6 +41,7 @@ from dramatis.correction import (
 from dramatis.correction import as_json as corrections_as_json
 from dramatis.correction import history as correction_history
 from dramatis.correction import record as record_correction
+from dramatis.export import FORMATS as EXPORT_FORMATS
 from dramatis.identity import IdentityError
 from dramatis.identity import describe as describe_decisions
 from dramatis.identity import merge as merge_characters
@@ -1200,6 +1201,107 @@ def _run_continuity(args: argparse.Namespace) -> int:
     return 0
 
 
+# -- export ---------------------------------------------------------------------------
+
+
+KNOWN_EXPORT_SUFFIXES = (
+    ".nodes.csv",
+    ".edges.csv",
+    ".graphml",
+    ".gexf",
+    ".jsonld",
+    ".json",
+    ".csv",
+)
+"""Endings ``--output`` may already carry, longest-first so ``.nodes.csv`` wins over ``.csv``."""
+
+
+def _export_target(base: Path, part: Any) -> Path:
+    """Where one part of an export goes, given the name the caller asked for.
+
+    ``--output graph.gexf`` writes ``graph.gexf`` and ``--output graph`` writes it too, so
+    neither habit produces ``graph.gexf.gexf``. CSV is two parts and has no single name to
+    take, so ``--output graph`` and ``--output graph.csv`` both write ``graph.nodes.csv`` and
+    ``graph.edges.csv``.
+    """
+    if base.name.endswith(part.suffix):
+        return base
+    stem = base.name
+    for known in KNOWN_EXPORT_SUFFIXES:
+        if stem.endswith(known):
+            stem = stem[: -len(known)]
+            break
+    return base.with_name(stem + part.suffix)
+
+
+def _run_export(args: argparse.Namespace) -> int:
+    """Write a stored snapshot out in a format some other tool can read.
+
+    Calls no model and reaches no network (Invariant 6): everything exported is already in
+    the store. Standing review decisions are applied on the way out, because they supersede
+    what the snapshot declared (**5.1**) and an export is the copy that gets cited.
+    """
+    from dramatis.export import ExportError, export_document
+
+    try:
+        path = resolve_store(args.store).require()
+    except StoreNotFound as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
+    with Store(path) as store:
+        if args.snapshot:
+            snapshot = store.get_snapshot(args.snapshot)
+            if snapshot is None:
+                print(f"error: this project holds no snapshot {args.snapshot}", file=sys.stderr)
+                return 1
+        else:
+            snapshot = _newest_snapshot(store)
+            if snapshot is None:
+                print("error: this project holds no reading to export", file=sys.stderr)
+                return 1
+            # To stderr, and always said: the export itself may be going to stdout, and a
+            # command that silently picked one of several readings would have somebody
+            # citing a graph they are not looking at.
+            print(f"note: exporting {snapshot.id}, the newest reading here", file=sys.stderr)
+
+        statuses = {
+            (subject.kind, subject.id): subject.status
+            for subject in review_overlay(store, snapshot).subjects
+        }
+
+    try:
+        rendered = export_document(snapshot.document, args.format, review=statuses)
+    except ExportError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
+    if args.output is None:
+        part = rendered.single
+        if part is None:
+            names = ", ".join(entry.suffix for entry in rendered.parts)
+            print(
+                f"error: {args.format} is written as {len(rendered.parts)} files ({names}), "
+                "so it needs somewhere to put them: --output NAME",
+                file=sys.stderr,
+            )
+            return 1
+        sys.stdout.write(part.text)
+        return 0
+
+    for part in rendered.parts:
+        target = _export_target(args.output, part)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        # newline="" so the text written is the text rendered: Python would otherwise
+        # translate every \n to \r\n on Windows and one export would differ from another by
+        # nothing but the machine that made it.
+        with open(target, "w", encoding="utf-8", newline="") as handle:
+            handle.write(part.text)
+        print(f"wrote {target}")
+
+    return 0
+
+
 # -- status ---------------------------------------------------------------------------
 
 
@@ -1906,6 +2008,44 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     continuity.add_argument("--json", dest="as_json", action="store_true", help="machine-readable")
     continuity.set_defaults(handler=_run_continuity)
+
+    export = subcommands.add_parser(
+        "export",
+        help="write a reading out in a format another tool can read",
+        description=(
+            "Export a stored snapshot as GraphML or GEXF for a network tool, as CSV node and "
+            "edge lists for a spreadsheet, or as JSON-LD. Every format carries the weight "
+            "basis, the provenance of each claim, and what the reading is a reading of. "
+            "Standing review decisions are applied on the way out. Calls no model and "
+            "reaches no network. Quotations are not included; that is a separate export."
+        ),
+    )
+    export.add_argument(
+        "format",
+        choices=list(EXPORT_FORMATS),
+        metavar="FORMAT",
+        help=f"one of: {', '.join(EXPORT_FORMATS)}",
+    )
+    export.add_argument("--store", default=None, help=STORE_HELP)
+    export.add_argument(
+        "--snapshot",
+        default=None,
+        metavar="ID",
+        help="the reading to export. Without this, the newest in the project.",
+    )
+    export.add_argument(
+        "-o",
+        "--output",
+        default=None,
+        type=Path,
+        metavar="NAME",
+        help=(
+            "where to write. The format's extension is added if it is not already there, and "
+            "csv writes NAME.nodes.csv and NAME.edges.csv. Without this, the export goes to "
+            "stdout, which csv cannot do."
+        ),
+    )
+    export.set_defaults(handler=_run_export)
 
     status = subcommands.add_parser(
         "status",

@@ -3656,3 +3656,115 @@ not express; the shipped bundle is unchanged.
 
 *Reversible.* The fix is two string literals. The test is one file and one `devDependencies`
 line, and deleting them returns the client to a suite with no DOM in it.
+
+---
+
+## D64 — Four exports, four different amounts of room, and evidence in none of them
+
+**Phase 6.1.** The bullet names four formats and stops there. Four decisions follow from
+actually writing them, and each has an alternative that is worse.
+
+### Evidence is counted, not flattened
+
+GraphML, GEXF, and CSV have one place to put a value: a string in a cell. A piece of
+Dramatis evidence is a locator — an ordered path of typed segments — plus a selector with a
+quotation, a prefix, and a suffix, and there is no honest way to put that in a cell. It could
+be JSON-in-a-string, or the first quotation only, or a count.
+
+**6.2** settles it: evidence is exported as W3C Web Annotation, a format built for exactly
+that shape. Shipping a lossy second encoding first would leave two answers to one question,
+and the lossy one would be the one people found first. So every node and every edge carries
+`evidence_count` and nothing else — enough that a claim with three passages behind it does
+not read as unevidenced, and not so much that it pretends to be the evidence export.
+
+A test asserts the quotation from the fixture appears in none of the four outputs. That is a
+strange-looking test to write deliberately, and it is the one that will fail the day somebody
+"improves" the exporter by adding a `quotations` column.
+
+### Each format carries provenance in whatever room it has
+
+The four are not equally expressive about the graph *as a whole*, and levelling down to the
+poorest would have thrown away what the others can hold:
+
+- **GraphML** has `key for="graph"`, so it carries the lot: work, collection, revision, run,
+  model, prompt version and hash, schema version.
+- **GEXF** has only `<meta>`, whose children are fixed by the specification. So it carries one
+  citation line in `<description>`, naming both axes of Invariant 4 — Gephi shows it on import.
+- **CSV** has nowhere at all. A pair of lists dropped into somebody's spreadsheet is precisely
+  the artifact that gets separated from its context, so every row carries `snapshot_id`.
+  Redundant per row, and the only field that survives a sheet being loaded, edited, and saved
+  again. A sidecar `provenance.csv` was the alternative; it is a file people delete.
+- **JSON-LD** carries everything.
+
+`weight_basis` is the exception to the ladder: it is on every edge in every format, because
+the schema says it must be — *"Weights are comparable only within a shared basis, so this is
+required and must be carried through every export"* — and because every one of these formats
+has a native notion of edge weight and none has a native notion of what the number counts.
+
+### Review is applied on the way out
+
+A stored snapshot's `review_status` is what the analysis proposed. **D50** put human decisions
+in their own append-only table, keyed to the claim, to be read back *over* the document — so
+an export that trusted the stored field would publish a cast somebody has since rejected.
+Relations make it starker: nothing in the pipeline writes a `review_status` onto an edge at
+all, so without the overlay every edge would export as `proposed` in perpetuity, including
+the ones a person spent an afternoon accepting.
+
+`export_document` therefore takes the overlay as an argument rather than reaching for a
+store, which keeps the module a pure function of a document and leaves it able to export a
+document that never came from a store at all. Given no overlay it exports what the document
+declared, which is the right answer for that case and a stale one for any other — so the CLI
+always passes it.
+
+### The JSON-LD context: prefixes the identifiers already had
+
+`ids.py` namespaces every identifier by kind — `char:`, `rel:`, `work:`, `rev:`, `run:`,
+`snap:`, `doc:`, `col:` — so that a bare string in a stored document is self-describing. That
+is exactly the shape of a JSON-LD compact IRI, so the context needs only to say what each
+prefix expands to and every identifier in the store is already a term. Nothing is rewritten.
+
+Two prefixes must not expand to the same place, and the split is one `ids.py` already draws.
+A **content-derived** identifier means the same thing everywhere: `rev:abc123` is that text in
+this store and in any other, *"which is what makes two independently produced snapshots
+comparable"*. A **name-derived** identifier means something only inside the registry that
+minted it: `char:mary` is one person in one collection and a different person in another. So
+`rev:`, `run:`, `snap:` and `doc:` expand globally, and `work:`, `char:` and `rel:` expand
+under their collection. Flattening the two would merge every Mary in the world into one node
+the moment two exports met in a triple store.
+
+One consequence is worth naming because it looks like a mistake: the document's work is under
+`works`, plural, holding one entry. `work` is a prefix here, and a term cannot be both a
+prefix and a property without JSON-LD 1.1's `@prefix` escape hatch — define it as a property
+and `work:1` quietly stops expanding and becomes an IRI whose scheme is `work`. The plural is
+what the schema document calls the same field anyway. A test asserts no identifier prefix is
+ever also a key, anywhere in the output.
+
+The context is written **inline** rather than referenced at a URL. **6.5** publishes the
+schema at its `$id`; a context served from the same host would be a second artifact to keep
+alive forever, and, worse, would mean a scholar's exported file could not be interpreted
+without contacting kestoralabs.co.uk. An export is the thing that must still make sense when
+nothing is reachable.
+
+### Smaller choices
+
+**GEXF 1.2draft, not 1.3.** 1.3 is the later specification; 1.2draft is what the ecosystem
+reads. It is NetworkX's default output and every Gephi in use imports it, and the acceptance
+criterion for this phase is that the graph opens in Gephi. Revisable by changing one namespace
+string.
+
+**The node's caption is `label` in the three flat formats and `name` in JSON-LD.** `label` is
+the word GraphML, GEXF, and Gephi's CSV importer all give to the string drawn on a node, and a
+layout where every node reads `char:elizabeth-bennet` is the commonest way a correct export
+looks broken. JSON-LD is not drawing anything, so it keeps the schema's own word.
+
+**CSV writes a bare newline, not the RFC's carriage-return pair.** Every reader accepts it,
+and it is the only choice that makes an export byte-identical whichever machine produced it.
+The CLI opens its output with `newline=""` for the same reason.
+
+**No browser download yet.** `dramatis export` is a command, and the graph view has no button.
+The server would gain one endpoint and the client one control, and neither is this bullet.
+
+*Reversible.* `export.py` is a pure function of a document plus an overlay, and the CLI
+command is a thin caller. The JSON-LD context is the only part that is a promise to anyone
+outside: identifiers exported today are IRIs somebody may have written down, so changing how a
+prefix expands is a schema-version-sized change rather than a free one.

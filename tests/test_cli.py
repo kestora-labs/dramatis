@@ -1203,3 +1203,179 @@ class TestContinuity:
 
         assert main(["continuity", "--store", str(store_path)]) == 1
         assert "no work yet" in capsys.readouterr().err
+
+
+class TestExport:
+    """`dramatis export` — handing a reading to somebody else's tool (6.1).
+
+    Calls no model and reaches no network, and writes nothing into the project. What is
+    tested here is the command, not the formats — `tests/test_export.py` holds those.
+    """
+
+    def _analysed(self, tmp_path: Path):
+        from dramatis.ingest import ingest_file
+        from dramatis.pipeline import analyse
+        from dramatis.providers.scripted import ScriptedProvider
+
+        source = tmp_path / "work.txt"
+        source.write_text(
+            "Ada met Bram at the gate.\n\nBram did not answer her.\n",
+            encoding="utf-8",
+            newline="",
+        )
+        store_path = tmp_path / "dramatis.sqlite"
+
+        payload = json.dumps(
+            {
+                "characters": [
+                    {"name": n, "aliases": [], "kind": "person"} for n in ("Ada", "Bram")
+                ],
+                "interactions": [
+                    {
+                        "participants": ["Ada", "Bram"],
+                        "quotation": "Ada met Bram at the gate.",
+                        "note": "",
+                    }
+                ],
+                "groups": [
+                    {"canonical_name": n, "forms": [n], "kind": "person", "same_as_registered": ""}
+                    for n in ("Ada", "Bram")
+                ],
+            }
+        )
+
+        with Store(store_path) as store:
+            ingested = ingest_file(store, source, work_title="A Work", collection_name="A")
+            analyse(store, ingested.revision_id, ScriptedProvider(lambda _r: payload))
+
+        return store_path, source
+
+    def test_it_writes_the_format_it_was_asked_for(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path, _ = self._analysed(tmp_path)
+
+        assert main(["export", "gexf", "--store", str(store_path)]) == 0
+
+        assert "<gexf" in capsys.readouterr().out
+
+    def test_without_a_snapshot_it_takes_the_newest_and_says_which(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """To stderr, so a piped export stays a valid file, and always: citing a reading you
+        are not looking at is the mistake this prevents."""
+        store_path, _ = self._analysed(tmp_path)
+
+        assert main(["export", "jsonld", "--store", str(store_path)]) == 0
+
+        captured = capsys.readouterr()
+        assert "note: exporting snap:" in captured.err
+        assert json.loads(captured.out)["id"] in captured.err
+
+    def test_an_unknown_snapshot_exits_one(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path, _ = self._analysed(tmp_path)
+
+        code = main(["export", "gexf", "--store", str(store_path), "--snapshot", "snap:nothing"])
+
+        assert code == 1
+        assert "no snapshot snap:nothing" in capsys.readouterr().err
+
+    def test_a_project_with_no_reading_says_so(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path = tmp_path / "dramatis.sqlite"
+        with Store(store_path):
+            pass
+
+        assert main(["export", "graphml", "--store", str(store_path)]) == 1
+        assert "no reading to export" in capsys.readouterr().err
+
+    def test_output_gains_the_extension_it_is_missing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path, _ = self._analysed(tmp_path)
+        target = tmp_path / "out" / "graph"
+
+        assert main(["export", "graphml", "--store", str(store_path), "-o", str(target)]) == 0
+
+        written = target.with_suffix(".graphml")
+        assert written.is_file()
+        assert str(written) in capsys.readouterr().out
+
+    def test_output_that_already_has_it_does_not_get_it_twice(self, tmp_path: Path) -> None:
+        store_path, _ = self._analysed(tmp_path)
+        target = tmp_path / "graph.gexf"
+
+        assert main(["export", "gexf", "--store", str(store_path), "-o", str(target)]) == 0
+
+        assert target.is_file()
+        assert not (tmp_path / "graph.gexf.gexf").exists()
+
+    def test_csv_writes_two_files_named_apart(self, tmp_path: Path) -> None:
+        store_path, _ = self._analysed(tmp_path)
+
+        assert main(["export", "csv", "--store", str(store_path), "-o", str(tmp_path / "g")]) == 0
+
+        assert (tmp_path / "g.nodes.csv").is_file()
+        assert (tmp_path / "g.edges.csv").is_file()
+
+    def test_csv_to_stdout_is_refused_rather_than_run_together(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Two files cannot share one stream, and concatenating them would produce a third
+        thing that is neither list."""
+        store_path, _ = self._analysed(tmp_path)
+
+        code = main(["export", "csv", "--store", str(store_path)])
+
+        captured = capsys.readouterr()
+        assert code == 1
+        assert captured.out == ""
+        assert "--output" in captured.err
+
+    def test_a_standing_review_decision_reaches_the_export(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """5.1: the decision is beside the snapshot, and the export is the copy that gets
+        cited. Reading the document alone would publish a character somebody has rejected."""
+        store_path, _ = self._analysed(tmp_path)
+        with Store(store_path) as store:
+            work = store.list_works()[0]
+            snapshot = store.list_snapshots(work["id"])[-1]
+        identifier = snapshot.document["characters"][0]["id"]
+
+        assert (
+            main(
+                [
+                    "review",
+                    "--store",
+                    str(store_path),
+                    "--character",
+                    identifier,
+                    "--status",
+                    "rejected",
+                ]
+            )
+            == 0
+        )
+        capsys.readouterr()
+
+        assert main(["export", "jsonld", "--store", str(store_path)]) == 0
+        rendered = json.loads(capsys.readouterr().out)
+
+        statuses = {entry["id"]: entry.get("review_status") for entry in rendered["characters"]}
+        assert statuses[identifier] == "rejected"
+
+    def test_it_leaves_the_snapshot_alone(self, tmp_path: Path) -> None:
+        store_path, _ = self._analysed(tmp_path)
+        with Store(store_path) as store:
+            before = store.list_snapshots(store.list_works()[0]["id"])[-1]
+
+        assert main(["export", "graphml", "--store", str(store_path)]) == 0
+
+        with Store(store_path) as store:
+            after = store.get_snapshot(before.id)
+        assert after is not None
+        assert after.sha256 == before.sha256

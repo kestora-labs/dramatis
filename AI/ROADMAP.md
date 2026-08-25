@@ -563,7 +563,12 @@ stale location. *Both met — see **D51** and **D53**.*
 
 *Corpus shape **D**. Make it citable, exportable, and installable by non-technical users.*
 
-- [ ] **6.1** — Exports: GraphML, GEXF, CSV node/edge lists, JSON-LD.
+- [x] **6.1** — Exports: GraphML, GEXF, CSV node/edge lists, JSON-LD. Each carries the
+      weight basis the schema insists on, the provenance of every claim, and — in whatever
+      room the format has, which differs fourfold — what the reading is a reading of.
+      Standing review decisions are applied on the way out, since an export is the copy
+      that gets cited. **Evidence is counted rather than flattened**: quotations are
+      **6.2**'s to export, in a format built for them. *(See **D64**.)*
 - [ ] **6.2** — Evidence exportable as W3C Web Annotation with `TextQuoteSelector`.
 - [ ] **6.3** — Import of externally produced Dramatis JSON — the schema proves
       interoperable.

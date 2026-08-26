@@ -1205,6 +1205,7 @@ def _run_continuity(args: argparse.Namespace) -> int:
 
 
 KNOWN_EXPORT_SUFFIXES = (
+    ".annotations.jsonld",
     ".nodes.csv",
     ".edges.csv",
     ".graphml",
@@ -2014,10 +2015,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="write a reading out in a format another tool can read",
         description=(
             "Export a stored snapshot as GraphML or GEXF for a network tool, as CSV node and "
-            "edge lists for a spreadsheet, or as JSON-LD. Every format carries the weight "
-            "basis, the provenance of each claim, and what the reading is a reading of. "
-            "Standing review decisions are applied on the way out. Calls no model and "
-            "reaches no network. Quotations are not included; that is a separate export."
+            "edge lists for a spreadsheet, or as JSON-LD. Every graph format carries the "
+            "weight basis, the provenance of each claim, and what the reading is a reading "
+            "of. The evidence behind those claims is its own export: annotations writes every "
+            "quotation as a W3C Web Annotation. Standing review decisions are applied on the "
+            "way out. Calls no model and reaches no network."
         ),
     )
     export.add_argument(

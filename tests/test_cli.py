@@ -1379,3 +1379,31 @@ class TestExport:
             after = store.get_snapshot(before.id)
         assert after is not None
         assert after.sha256 == before.sha256
+
+    def test_annotations_writes_the_evidence_the_graph_formats_only_counted(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """6.2. The quotation is in exactly one export, and this is it."""
+        store_path, _ = self._analysed(tmp_path)
+
+        assert main(["export", "annotations", "--store", str(store_path)]) == 0
+        rendered = json.loads(capsys.readouterr().out)
+
+        assert rendered["type"] == "AnnotationCollection"
+        assert rendered["total"] == 1
+        target = rendered["first"]["items"][0]["target"]
+        assert target["selector"]["type"] == "TextQuoteSelector"
+        assert target["selector"]["exact"] == "Ada met Bram at the gate."
+
+    def test_the_annotations_file_is_named_apart_from_the_graph_jsonld(
+        self, tmp_path: Path
+    ) -> None:
+        """Both are JSON-LD and they are not the same document. One name for two files is
+        one of them silently overwriting the other."""
+        store_path, _ = self._analysed(tmp_path)
+
+        for fmt in ("jsonld", "annotations"):
+            assert main(["export", fmt, "--store", str(store_path), "-o", str(tmp_path / "g")]) == 0
+
+        assert (tmp_path / "g.jsonld").is_file()
+        assert (tmp_path / "g.annotations.jsonld").is_file()

@@ -22,21 +22,27 @@ from xml.etree import ElementTree as ET
 import pytest
 
 from dramatis.export import (
+    ANNOTATION_CONTEXT,
+    ANNOTATIONS,
     CSV,
     EDGE_COLUMNS,
     FORMATS,
     GEXF,
     GEXF_NAMESPACE,
     GLOBAL_PREFIXES,
+    GRAPH_FORMATS,
     GRAPHML,
     GRAPHML_NAMESPACE,
     JSONLD,
+    MATCHING,
     NODE_COLUMNS,
     SCOPED_PREFIXES,
     ExportError,
+    expand_identifier,
     export_document,
+    identifier_prefixes,
 )
-from tests.documents import minimal_document
+from tests.documents import SHA, minimal_document
 
 GRAPHML_NS = {"g": GRAPHML_NAMESPACE}
 GEXF_NS = {"x": GEXF_NAMESPACE}
@@ -131,7 +137,7 @@ class TestProvenanceSurvivesEveryFormat:
     """Invariant 5. A graph that cannot tell an enacted relation from a declared one asserts
     things the narrative never shows."""
 
-    @pytest.mark.parametrize("fmt", FORMATS)
+    @pytest.mark.parametrize("fmt", GRAPH_FORMATS)
     def test_an_asserted_node_is_still_asserted_after_the_round_trip(self, fmt: str) -> None:
         export = export_document(a_document(), fmt)
         text = "\n".join(part.text for part in export.parts)
@@ -232,21 +238,28 @@ class TestStandingReviewDecisionsAreApplied:
 
 
 class TestEvidenceIsCountedRatherThanFlattened:
-    """**6.2** exports evidence as W3C Web Annotation. Until then a claim says how much
-    backs it, so nothing silently reads as unevidenced, but no format here mangles a
-    locator and a selector into a string."""
+    """A graph format says how much evidence backs a claim, so nothing silently reads as
+    unevidenced, and none of them mangles a locator and a selector into a string. The
+    passages themselves are the `annotations` export's, and only its."""
 
     def test_a_claim_reports_how_much_evidence_backs_it(self) -> None:
         _, edges = csv_of(a_document())
 
         assert edges[0]["evidence_count"] == "1"
 
-    @pytest.mark.parametrize("fmt", FORMATS)
-    def test_no_format_smuggles_the_quotation_out(self, fmt: str) -> None:
+    @pytest.mark.parametrize("fmt", GRAPH_FORMATS)
+    def test_no_graph_format_smuggles_the_quotation_out(self, fmt: str) -> None:
+        """The test that fails the day somebody "improves" a graph export by adding a
+        quotations column. There is one place to look for a passage, and this is not it."""
         export = export_document(a_document(), fmt)
         text = "\n".join(part.text for part in export.parts)
 
         assert "They met at the gate." not in text
+
+    def test_the_annotations_export_is_where_the_quotation_actually_is(self) -> None:
+        export = export_document(a_document(), ANNOTATIONS)
+
+        assert "They met at the gate." in export.parts[0].text
 
 
 # -- the shapes the readers expect ----------------------------------------------------
@@ -471,3 +484,216 @@ class TestWhatItRefuses:
         export = export_document(document, fmt)
 
         assert all(part.text for part in export.parts)
+
+
+# -- the evidence export (6.2) --------------------------------------------------------
+
+
+def annotations_of(document: dict[str, Any], **kwargs) -> dict[str, Any]:
+    return json.loads(only(export_document(document, ANNOTATIONS, **kwargs)))
+
+
+def items_of(document: dict[str, Any], **kwargs) -> list[dict[str, Any]]:
+    return annotations_of(document, **kwargs)["first"]["items"]
+
+
+def with_character_evidence() -> dict[str, Any]:
+    """The fixture document, with a passage behind its first character too.
+
+    `minimal_document` evidences only the relation, and character evidence takes the other
+    motivation — so a test using it alone would never exercise half the mapping.
+    """
+    document = a_document()
+    document["characters"][0]["evidence"] = [
+        {
+            "locator": {"document_id": "doc:1", "path": [{"type": "section", "index": 1}]},
+            "selector": {
+                "exact": "Ada stood at the gate.",
+                "prefix": "and then ",
+                "suffix": " Bram did not answer",
+                "start": 120,
+                "end": 142,
+            },
+            "kind": "narration",
+        }
+    ]
+    return document
+
+
+class TestTheAnnotationCollection:
+    def test_it_declares_the_web_annotation_context(self) -> None:
+        rendered = annotations_of(a_document())
+
+        assert rendered["@context"][0] == ANNOTATION_CONTEXT
+        assert rendered["type"] == "AnnotationCollection"
+
+    def test_the_collection_says_what_reading_it_came_from(self) -> None:
+        """A page of quotations with no citation on it is a page of quotations."""
+        rendered = annotations_of(a_document())
+
+        assert "snap:1" in rendered["label"]
+        assert "rev:1" in rendered["label"]
+        assert "run:1" in rendered["label"]
+
+    def test_it_counts_what_it_holds(self) -> None:
+        rendered = annotations_of(with_character_evidence())
+
+        assert rendered["total"] == 2
+        assert len(rendered["first"]["items"]) == 2
+
+    def test_one_annotation_per_piece_of_evidence_characters_first(self) -> None:
+        items = items_of(with_character_evidence())
+
+        assert [item["motivation"] for item in items] == ["identifying", "describing"]
+
+    def test_a_reading_that_quoted_nothing_is_an_empty_collection_not_an_error(self) -> None:
+        document = a_document()
+        document["relations"][0]["evidence"] = []
+
+        rendered = annotations_of(document)
+
+        assert rendered["total"] == 0
+        assert rendered["first"]["items"] == []
+
+
+class TestTheTargetIsThePassage:
+    def test_the_selector_is_a_text_quote_selector(self) -> None:
+        """What the bullet asks for by name, and what Dramatis was already anchoring evidence
+        with — quotation plus context, so it survives an edit to the text."""
+        target = items_of(with_character_evidence())[0]["target"]
+
+        assert target["selector"]["type"] == "TextQuoteSelector"
+        assert target["selector"]["exact"] == "Ada stood at the gate."
+        assert target["selector"]["prefix"] == "and then "
+        assert target["selector"]["suffix"] == " Bram did not answer"
+
+    def test_how_to_match_it_is_stated_rather_than_left_to_be_discovered(self) -> None:
+        """Invariant 3 defines verbatim against whitespace-normalised text. A consumer doing
+        a byte-exact search fails on every quotation crossing a line break and concludes the
+        evidence was invented."""
+        target = items_of(a_document())[0]["target"]
+
+        assert target["dramatis:matching"] == MATCHING
+
+    def test_the_offsets_are_never_emitted_as_a_position_selector(self) -> None:
+        """They count into the revision's *normalised* text, which nobody reading this file
+        has. As a standard selector they would look authoritative and be wrong."""
+        rendered = annotations_of(with_character_evidence())
+
+        assert "TextPositionSelector" not in json.dumps(rendered)
+
+    def test_the_offsets_are_carried_all_the_same_under_a_name_that_says_what_they_are(
+        self,
+    ) -> None:
+        target = items_of(with_character_evidence())[0]["target"]
+
+        assert target["dramatis:normalisedStart"] == 120
+        assert target["dramatis:normalisedEnd"] == 142
+
+    def test_evidence_without_offsets_grows_none(self) -> None:
+        target = items_of(a_document())[0]["target"]
+
+        assert "dramatis:normalisedStart" not in target
+
+    def test_the_structural_path_survives_with_its_types(self) -> None:
+        """Invariant 1: position is an ordered path of typed segments, and the types are
+        data. No standard selector addresses that, and flattening it to a chapter number
+        would bake in the vocabulary the schema refuses to have."""
+        target = items_of(a_document())[0]["target"]
+
+        assert target["dramatis:locator"] == [{"type": "section", "index": 3}]
+
+    def test_the_source_document_is_named_and_hashed(self) -> None:
+        """So a reader can tell whether the file they have is the file the quote came from."""
+        source = items_of(a_document())[0]["target"]["source"]
+
+        assert source["dramatis:documentId"] == "doc:1"
+        assert source["dramatis:sha256"] == SHA
+
+    def test_a_locator_naming_no_document_falls_back_to_the_text_revision(self) -> None:
+        """The schema makes `document_id` optional, and a single-file work has nothing to
+        disambiguate. A SpecificResource with no source is a citation of nowhere."""
+        document = a_document()
+        del document["relations"][0]["evidence"][0]["locator"]["document_id"]
+        prefixes = identifier_prefixes(document)
+
+        source = items_of(document)[0]["target"]["source"]
+
+        assert source["id"] == expand_identifier("rev:1", prefixes)
+        assert "dramatis:documentId" not in source
+
+
+class TestTheBodyIsTheClaim:
+    def test_it_points_at_the_claim_by_identifier(self) -> None:
+        body = items_of(a_document())[0]["body"]
+
+        assert body[0]["dramatis:claimId"] == "rel:a-b"
+        assert body[0]["type"] == "dramatis:Relation"
+        assert body[0]["label"] == "Ada -- Bram"
+
+    def test_the_iri_is_the_one_the_graph_export_gives_the_same_claim(self) -> None:
+        """The interlock. A citation pointing at an identifier the other file never mentions
+        is a dangling reference dressed up as provenance."""
+        document = with_character_evidence()
+        prefixes = identifier_prefixes(document)
+
+        body = items_of(document)[0]["body"]
+        graph = jsonld_of(document)
+
+        assert body[0]["id"] == expand_identifier(graph["characters"][0]["id"], prefixes)
+
+    def test_a_note_becomes_a_commenting_textual_body(self) -> None:
+        """The note says what the passage shows. That is somebody's gloss on the claim, not
+        the claim, and merging the two would put words in the analysis's mouth."""
+        body = items_of(a_document())[0]["body"]
+
+        note = [entry for entry in body if entry.get("purpose") == "commenting"]
+        assert [entry["value"] for entry in note] == ["First meeting."]
+
+    def test_evidence_with_nothing_but_a_claim_has_a_single_body(self) -> None:
+        document = a_document()
+        del document["relations"][0]["evidence"][0]["note"]
+
+        assert items_of(document)[0]["body"]["dramatis:claimId"] == "rel:a-b"
+
+
+class TestWhatTravelsWithEveryAnnotation:
+    def test_provenance(self) -> None:
+        """Invariant 5, in the evidence export too: a quotation from a bible and a quotation
+        from the narrative are different kinds of claim."""
+        assert items_of(a_document())[0]["dramatis:provenance"] == "observed"
+
+    def test_a_standing_review_decision(self) -> None:
+        review = {("relation", "rel:a-b"): "rejected"}
+
+        assert items_of(a_document(), review=review)[0]["dramatis:reviewStatus"] == "rejected"
+
+    def test_the_reading_it_was_taken_from(self) -> None:
+        assert items_of(a_document())[0]["dramatis:snapshot"] == "snap:1"
+
+    def test_everything_dramatis_adds_is_prefixed(self) -> None:
+        """Inside somebody else's context an unprefixed term either means what that
+        vocabulary says or is dropped. Neither is what a Dramatis field wants."""
+        item = items_of(a_document())[0]
+        standard = {"id", "type", "motivation", "created", "generator", "body", "target"}
+
+        assert all(key.startswith("dramatis:") for key in set(item) - standard)
+
+
+class TestAnnotationIdentifiers:
+    def test_they_are_derived_so_a_second_export_cites_the_same_thing(self) -> None:
+        first = only(export_document(a_document(), ANNOTATIONS))
+        second = only(export_document(a_document(), ANNOTATIONS))
+
+        assert first == second
+
+    def test_two_pieces_of_evidence_are_two_annotations(self) -> None:
+        items = items_of(with_character_evidence())
+
+        assert items[0]["id"] != items[1]["id"]
+
+    def test_a_different_quotation_is_a_different_annotation(self) -> None:
+        moved = a_document()
+        moved["relations"][0]["evidence"][0]["selector"]["exact"] = "They parted at the gate."
+
+        assert items_of(a_document())[0]["id"] != items_of(moved)[0]["id"]

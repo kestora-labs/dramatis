@@ -1,9 +1,10 @@
-"""Getting a graph out of Dramatis and into somebody else's tool.
+"""Getting a reading out of Dramatis and into somebody else's tool.
 
-Four formats, because four different people want the same graph for four different reasons:
-**GraphML** and **GEXF** for the network tools a digital humanist already has open,
-**CSV** node and edge lists for the spreadsheet and the R session, and **JSON-LD** for the
-catalogue that wants to link this graph to something else.
+Two exports, because a reading is two things. **The graph** (**6.1**) goes out as GraphML or
+GEXF for the network tools a digital humanist already has open, as CSV node and edge lists
+for the spreadsheet and the R session, or as JSON-LD for the catalogue that wants to link it
+to something else. **The evidence** (**6.2**) goes out as W3C Web Annotation, which is where
+the quotations are.
 
 Nothing here calls a model or reaches a network (Invariant 6). An export is arithmetic over
 a document the store already holds, which is the point: a snapshot must be readable, and
@@ -30,14 +31,13 @@ case: nothing in the pipeline writes a `review_status` onto an edge at all, so w
 overlay every edge would export as `proposed` forever, including the ones a person spent an
 afternoon accepting.
 
-**Evidence is not in here, and 6.2 is why.** Every claim carries `evidence_count`, so
-nothing silently reads as unevidenced, but the quotations themselves are a nested structure
-with locators and selectors that GraphML, GEXF, and CSV can only hold as a mangled string.
-**6.2** exports evidence as W3C Web Annotation, which is a format built for exactly that
-shape. Cramming a lossy second copy into these four first would leave two answers to one
-question.
+**Evidence is in one export and counted in the other four.** The quotations are a nested
+structure with locators and selectors, which GraphML, GEXF, and CSV can hold only as a
+mangled string — so the graph formats carry `evidence_count` and nothing else, enough that a
+claim with three passages behind it never reads as unevidenced. The passages themselves are
+`annotations`, and there is exactly one place to look for them.
 
-## What each format has room for
+## What each graph format has room for
 
 The four differ in how much they can say about the graph *as a whole*, and the export uses
 whatever room each has rather than levelling down to the poorest:
@@ -57,11 +57,19 @@ The schema's field is `name`; the flat formats export it as `label`, because tha
 word each of them gives to the string drawn on a node. A Gephi import where every node is
 captioned `char:elizabeth-bennet` is the commonest way a correct export looks broken.
 JSON-LD keeps `name`: it is not drawing anything.
+
+## The two exports interlock
+
+An annotation's body points at a claim by IRI, and that IRI is the one the graph export
+gives the same claim — `identifier_prefixes` is shared rather than written twice, because a
+citation pointing at an identifier the other file never mentions is a dangling reference
+dressed up as provenance. Export both and they join up; export one and it stands alone.
 """
 
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 from collections.abc import Mapping
@@ -72,14 +80,24 @@ from xml.etree import ElementTree as ET
 
 from dramatis import __version__
 from dramatis.schema import SCHEMA_FILENAME, load_schema
+from dramatis.snapshot import canonical_json
 
 GRAPHML = "graphml"
 GEXF = "gexf"
 CSV = "csv"
 JSONLD = "jsonld"
+ANNOTATIONS = "annotations"
 
-FORMATS = (GRAPHML, GEXF, CSV, JSONLD)
-"""Every format `export_document` understands, in the order the CLI lists them."""
+GRAPH_FORMATS = (GRAPHML, GEXF, CSV, JSONLD)
+"""The four that export the graph: nodes, edges, and what is needed to cite them (**6.1**)."""
+
+FORMATS = (*GRAPH_FORMATS, ANNOTATIONS)
+"""Every format `export_document` understands, in the order the CLI lists them.
+
+`annotations` is not a fifth way of writing the graph. It exports the *evidence* (**6.2**),
+which none of the other four carry, and it is the only one whose output contains a word of
+the source text.
+"""
 
 LIST_SEPARATOR = "; "
 """How a multi-valued field is flattened for the formats that have no lists.
@@ -91,6 +109,28 @@ than a per-format guess at what the reader will split on.
 
 CHARACTER = "character"
 RELATION = "relation"
+
+DRAMATIS_PREFIX = "dramatis"
+"""The prefix everything outside a borrowed vocabulary is written under.
+
+The Web Annotation export lives inside somebody else's context, where an unprefixed term
+either means what that vocabulary says it means or is silently dropped. Anything Dramatis
+adds there is prefixed, so a reader can tell at a glance which half of the document is
+standard and which half is ours.
+"""
+
+MATCHING = "whitespace-collapsed"
+"""How a `TextQuoteSelector` from Dramatis is meant to be matched, said out loud.
+
+Invariant 3 defines *verbatim* against whitespace-normalised text — runs of whitespace
+collapse, nothing else is altered — and `verification` compares both sides that way. So a
+stored quotation is the model's, not the source's, and may differ from the file in nothing
+but a line break. A consumer doing a byte-exact search would fail on most quotations in a
+hard-wrapped novel and conclude the evidence was fabricated.
+
+The Web Annotation vocabulary has no way to say this, so it is said in a prefixed term
+rather than left to be discovered.
+"""
 
 GEXF_NAMESPACE = "http://www.gexf.net/1.2draft"
 """GEXF 1.2draft, not 1.3.
@@ -529,10 +569,39 @@ GLOBAL_PREFIXES = ("rev", "run", "snap", "doc")
 SCOPED_PREFIXES = ("work", "char", "rel")
 
 
-def _context(document: dict[str, Any]) -> dict[str, Any]:
+def identifier_prefixes(document: dict[str, Any]) -> dict[str, str]:
+    """What each identifier prefix in this document expands to.
+
+    Shared by both linked-data exports rather than built twice. The graph and the annotations
+    describe the same characters and the same relations, and they are only usable together —
+    an annotation whose body points at a claim the graph export gave a different IRI is a
+    dangling reference dressed up as a citation.
+    """
     collection_id = str((document.get("collection") or {}).get("id", "col:untitled"))
     scope = quote(collection_id.removeprefix("col:"), safe="")
 
+    prefixes = {"col": f"{ID_BASE}/collection/"}
+    for prefix in GLOBAL_PREFIXES:
+        prefixes[prefix] = f"{ID_BASE}/{prefix}/"
+    for prefix in SCOPED_PREFIXES:
+        prefixes[prefix] = f"{ID_BASE}/collection/{scope}/{prefix}/"
+    return prefixes
+
+
+def expand_identifier(identifier: str, prefixes: Mapping[str, str]) -> str:
+    """Resolve a Dramatis identifier to the IRI its prefix names.
+
+    Unprefixed, or prefixed by something this document does not declare, it is left alone:
+    inventing an expansion for an identifier of unknown kind would mint an IRI that means
+    nothing.
+    """
+    prefix, separator, rest = identifier.partition(":")
+    if not separator or prefix not in prefixes:
+        return identifier
+    return f"{prefixes[prefix]}{quote(rest, safe='')}"
+
+
+def _context(document: dict[str, Any]) -> dict[str, Any]:
     context: dict[str, Any] = {
         "@version": 1.1,
         "@vocab": TERM_BASE,
@@ -540,12 +609,8 @@ def _context(document: dict[str, Any]) -> dict[str, Any]:
         "xsd": "http://www.w3.org/2001/XMLSchema#",
         "id": "@id",
         "type": "@type",
-        "col": f"{ID_BASE}/collection/",
     }
-    for prefix in GLOBAL_PREFIXES:
-        context[prefix] = f"{ID_BASE}/{prefix}/"
-    for prefix in SCOPED_PREFIXES:
-        context[prefix] = f"{ID_BASE}/collection/{scope}/{prefix}/"
+    context.update(identifier_prefixes(document))
 
     context.update(
         {
@@ -718,6 +783,253 @@ def _as_jsonld(document: dict[str, Any], review: Mapping[tuple[str, str], str] |
     return json.dumps(rendered, indent=2, ensure_ascii=False) + "\n"
 
 
+# -- W3C Web Annotation -------------------------------------------------------------
+#
+# The evidence export (**6.2**), and the other half of the answer D64 split in two: the four
+# graph formats say a claim has three passages behind it, and this says which three.
+#
+# One annotation per piece of evidence. The target is the passage; the body is the claim it
+# supports; the selector is a `TextQuoteSelector`, which is the whole reason this format was
+# chosen — Dramatis already anchors evidence by quotation-with-context precisely so it
+# survives an edit to the text (2.4), and the schema says as much where `selector` is
+# defined. The formats meet where they were already standing.
+
+
+ANNOTATION_CONTEXT = "http://www.w3.org/ns/anno.jsonld"
+
+IDENTIFYING = "identifying"
+DESCRIBING = "describing"
+"""The two motivations, and neither is a perfect fit.
+
+The Web Annotation vocabulary has no `evidencing`. `identifying` — *"the user intends to
+assign an identity to the Target"* — is what a passage naming a character does; `describing`
+is what a relation does to the passage that enacts it. Both are standard terms, which is the
+point: a consumer that meets `dramatis:evidencing` ignores it, and one that meets
+`identifying` knows what to do. Inventing a motivation would have been more accurate and
+less useful.
+"""
+
+
+def _annotation_id(snapshot_id: str, claim_id: str, evidence: dict[str, Any]) -> str:
+    """A stable identifier for one annotation, derived rather than minted.
+
+    The schema allows evidence to carry an ``id`` and the pipeline does not write one, so
+    there is nothing to carry through. Deriving it from the reading, the claim, and the
+    quotation follows `ids.py`: export the same snapshot twice and the annotations have the
+    same identifiers, which is what lets one be cited.
+
+    Scoped to the snapshot on purpose. An annotation is a statement about a passage made by
+    one reading, and two readings that both quote the same line have made that statement
+    twice.
+    """
+    selector = evidence.get("selector") or {}
+    material = canonical_json(
+        [
+            snapshot_id,
+            claim_id,
+            (evidence.get("locator") or {}).get("document_id"),
+            (evidence.get("locator") or {}).get("path"),
+            selector.get("exact"),
+            selector.get("prefix"),
+            selector.get("suffix"),
+        ]
+    )
+    digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
+    return f"{ID_BASE}/annotation/{digest}"
+
+
+def _claims_with_evidence(
+    document: dict[str, Any],
+) -> list[tuple[str, str, dict[str, Any], dict[str, Any]]]:
+    """Every piece of evidence in the document, with the claim it belongs to.
+
+    Characters first and then relations, each in document order, so two exports of one
+    snapshot list their annotations the same way — the ordering `review.subjects` settles for
+    the same reason.
+    """
+    names = {
+        str(character.get("id")): str(character.get("name") or character.get("id"))
+        for character in document.get("characters") or []
+    }
+
+    found: list[tuple[str, str, dict[str, Any], dict[str, Any]]] = []
+    for character in document.get("characters") or []:
+        for evidence in character.get("evidence") or []:
+            found.append((CHARACTER, names.get(str(character.get("id")), ""), character, evidence))
+
+    for relation in document.get("relations") or []:
+        source = names.get(str(relation.get("source")), str(relation.get("source")))
+        target = names.get(str(relation.get("target")), str(relation.get("target")))
+        joiner = "->" if relation.get("directed") else "--"
+        for evidence in relation.get("evidence") or []:
+            found.append((RELATION, f"{source} {joiner} {target}", relation, evidence))
+
+    return found
+
+
+def _annotation(
+    kind: str,
+    label: str,
+    claim: dict[str, Any],
+    evidence: dict[str, Any],
+    *,
+    snapshot: Mapping[str, Any],
+    documents: Mapping[str, Any],
+    prefixes: Mapping[str, str],
+    review: Mapping[tuple[str, str], str] | None,
+) -> dict[str, Any]:
+    snapshot_id = str(snapshot.get("id", ""))
+    claim_id = str(claim.get("id"))
+    locator = evidence.get("locator") or {}
+    selector = evidence.get("selector") or {}
+
+    document_id = str(locator.get("document_id") or "")
+
+    # A locator need not name a document — the schema makes it optional, and a single-file
+    # work has nothing to disambiguate. The text revision is then what the quotation is a
+    # quotation of, and it is always there, so the target still points at something. A
+    # `SpecificResource` with no source at all would be a citation of nowhere.
+    named = document_id or str(snapshot.get("text_revision_id") or "")
+    source: dict[str, Any] = _present(
+        {
+            "id": expand_identifier(named, prefixes) if named else None,
+            "type": "Text",
+            f"{DRAMATIS_PREFIX}:documentId": document_id or None,
+            f"{DRAMATIS_PREFIX}:sha256": (documents.get(document_id) or {}).get("sha256"),
+        }
+    )
+
+    quote: dict[str, Any] = _present(
+        {
+            "type": "TextQuoteSelector",
+            "exact": selector.get("exact"),
+            "prefix": selector.get("prefix"),
+            "suffix": selector.get("suffix"),
+        }
+    )
+
+    target: dict[str, Any] = _present(
+        {
+            "type": "SpecificResource",
+            "source": source,
+            "selector": quote,
+            # Invariant 1: structural position is an ordered path of typed segments whose
+            # types are data. No standard selector addresses that, and flattening it to
+            # "chapter 4" would bake in a vocabulary the schema refuses to have.
+            f"{DRAMATIS_PREFIX}:locator": locator.get("path"),
+            f"{DRAMATIS_PREFIX}:textRevision": snapshot.get("text_revision_id"),
+            # Said out loud because a consumer cannot infer it and would otherwise fail on
+            # every quotation crossing a line break. See MATCHING below.
+            f"{DRAMATIS_PREFIX}:matching": MATCHING,
+            # Deliberately not a `TextPositionSelector`. The schema calls these *"a hint for
+            # fast lookup, never the authority"*, and they count characters into the
+            # revision's **normalised** text — a string no consumer of this file has. Emitted
+            # as a standard selector they would look authoritative and be wrong; dropped
+            # entirely they would be lost. So they are carried, prefixed, and named after the
+            # text they are offsets into.
+            f"{DRAMATIS_PREFIX}:normalisedStart": selector.get("start"),
+            f"{DRAMATIS_PREFIX}:normalisedEnd": selector.get("end"),
+        }
+    )
+
+    body: list[dict[str, Any]] = [
+        _present(
+            {
+                "id": expand_identifier(claim_id, prefixes),
+                "type": f"{DRAMATIS_PREFIX}:{'Character' if kind == CHARACTER else 'Relation'}",
+                "label": label or None,
+                f"{DRAMATIS_PREFIX}:claimId": claim_id,
+            }
+        )
+    ]
+    if evidence.get("note"):
+        # `commenting`, not part of the identification: the note says what the passage shows,
+        # and is somebody's gloss rather than the claim itself.
+        body.append(
+            {
+                "type": "TextualBody",
+                "purpose": "commenting",
+                "format": "text/plain",
+                "value": str(evidence["note"]),
+            }
+        )
+    if evidence.get("kind"):
+        body.append(
+            {
+                "type": "TextualBody",
+                "purpose": "classifying",
+                "format": "text/plain",
+                "value": str(evidence["kind"]),
+            }
+        )
+
+    return _present(
+        {
+            "id": _annotation_id(snapshot_id, claim_id, evidence),
+            "type": "Annotation",
+            "motivation": IDENTIFYING if kind == CHARACTER else DESCRIBING,
+            "created": snapshot.get("created_at"),
+            "generator": {"type": "Software", "name": f"dramatis {__version__}"},
+            "body": body[0] if len(body) == 1 else body,
+            "target": target,
+            f"{DRAMATIS_PREFIX}:provenance": claim.get("provenance"),
+            f"{DRAMATIS_PREFIX}:reviewStatus": _status(
+                review, kind, claim_id, claim.get("review_status")
+            ),
+            f"{DRAMATIS_PREFIX}:snapshot": snapshot.get("id"),
+        }
+    )
+
+
+def _as_annotations(document: dict[str, Any], review: Mapping[tuple[str, str], str] | None) -> str:
+    prefixes = identifier_prefixes(document)
+    snapshot = document.get("snapshot") or {}
+    snapshot_id = str(snapshot.get("id", ""))
+    documents = {str(entry.get("id")): entry for entry in document.get("documents") or []}
+
+    items = [
+        _annotation(
+            kind,
+            label,
+            claim,
+            evidence,
+            snapshot=snapshot,
+            documents=documents,
+            prefixes=prefixes,
+            review=review,
+        )
+        for kind, label, claim, evidence in _claims_with_evidence(document)
+    ]
+
+    # An AnnotationCollection with its one page embedded, rather than a bare array. The array
+    # is what everybody writes and the collection is what the specification defines; the
+    # collection is also the only place a finite export has to say how many there are and
+    # what they are a reading of.
+    return (
+        json.dumps(
+            {
+                "@context": [
+                    ANNOTATION_CONTEXT,
+                    {DRAMATIS_PREFIX: TERM_BASE, **prefixes},
+                ],
+                "id": f"{ID_BASE}/annotations/{quote(snapshot_id, safe='')}",
+                "type": "AnnotationCollection",
+                "label": citation(document),
+                "total": len(items),
+                "first": {
+                    "id": f"{ID_BASE}/annotations/{quote(snapshot_id, safe='')}/1",
+                    "type": "AnnotationPage",
+                    "startIndex": 0,
+                    "items": items,
+                },
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+        + "\n"
+    )
+
+
 # -- the one entry point --------------------------------------------------------------
 
 
@@ -748,6 +1060,19 @@ def export_document(
     if fmt == GEXF:
         text = _as_gexf(document, review)
         return Export(GEXF, (Part(".gexf", "application/gexf+xml", text),))
+
+    if fmt == ANNOTATIONS:
+        text = _as_annotations(document, review)
+        return Export(
+            ANNOTATIONS,
+            (
+                Part(
+                    ".annotations.jsonld",
+                    f'application/ld+json;profile="{ANNOTATION_CONTEXT}"',
+                    text,
+                ),
+            ),
+        )
 
     text = _as_jsonld(document, review)
     return Export(JSONLD, (Part(".jsonld", "application/ld+json", text),))

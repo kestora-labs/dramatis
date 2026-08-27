@@ -569,7 +569,13 @@ stale location. *Both met — see **D51** and **D53**.*
       Standing review decisions are applied on the way out, since an export is the copy
       that gets cited. **Evidence is counted rather than flattened**: quotations are
       **6.2**'s to export, in a format built for them. *(See **D64**.)*
-- [ ] **6.2** — Evidence exportable as W3C Web Annotation with `TextQuoteSelector`.
+- [x] **6.2** — Evidence exportable as W3C Web Annotation with `TextQuoteSelector`, which
+      the schema has named as the shape of a selector since phase 0 and 2.4 built
+      re-anchoring on. One annotation per passage, in an `AnnotationCollection` that says
+      which reading it came from. **How to match the quotation is stated on every target**:
+      Invariant 3 defines verbatim against whitespace-normalised text, and a consumer
+      searching byte-exact would fail on most of a hard-wrapped novel and conclude the
+      evidence was invented. *(See **D65**.)*
 - [ ] **6.3** — Import of externally produced Dramatis JSON — the schema proves
       interoperable.
 - [ ] **6.4** — Multiple editions of one work in a single collection (shape **D**).

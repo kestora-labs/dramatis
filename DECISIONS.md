@@ -3768,3 +3768,111 @@ The server would gain one endpoint and the client one control, and neither is th
 command is a thin caller. The JSON-LD context is the only part that is a promise to anyone
 outside: identifiers exported today are IRIs somebody may have written down, so changing how a
 prefix expands is a schema-version-sized change rather than a free one.
+
+---
+
+## D65 — Evidence as Web Annotation, and the sentence the standard has no room for
+
+**Phase 6.2.** The bullet asks for evidence exportable as W3C Web Annotation with
+`TextQuoteSelector`. Most of it was already decided: the schema's `selector` says so where it
+is defined — *"A quotation with surrounding context, after the W3C Web Annotation
+TextQuoteSelector"* — and 2.4 built re-anchoring on exactly that shape. This export is
+therefore mostly a change of clothes, and the interesting decisions are the four places where
+the clothes do not fit.
+
+### How to match the quotation has to be said, and the vocabulary cannot say it
+
+Invariant 3 defines *verbatim* against **whitespace-normalised** text: runs of whitespace
+collapse, nothing else is altered, and `verification` compares both sides that way. So a
+stored `exact` is the model's rendering of the passage, not the file's, and the two routinely
+differ by a line break — passage.py already says as much, and *most* quotations in a
+hard-wrapped novel cross one.
+
+A consumer given a `TextQuoteSelector` will search for it byte-exact, fail on the majority of
+a real corpus, and reasonably conclude the evidence was fabricated. That is the worst failure
+this export could have: not an error, but a confident wrong answer about whether a scholar's
+citations are real.
+
+The Web Annotation vocabulary has no term for a matching rule. So the target carries
+`dramatis:matching: "whitespace-collapsed"`. It is one string, it is prefixed so nothing
+mistakes it for standard, and it is the difference between an export that can be checked and
+one that looks forged.
+
+### The offsets are not a `TextPositionSelector`, and are not thrown away either
+
+`selector.start` and `selector.end` are documented in the schema as *"A hint for fast lookup,
+never the authority"*, and they count characters into the revision's **normalised** text —
+a string nobody reading the exported file has. Emitted as a `TextPositionSelector` they would
+carry the full authority of a standard term and be wrong against the document they name.
+Dropped, they would be lost.
+
+So they are carried as `dramatis:normalisedStart` and `dramatis:normalisedEnd`: lossless,
+unmistakable, and named after the text they are offsets into. A test asserts the string
+`TextPositionSelector` appears nowhere in the output. (In practice the pipeline never writes
+them at all — 1,022 pieces of evidence in the full-novel run, not one with an offset — which
+makes the standard-selector version pure downside.)
+
+The structural locator gets the same treatment for the same reason. Invariant 1 says position
+is an ordered path of typed segments whose *types are data*; no standard selector addresses
+that, and the obvious flattening — "chapter 4" — would bake in the vocabulary the schema
+exists to refuse. `dramatis:locator` carries the path as it stands.
+
+### There is no `evidencing` motivation, and inventing one would have been worse
+
+The `oa` motivation vocabulary is closed in practice: assessing, bookmarking, classifying,
+commenting, describing, editing, highlighting, identifying, linking, moderating, questioning,
+replying, tagging. None of them is *"this passage is why we believe the claim"*.
+
+Character evidence takes `identifying` — *"the user intends to assign an identity to the
+Target"*, which is nearly exact for a passage that names a person. Relation evidence takes
+`describing`, the body describing the target. Both are approximations, and both are
+**standard**: a consumer that meets `dramatis:evidencing` ignores it and shows nothing,
+while one that meets `identifying` knows what to do. Accuracy that no reader can act on is
+not accuracy.
+
+The note attached to a piece of evidence stays out of that body and becomes a second
+`TextualBody` with `purpose: "commenting"` — it says what the passage *shows*, which is
+somebody's gloss on the claim rather than the claim, and merging them would put words in the
+analysis's mouth. An evidence `kind` becomes a third with `purpose: "classifying"`.
+
+### A collection, not an array
+
+Everybody writes a bare JSON array of annotations; the specification defines
+`AnnotationCollection` and `AnnotationPage`. The collection wins because a finite export needs
+somewhere to say how many annotations there are and **what reading they came from**, and an
+array has nowhere — the same argument that put `snapshot_id` on every CSV row in **D64**. One
+page, embedded as `first`, holding the lot.
+
+Annotation identifiers are derived, following `ids.py`: a hash over the snapshot, the claim,
+and the quotation with its context. Export the same snapshot twice and the annotations have
+the same identifiers, which is the precondition for citing one. They are scoped to the
+**snapshot** rather than to the claim, because an annotation is a statement made by one
+reading — two readings that both quote the same line have made that statement twice, and
+Invariant 4 says which reading is never a detail.
+
+### The two exports interlock, so the identifier machinery is shared and not copied
+
+An annotation's body points at its claim by IRI, and that IRI has to be the one **D64**'s
+graph export gives the same claim, or the citation is a dangling reference dressed up as
+provenance. `identifier_prefixes` and `expand_identifier` were lifted out of the graph
+JSON-LD's context builder and are now used by both, with a test asserting the two agree. The
+graph export's compact `char:a` and the annotation export's absolute
+`.../collection/<name>/char/a` resolve to the same IRI, which is the whole point.
+
+That shared machinery is also why the annotations live in `export.py` beside the four graph
+formats rather than in a module of their own. Two modules would have meant either a circular
+import or a second copy of the prefix rules, and a second copy is exactly the failure the
+interlock is guarding against. The file is long; the alternative was long *and* able to drift.
+
+### What this does not do
+
+It does not re-verify the quotations against the source. Evidence passed Invariant 3's gate
+when the snapshot was built and the snapshot is immutable, so there is nothing here to check
+and no text to check it against — `dramatis export` reads the store and nothing else. Opening
+a passage and re-anchoring a moved quotation is `passage.open_evidence`'s job, and it is a
+different question from *what did this reading claim*.
+
+*Reversible.* One format string, one renderer, and two helpers shared with **6.1**. The
+exposure to the outside is the same as D64's and no larger: the annotation IRIs and the
+`dramatis:` terms are things somebody may write down, so renaming a term is a
+schema-version-sized change rather than a free one.

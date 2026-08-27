@@ -3876,3 +3876,101 @@ different question from *what did this reading claim*.
 exposure to the outside is the same as D64's and no larger: the annotation IRIs and the
 `dramatis:` terms are things somebody may write down, so renaming a term is a
 schema-version-sized change rather than a free one.
+
+---
+
+## D66 — Import refuses before it writes, and a document brings a graph rather than the work
+
+**Phase 6.3.** Invariant 8 says other tools should be able to emit and consume Dramatis JSON
+without running Dramatis. Publishing a schema is a claim; `dramatis import` is the part that
+tests it. Five decisions, and one of them is a bug that was waiting to be written.
+
+### The phase's acceptance needed an export that did not exist
+
+*"A snapshot exported and re-imported is byte-identical after normalisation."* Nothing in
+**6.1** could produce the input for that. GraphML, GEXF and CSV are renderings, and the
+JSON-LD export deliberately drops evidence and renames fields — re-importing any of them
+would be a different job, and byte-identity would be impossible.
+
+So `export` gains a fifth format, `snapshot`, which is not a rendering at all: it writes the
+stored document as it stands, canonicalised. Four lines, and without it the bullet's own
+acceptance criterion cannot be demonstrated by anybody who does not have a Python REPL. The
+file is named `.dramatis.json` so it cannot be confused with `.jsonld`, which is the other
+JSON in the same directory and a completely different document.
+
+**The review overlay is not applied to it**, alone among the exports — the exact opposite of
+**D64**'s rule for the other five. That rule exists because an export is the copy that gets
+cited and a stale `review_status` would publish a cast somebody has since rejected. This one
+is not a copy that gets cited; it is *the stored artifact*, and rewriting a field on the way
+out would mean the document that came back was not the document that went in. The round trip
+would still be byte-identical and would have stopped meaning anything.
+
+### Nothing is written until everything has been checked
+
+A `Store` transaction spans one call, so an import cannot be a single atomic write. It can be
+a refusal that happens before the first one. Every collision is found in a pre-flight pass
+over the whole document: a snapshot identifier already used for different content, a character
+identifier already meaning somebody else, a surface form already claimed.
+
+`upsert_character` already raises on a form two characters both claim, so the pre-flight looks
+redundant. It is not: that raises on the *first* clash it meets, by which point the characters
+ahead of it in the list are in the store. Half an imported reading is worse than none, because
+the half that landed looks exactly like a reading somebody meant to have. Every refusal test
+asserts twice — that it refused, and that the store is untouched.
+
+### An imported document brings a graph, not the work
+
+The schema carries a `sha256` per document and never the text. That is deliberate and it is
+what makes a Dramatis file safe to send: it says what was read without shipping somebody's
+unpublished manuscript, which is Invariant 7's spirit applied to the artifact rather than to
+the network.
+
+The consequence has to be said out loud rather than discovered. An imported snapshot opens,
+diffs, and re-exports; its evidence quotations are readable because they are *in* the
+snapshot. What it cannot do is open the passage around a quotation, because that needs the
+source. So the import prints the caveat every time — on stderr, so `--json` stays parseable,
+and *before* the payload rather than after, because a person watching a machine-readable run
+still needs to know.
+
+It is not permanent, and the reason is a property **D32** and **D40** built for other
+purposes: a document identifier is derived from its path and its content, so ingesting the
+same file later lands on the same identifier and the text joins the imported graph with
+nothing to reconcile. The placeholder is a row waiting for its document, not a wrong answer.
+
+### The bug that was waiting to be written
+
+`upsert_document` sets `content` from what it is given. An import that called it for a
+document the project already held would replace real text with an empty string — silently,
+and destroying the only copy in that project. The obvious implementation is the destructive
+one.
+
+Since a document identifier already implies its path and its content, a row that is there *is*
+this document, and the right move is to leave it entirely alone and count it. The test for
+this asserts the text is still there afterwards, which is the only kind of test that would
+have caught it.
+
+### Identity is refused, never guessed
+
+`char:mary` means one person inside the registry that minted it (**D64**), and the store makes
+a character identifier unique across the whole project. An incoming character whose identifier
+is taken by a different name, or sits in a different collection, is a collision the importer
+cannot resolve. Merging them would silently make two people one; renaming would break every
+relation that names them. It refuses and says which two names are in play.
+
+Deciding that two records are the same person is `dramatis merge` (**5.3**), and **D52** was
+explicit that this is a person's judgement recorded in the registry rather than something a
+reading infers. An importer that guessed would be that decision taken by a file.
+
+### Smaller notes
+
+The exception is `ImportRefused`, not `ImportError` — the latter is a builtin, and shadowing
+it inside a module about importing is a joke that costs somebody an afternoon.
+
+The importer does **not** re-check that the snapshot names a work the document carries.
+`validate_document` already reports that as a reference failure, so a second check would be
+unreachable code pretending to be a safety net. The test for that case asserts the validator's
+message, which is where the rule actually lives.
+
+*Reversible.* One module, one command, one export format. Nothing in the store changed, and
+no migration was needed — which is itself the finding: the schema was already sufficient to
+reconstruct a project, and import needed no new column to prove it.

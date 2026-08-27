@@ -37,11 +37,13 @@ from dramatis.export import (
     MATCHING,
     NODE_COLUMNS,
     SCOPED_PREFIXES,
+    SNAPSHOT,
     ExportError,
     expand_identifier,
     export_document,
     identifier_prefixes,
 )
+from dramatis.snapshot import canonical_json
 from tests.documents import SHA, minimal_document
 
 GRAPHML_NS = {"g": GRAPHML_NAMESPACE}
@@ -697,3 +699,58 @@ class TestAnnotationIdentifiers:
         moved["relations"][0]["evidence"][0]["selector"]["exact"] = "They parted at the gate."
 
         assert items_of(a_document())[0]["id"] != items_of(moved)[0]["id"]
+
+
+# -- the interchange format itself (6.3) ----------------------------------------------
+
+
+class TestTheSnapshotFormat:
+    """`snapshot` is not a rendering. It writes the stored document as it stands, so that
+    what `dramatis import` reads is a file this command can produce."""
+
+    def test_it_is_the_document_and_nothing_else(self) -> None:
+        document = a_document()
+
+        rendered = json.loads(only(export_document(document, SNAPSHOT)))
+
+        assert rendered == document
+
+    def test_it_is_canonicalised_rather_than_pretty_printed(self) -> None:
+        """So one reading exported on two machines gives two identical files, which is what
+        makes the round trip checkable at all."""
+        text = only(export_document(a_document(), SNAPSHOT))
+
+        assert text == canonical_json(a_document()) + "\n"
+
+    def test_key_order_in_the_input_does_not_reach_the_output(self) -> None:
+        document = a_document()
+        shuffled = json.loads(json.dumps(dict(reversed(list(document.items())))))
+
+        assert only(export_document(shuffled, SNAPSHOT)) == only(
+            export_document(document, SNAPSHOT)
+        )
+
+    def test_it_keeps_the_evidence_the_graph_formats_drop(self) -> None:
+        """The interchange format is the lossless one. A round trip that quietly shed the
+        quotations would satisfy byte-identity against itself and lose the evidence."""
+        rendered = json.loads(only(export_document(a_document(), SNAPSHOT)))
+
+        assert rendered["relations"][0]["evidence"][0]["selector"]["exact"] == (
+            "They met at the gate."
+        )
+
+    def test_a_review_overlay_does_not_touch_it(self) -> None:
+        """The one format the overlay is *not* applied to, and deliberately. This is the
+        stored artifact; rewriting a field on the way out would mean the document that came
+        back was not the document that went in, and the round trip would be a lie."""
+        review = {("character", "char:a"): "rejected"}
+
+        assert only(export_document(a_document(), SNAPSHOT, review=review)) == only(
+            export_document(a_document(), SNAPSHOT)
+        )
+
+    def test_it_is_named_so_it_cannot_be_mistaken_for_the_other_json(self) -> None:
+        part = export_document(a_document(), SNAPSHOT).parts[0]
+
+        assert part.suffix == ".dramatis.json"
+        assert part.media_type == "application/json"

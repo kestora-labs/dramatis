@@ -36,6 +36,8 @@ dramatis merge char:miss-eliza-bennet --into char:elizabeth-bennet   # one perso
 dramatis continuity                            # what the corpus no longer agrees with itself about
 dramatis export gexf -o my-novel               # also graphml, csv, jsonld
 dramatis export annotations -o my-novel        # the quotations, as W3C Web Annotation
+dramatis export snapshot -o my-novel           # the document itself, to send somewhere
+dramatis import my-novel.dramatis.json         # and to read one back
 
 npm ci --prefix web && npm --prefix web run build
 dramatis serve                                 # http://127.0.0.1:7373

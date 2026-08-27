@@ -1,10 +1,16 @@
 """Getting a reading out of Dramatis and into somebody else's tool.
 
-Two exports, because a reading is two things. **The graph** (**6.1**) goes out as GraphML or
-GEXF for the network tools a digital humanist already has open, as CSV node and edge lists
-for the spreadsheet and the R session, or as JSON-LD for the catalogue that wants to link it
-to something else. **The evidence** (**6.2**) goes out as W3C Web Annotation, which is where
-the quotations are.
+**The graph** (**6.1**) goes out as GraphML or GEXF for the network tools a digital humanist
+already has open, as CSV node and edge lists for the spreadsheet and the R session, or as
+JSON-LD for the catalogue that wants to link it to something else. **The evidence** (**6.2**)
+goes out as W3C Web Annotation, which is where the quotations are.
+
+**The document itself** (**6.3**) goes out as `snapshot`, and that one is not a rendering:
+it is the stored artifact, canonicalised, and it is what `dramatis import` reads back. The
+rules below are about the renderings. The interchange format has one rule of its own, and it
+is the opposite of the third: **the review overlay is not applied to it**, because it is not
+a copy that gets cited but the thing itself, and a document that came back changed would make
+the round trip a lie.
 
 Nothing here calls a model or reaches a network (Invariant 6). An export is arithmetic over
 a document the store already holds, which is the point: a snapshot must be readable, and
@@ -87,16 +93,21 @@ GEXF = "gexf"
 CSV = "csv"
 JSONLD = "jsonld"
 ANNOTATIONS = "annotations"
+SNAPSHOT = "snapshot"
 
 GRAPH_FORMATS = (GRAPHML, GEXF, CSV, JSONLD)
 """The four that export the graph: nodes, edges, and what is needed to cite them (**6.1**)."""
 
-FORMATS = (*GRAPH_FORMATS, ANNOTATIONS)
+FORMATS = (*GRAPH_FORMATS, ANNOTATIONS, SNAPSHOT)
 """Every format `export_document` understands, in the order the CLI lists them.
 
 `annotations` is not a fifth way of writing the graph. It exports the *evidence* (**6.2**),
 which none of the other four carry, and it is the only one whose output contains a word of
 the source text.
+
+`snapshot` is not a rendering at all. It writes the stored document as it stands, so that
+what `dramatis import` reads is a file this command can produce (**6.3**) — the round trip
+the phase is accepted on has to have both halves.
 """
 
 LIST_SEPARATOR = "; "
@@ -142,6 +153,8 @@ than for recency. Revisable once 1.3 is universal; the only change is a namespac
 """
 
 GRAPHML_NAMESPACE = "http://graphml.graphdrawing.org/xmlns"
+
+NEWLINE = chr(10)
 
 ID_BASE = "https://kestoralabs.co.uk/dramatis/id"
 TERM_BASE = "https://kestoralabs.co.uk/dramatis/ns#"
@@ -1060,6 +1073,14 @@ def export_document(
     if fmt == GEXF:
         text = _as_gexf(document, review)
         return Export(GEXF, (Part(".gexf", "application/gexf+xml", text),))
+
+    if fmt == SNAPSHOT:
+        # Not rendered into anything: the document *is* the interchange format, and putting
+        # it through a renderer would be a second opinion about what it says. Canonicalised
+        # rather than pretty-printed, so exporting one reading twice on two machines gives
+        # two identical files — which is what makes the round trip checkable.
+        text = canonical_json(document) + NEWLINE
+        return Export(SNAPSHOT, (Part(".dramatis.json", "application/json", text),))
 
     if fmt == ANNOTATIONS:
         text = _as_annotations(document, review)

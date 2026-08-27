@@ -1407,3 +1407,90 @@ class TestExport:
 
         assert (tmp_path / "g.jsonld").is_file()
         assert (tmp_path / "g.annotations.jsonld").is_file()
+
+
+class TestImport:
+    """`dramatis import` — reading a document another tool produced (6.3).
+
+    Calls no model and reaches no network. Writes nothing unless the whole document passes.
+    """
+
+    def _document(self, tmp_path: Path) -> Path:
+        source = tmp_path / "reading.dramatis.json"
+        source.write_text(json.dumps(minimal_document()), encoding="utf-8")
+        return source
+
+    def test_it_reads_a_document_into_a_project_that_does_not_exist_yet(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Like ingest, and unlike every other command: somebody handed a file has no project
+        to import it into yet, and telling them to make one first is a step for nothing."""
+        source = self._document(tmp_path)
+        store_path = tmp_path / "new.sqlite"
+
+        assert main(["import", str(source), "--store", str(store_path)]) == 0
+
+        assert "imported snap:1" in capsys.readouterr().out
+        with Store(store_path) as store:
+            assert store.get_snapshot("snap:1") is not None
+
+    def test_it_says_the_text_did_not_come_with_it(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Not a warning: it is what the format is for. A reader who does not know will think
+        the evidence is broken the first time a passage will not open."""
+        source = self._document(tmp_path)
+
+        assert main(["import", str(source), "--store", str(tmp_path / "new.sqlite")]) == 0
+
+        err = capsys.readouterr().err
+        assert "1 document(s) recorded without their text" in err
+        assert "dramatis ingest" in err
+
+    def test_notes_go_to_stderr_so_json_stays_parseable(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        source = self._document(tmp_path)
+
+        code = main(["import", str(source), "--store", str(tmp_path / "new.sqlite"), "--json"])
+
+        captured = capsys.readouterr()
+        assert code == 0
+        payload = json.loads(captured.out)
+        assert payload["snapshot_id"] == "snap:1"
+        assert payload["characters"] == 2
+        assert captured.err
+
+    def test_a_refusal_exits_one_and_writes_nothing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        broken = minimal_document()
+        broken["relations"][0]["source"] = "char:missing"
+        source = tmp_path / "broken.json"
+        source.write_text(json.dumps(broken), encoding="utf-8")
+        store_path = tmp_path / "new.sqlite"
+
+        code = main(["import", str(source), "--store", str(store_path)])
+
+        assert code == 1
+        assert "schema" in capsys.readouterr().err
+        with Store(store_path) as store:
+            assert store.count("characters") == 0
+
+    def test_the_round_trip_the_phase_is_accepted_on(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Export, import into a different project, export again, compare bytes."""
+        source = self._document(tmp_path)
+        first = tmp_path / "one.sqlite"
+        second = tmp_path / "two.sqlite"
+
+        assert main(["import", str(source), "--store", str(first)]) == 0
+        assert main(["export", "snapshot", "--store", str(first), "-o", str(tmp_path / "a")]) == 0
+        assert main(["import", str(tmp_path / "a.dramatis.json"), "--store", str(second)]) == 0
+        assert main(["export", "snapshot", "--store", str(second), "-o", str(tmp_path / "b")]) == 0
+        capsys.readouterr()
+
+        assert (tmp_path / "a.dramatis.json").read_bytes() == (
+            tmp_path / "b.dramatis.json"
+        ).read_bytes()

@@ -1201,6 +1201,79 @@ def _run_continuity(args: argparse.Namespace) -> int:
     return 0
 
 
+# -- import ---------------------------------------------------------------------------
+
+
+def _run_import(args: argparse.Namespace) -> int:
+    """Read a Dramatis document somebody else produced into this project (**6.3**).
+
+    Calls no model and reaches no network (Invariant 6). Writes nothing unless the whole
+    document passes: a half-imported reading looks exactly like one somebody meant to have.
+    """
+    from dramatis.importer import ImportRefused, import_file
+
+    location = resolve_store(args.store)
+    try:
+        # Like `ingest`, and unlike every other command: importing into a project that does
+        # not exist yet is the ordinary case for somebody handed a file.
+        path = location.path if location.explicit else location.require()
+    except StoreNotFound as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
+    with Store(path) as store:
+        try:
+            result = import_file(store, args.path)
+        except ImportRefused as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 1
+
+    # Before the payload, and to stderr either way: the JSON carries the counts, but a person
+    # watching a machine-readable run still needs to know the text did not come with the file.
+    if result.documents_recorded:
+        # Said every time, and not as a warning: it is what the format is *for*. A Dramatis
+        # document says what was read without carrying somebody's manuscript, and a reader
+        # who does not know that will think the evidence is broken when a passage will not
+        # open.
+        print(
+            f"note: {result.documents_recorded} document(s) recorded without their text. A "
+            "Dramatis document carries hashes, not the work. Quotations are readable; the "
+            "passages around them need `dramatis ingest` of the same files.",
+            file=sys.stderr,
+        )
+    if result.documents_already_here:
+        print(
+            f"note: {result.documents_already_here} document(s) were already here and were "
+            "left as they are, text included.",
+            file=sys.stderr,
+        )
+
+    if args.as_json:
+        json.dump(
+            {
+                "snapshot_id": result.snapshot_id,
+                "work_id": result.work_id,
+                "collection_id": result.collection_id,
+                "characters": result.characters,
+                "relations": result.relations,
+                "evidence": result.evidence,
+                "documents_recorded": result.documents_recorded,
+                "documents_already_here": result.documents_already_here,
+                "already_present": result.already_present,
+                "store": str(path),
+            },
+            sys.stdout,
+            indent=2,
+            ensure_ascii=False,
+        )
+        sys.stdout.write("\n")
+        return 0
+
+    print(result.summary)
+
+    return 0
+
+
 # -- export ---------------------------------------------------------------------------
 
 
@@ -2009,6 +2082,28 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     continuity.add_argument("--json", dest="as_json", action="store_true", help="machine-readable")
     continuity.set_defaults(handler=_run_continuity)
+
+    importing = subcommands.add_parser(
+        "import",
+        help="read a Dramatis document into this project",
+        description=(
+            "Read a snapshot document, one this or any other tool produced against the "
+            "published schema, into a project. The document is validated before anything "
+            "is written, and an identifier that already means something else here is "
+            "refused rather than merged. A Dramatis document carries hashes rather than the "
+            "text, so its documents arrive without their source; ingesting the same files "
+            "later joins the two. Calls no model and reaches no network."
+        ),
+    )
+    importing.add_argument("path", type=Path, metavar="FILE")
+    importing.add_argument("--store", default=None, help=STORE_HELP)
+    importing.add_argument(
+        "--json",
+        action="store_true",
+        dest="as_json",
+        help="emit machine-readable results on stdout",
+    )
+    importing.set_defaults(handler=_run_import)
 
     export = subcommands.add_parser(
         "export",

@@ -576,8 +576,14 @@ stale location. *Both met — see **D51** and **D53**.*
       Invariant 3 defines verbatim against whitespace-normalised text, and a consumer
       searching byte-exact would fail on most of a hard-wrapped novel and conclude the
       evidence was invented. *(See **D65**.)*
-- [ ] **6.3** — Import of externally produced Dramatis JSON — the schema proves
-      interoperable.
+- [x] **6.3** — Import of externally produced Dramatis JSON — the schema proves
+      interoperable. A document that validates is read into a project and behaves there
+      like one Dramatis produced, cast registered and surface forms claimed. **It refuses
+      before it writes**: every collision is found in a pre-flight pass, because half an
+      imported reading looks exactly like a reading somebody meant to have. A document
+      carries hashes and never the text, so its sources arrive empty and rejoin the graph
+      when the same files are ingested. `export snapshot` writes the other half of the
+      round trip. *(See **D66**.)*
 - [ ] **6.4** — Multiple editions of one work in a single collection (shape **D**).
 - [ ] **6.5** — `CITATION.cff`, Zenodo DOI on release, versioned schema documentation, and
       **the schema served as a static document at its own `$id`** —

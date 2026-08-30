@@ -40,6 +40,7 @@ from dataclasses import dataclass, replace
 from dramatis import ids
 from dramatis.store import (
     AmbiguousAliasError,
+    Correspondence,
     RegisteredCharacter,
     RegistryDecision,
     Store,
@@ -281,6 +282,141 @@ def split(
         created=store.get_character(created.id) or created,
         warnings=warnings,
     )
+
+
+# -- correspondence across editions (6.4) ---------------------------------------------
+#
+# The third operation, and the one that is defined by what it refuses to do. A merge makes
+# two characters one; this leaves both standing and says they are the same figure in two
+# editions. Fixture D is explicit that the difference matters:
+#
+#   "Resolve within an edition, map across editions. Merging the two into one node that
+#   belongs to neither loses the ability to answer 'who is in the 1889 text?', which is the
+#   question this shape exists to serve."
+#
+# Merging Perdita into Hesper would leave the 1903 graph showing a node captioned Hesper — a
+# name that does not occur anywhere in the 1903 text. That is not a tidier registry, it is a
+# false claim about a published edition.
+
+CORRESPOND = "correspond"
+
+
+@dataclass(frozen=True)
+class Correspond:
+    """What a correspondence did, for a caller that has to report it."""
+
+    left: RegisteredCharacter
+    right: RegisteredCharacter
+    note: str | None = None
+
+    @property
+    def summary(self) -> str:
+        # ASCII only, for the reason IngestResult.summary gives.
+        return f"{self.left.name} and {self.right.name} are one figure across editions"
+
+
+def _editions_of(store: Store, collection_id: str, identifier: str) -> set[str]:
+    """Which works a character is currently found in.
+
+    Read from the registry rather than from the character row, because appearing in an
+    edition is a fact about what a reading found, not about what somebody typed.
+    """
+    from dramatis.registry import build_registry
+
+    entry = next(
+        (item for item in build_registry(store, collection_id).entries if item.id == identifier),
+        None,
+    )
+    return set(entry.work_ids) if entry else set()
+
+
+def correspond(
+    store: Store,
+    collection_id: str,
+    first: str,
+    second: str,
+    *,
+    note: str | None = None,
+) -> Correspond:
+    """Declare that two characters are one figure across two editions (**6.4**).
+
+    Neither character is changed. No surface form moves, nothing is retired, and every
+    snapshot already written goes on saying exactly what it said — which is the whole point:
+    the 1889 graph keeps Hesper and the 1903 graph keeps Perdita, and this is the record that
+    lets a reader comparing them see one person.
+
+    Nothing here calls a model or reaches a network (Invariant 6).
+    """
+    left = _require(store, collection_id, first)
+    right = _require(store, collection_id, second)
+
+    if left.id == right.id:
+        raise IdentityError(f"{left.id} is already itself; a correspondence needs two characters")
+
+    shared = _editions_of(store, collection_id, left.id) & _editions_of(
+        store, collection_id, right.id
+    )
+    if shared:
+        # The distinction the whole operation exists for. Two characters a reading found in
+        # one edition are two characters in that edition, and deciding they are one person is
+        # a merge — which moves the surface forms and retires one of them.
+        where = ", ".join(sorted(shared))
+        raise IdentityError(
+            f"{left.name} and {right.name} both appear in {where}, so this is not a "
+            "cross-edition correspondence. Two characters in one text who are the same "
+            "person is a merge: `dramatis merge` moves the surface forms and retires one."
+        )
+
+    recorded = store.upsert_correspondence(
+        Correspondence(
+            collection_id=collection_id,
+            left_id=left.id,
+            right_id=right.id,
+            note=note,
+            decided_at=utc_now(),
+        )
+    )
+    return Correspond(left=left, right=right, note=recorded.note)
+
+
+def withdraw(store: Store, collection_id: str, first: str, second: str) -> bool:
+    """Remove a correspondence. Returns whether there was one to remove.
+
+    A plain delete, not a superseding record, and deliberately unlike **5.1**'s append-only
+    reviews: a correspondence is a statement that two identifiers denote one figure, and a
+    withdrawn one leaves nothing behind that a later reading could act on. There is no state
+    for the history to explain.
+    """
+    return store.delete_correspondence(collection_id, first, second)
+
+
+def correspondents(store: Store, collection_id: str) -> dict[str, str]:
+    """Every corresponded identifier mapped to its counterpart, both ways round.
+
+    What a diff needs: comparing the 1889 reading against the 1903 one has to be able to
+    look up either side. A character in more than one correspondence keeps only the first,
+    which is a limitation rather than a decision — three editions is a real case and it is
+    not this bullet's.
+    """
+    found: dict[str, str] = {}
+    for entry in store.list_correspondences(collection_id):
+        found.setdefault(entry.left_id, entry.right_id)
+        found.setdefault(entry.right_id, entry.left_id)
+    return found
+
+
+def describe_correspondences(store: Store, collection_id: str) -> list[str]:
+    """One ASCII line per declared pair, for a console."""
+    names = {c.id: c.name for c in store.list_characters(collection_id, include_retired=True)}
+    lines = []
+    for entry in store.list_correspondences(collection_id):
+        left = names.get(entry.left_id, entry.left_id)
+        right = names.get(entry.right_id, entry.right_id)
+        line = f"{left} = {right} across editions"
+        if entry.note:
+            line += f" ({entry.note})"
+        lines.append(line)
+    return lines
 
 
 def redirect(store: Store, collection_id: str) -> dict[str, str]:

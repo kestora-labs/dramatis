@@ -289,6 +289,27 @@ CREATE TABLE IF NOT EXISTS registry_decisions (
     decided_at    TEXT NOT NULL
 );
 
+-- Two characters in different editions of one work who are the same figure (**6.4**).
+-- Fixture D states the requirement: *"Resolve within an edition, map across editions.
+-- Merging the two into one node that belongs to neither loses the ability to answer 'who is
+-- in the 1889 text?', which is the question this shape exists to serve."* So this is not a
+-- merge and does not touch either character's surface forms: Hesper stays Hesper in the 1889
+-- graph and Perdita stays Perdita in the 1903 one, and this says they are one person.
+--
+-- Its own table rather than a third `action` in registry_decisions, because that column
+-- carries a CHECK constraint and `CREATE TABLE IF NOT EXISTS` cannot widen one on a store
+-- that already exists. A new table is what an older project can actually gain.
+--
+-- The pair is stored sorted, so (A, B) and (B, A) are one row and the primary key means it.
+CREATE TABLE IF NOT EXISTS character_correspondences (
+    collection_id TEXT NOT NULL REFERENCES collections(id),
+    left_id       TEXT NOT NULL REFERENCES characters(id),
+    right_id      TEXT NOT NULL REFERENCES characters(id),
+    note          TEXT,
+    decided_at    TEXT NOT NULL,
+    PRIMARY KEY (collection_id, left_id, right_id)
+);
+
 CREATE INDEX IF NOT EXISTS ix_snapshots_work ON snapshots(work_id);
 CREATE INDEX IF NOT EXISTS ix_snapshots_revision ON snapshots(text_revision_id);
 CREATE INDEX IF NOT EXISTS ix_snapshots_run ON snapshots(analysis_run_id);
@@ -301,6 +322,8 @@ CREATE INDEX IF NOT EXISTS ix_reviews_subject ON reviews(work_id, subject_kind, 
 CREATE INDEX IF NOT EXISTS ix_corrections_subject ON corrections(work_id, subject_kind, subject_id);
 CREATE INDEX IF NOT EXISTS ix_conflicts_snapshot ON correction_conflicts(snapshot_id);
 CREATE INDEX IF NOT EXISTS ix_decisions_collection ON registry_decisions(collection_id);
+CREATE INDEX IF NOT EXISTS ix_correspondences_collection
+    ON character_correspondences(collection_id);
 """
 
 
@@ -463,6 +486,30 @@ class RegistryDecision:
     forms: tuple[str, ...]
     decided_at: str
     note: str | None = None
+
+
+@dataclass(frozen=True)
+class Correspondence:
+    """Two characters who are one figure across two editions (**6.4**).
+
+    Not a merge. Both characters keep their identifiers, their surface forms, and their place
+    in their own edition's graph; this records that a reader comparing the editions is looking
+    at the same person under two names.
+    """
+
+    collection_id: str
+    left_id: str
+    right_id: str
+    decided_at: str
+    note: str | None = None
+
+    def other(self, identifier: str) -> str | None:
+        """The character on the far side of this pair, or None if it names neither."""
+        if identifier == self.left_id:
+            return self.right_id
+        if identifier == self.right_id:
+            return self.left_id
+        return None
 
 
 class AmbiguousAliasError(Exception):
@@ -1082,6 +1129,51 @@ class Store:
                 ),
             )
         return decision
+
+    def upsert_correspondence(self, correspondence: Correspondence) -> Correspondence:
+        """Record that two characters are one figure across editions (**6.4**).
+
+        The pair is sorted before it is written, so declaring it either way round is one row
+        and declaring it twice is not two. Re-declaring replaces the note, which is the only
+        part a person can change their mind about.
+        """
+        left, right = sorted((correspondence.left_id, correspondence.right_id))
+        entry = replace(correspondence, left_id=left, right_id=right)
+        with self.transaction() as connection:
+            connection.execute(
+                "INSERT INTO character_correspondences (collection_id, left_id, right_id, "
+                "note, decided_at) VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(collection_id, left_id, right_id) DO UPDATE SET "
+                "note = excluded.note, decided_at = excluded.decided_at",
+                (
+                    entry.collection_id,
+                    entry.left_id,
+                    entry.right_id,
+                    entry.note,
+                    entry.decided_at,
+                ),
+            )
+        return entry
+
+    def delete_correspondence(self, collection_id: str, first: str, second: str) -> bool:
+        """Withdraw a correspondence. Returns whether there was one to withdraw."""
+        left, right = sorted((first, second))
+        with self.transaction() as connection:
+            cursor = connection.execute(
+                "DELETE FROM character_correspondences WHERE collection_id = ? "
+                "AND left_id = ? AND right_id = ?",
+                (collection_id, left, right),
+            )
+        return bool(cursor.rowcount)
+
+    def list_correspondences(self, collection_id: str) -> list[Correspondence]:
+        """Every declared cross-edition pair in a collection, oldest first."""
+        rows = self.connection.execute(
+            "SELECT * FROM character_correspondences WHERE collection_id = ? "
+            "ORDER BY decided_at, left_id, right_id",
+            (collection_id,),
+        ).fetchall()
+        return [Correspondence(**dict(row)) for row in rows]
 
     def list_registry_decisions(self, collection_id: str) -> list[RegistryDecision]:
         """Every merge and split in a collection, oldest first."""

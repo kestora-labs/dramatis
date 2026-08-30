@@ -42,7 +42,7 @@ from dramatis.correction import CorrectionError, correction_as_json
 from dramatis.correction import as_json as corrections_as_json
 from dramatis.correction import record as record_correction_decision
 from dramatis.diff import DiffError, diff_snapshots
-from dramatis.identity import IdentityError
+from dramatis.identity import IdentityError, correspondents
 from dramatis.identity import merge as merge_characters
 from dramatis.identity import split as split_character
 from dramatis.ingest import IngestError
@@ -388,8 +388,18 @@ def create_app(store_path: Path | str):
             if second is None:
                 raise HTTPException(status_code=404, detail=f"no snapshot {after!r}")
 
+            # Correspondences are read for the same reason the CLI reads them: a diff
+            # across two editions would otherwise report a renamed character as one
+            # departure and one arrival (**6.4**).
+            work = store.get_work(first.work_id)
+            corresponding = (
+                correspondents(store, str(work["collection_id"])) if work is not None else {}
+            )
+
             try:
-                result = diff_snapshots(first.document, second.document)
+                result = diff_snapshots(
+                    first.document, second.document, corresponding=corresponding
+                )
             except DiffError as error:
                 raise HTTPException(status_code=409, detail=str(error)) from error
 
@@ -398,6 +408,7 @@ def create_app(store_path: Path | str):
                     "before": result.before,
                     "after": result.after,
                     "attribution": result.attribution,
+                    "editions": list(result.editions) if result.editions else None,
                     "weights_comparable": result.weights_comparable,
                     "weight_basis": result.weight_basis,
                     "warnings": list(result.warnings),

@@ -560,6 +560,7 @@ def _run_ingest(args: argparse.Namespace) -> int:
                 collection_name=args.collection,
                 creator=args.creator,
                 language=args.language,
+                edition=args.edition,
                 label=args.label,
                 role=args.role,
                 collectives_are_actors=collectives,
@@ -1112,6 +1113,93 @@ def _run_split(args: argparse.Namespace) -> int:
         return 0
 
 
+# -- correspond -----------------------------------------------------------------------
+
+
+def _run_correspond(args: argparse.Namespace) -> int:
+    """Declare that two characters are one figure across two editions (**6.4**).
+
+    Not a merge, and the difference is the point: both characters keep their identifiers and
+    their surface forms, so the 1889 graph goes on saying Hesper and the 1903 one goes on
+    saying Perdita. Calls no model and reaches no network (Invariant 6).
+    """
+    from dramatis.identity import IdentityError, describe_correspondences
+    from dramatis.identity import correspond as correspond_characters
+    from dramatis.identity import withdraw as withdraw_correspondence
+
+    try:
+        path = resolve_store(args.store).require()
+    except StoreNotFound as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
+    with Store(path) as store:
+        collection_id = _collection_for(store, args.collection)
+        if collection_id is None:
+            print("error: this project holds no collection", file=sys.stderr)
+            return 1
+
+        if args.first is None:
+            lines = describe_correspondences(store, collection_id)
+            if args.as_json:
+                json.dump(
+                    [
+                        {
+                            "left": entry.left_id,
+                            "right": entry.right_id,
+                            "note": entry.note,
+                            "decided_at": entry.decided_at,
+                        }
+                        for entry in store.list_correspondences(collection_id)
+                    ],
+                    sys.stdout,
+                    indent=2,
+                    ensure_ascii=False,
+                )
+                sys.stdout.write("\n")
+                return 0
+            if not lines:
+                print("no cross-edition correspondences declared.")
+                return 0
+            print(f"{len(lines)} correspondence(s)")
+            for line in lines:
+                print(f"  {line}")
+            return 0
+
+        if args.second is None:
+            print("error: a correspondence needs two characters", file=sys.stderr)
+            return 1
+
+        try:
+            if args.withdraw:
+                removed = withdraw_correspondence(store, collection_id, args.first, args.second)
+                if not removed:
+                    print(
+                        f"error: no correspondence between {args.first} and {args.second}",
+                        file=sys.stderr,
+                    )
+                    return 1
+                print(f"withdrew the correspondence between {args.first} and {args.second}")
+                return 0
+
+            result = correspond_characters(
+                store, collection_id, args.first, args.second, note=args.note
+            )
+        except IdentityError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 1
+
+    print(result.summary)
+    # Said every time, because the operation next to this one is destructive and a reader
+    # should not have to remember which this was.
+    print(
+        "note: neither character was changed. Each edition's graph still names the character "
+        "that edition names.",
+        file=sys.stderr,
+    )
+    return 0
+
+
 # -- continuity -----------------------------------------------------------------------
 
 
@@ -1406,6 +1494,7 @@ def _run_status(args: argparse.Namespace) -> int:
                 {
                     "id": work["id"],
                     "title": work["title"],
+                    "edition": work.get("edition"),
                     "creator": work.get("creator"),
                     "revisions": len(revisions),
                     "snapshots": [
@@ -1452,7 +1541,10 @@ def _run_status(args: argparse.Namespace) -> int:
 
     for work in summary["works"]:
         creator = f" — {work['creator']}" if work["creator"] else ""
-        print(f"\nwork        {work['title']}{creator}  ({work['id']})")
+        # The edition is named beside the title, because two rows differing only in an
+        # identifier suffix is how somebody reads one edition's numbers as the other's.
+        edition = f"  [{work['edition']}]" if work.get("edition") else ""
+        print(f"\nwork        {work['title']}{creator}{edition}  ({work['id']})")
         print(f"            {work['revisions']} revision(s), {len(work['snapshots'])} snapshot(s)")
         for snapshot in work["snapshots"]:
             label = f"  {snapshot['label']}" if snapshot["label"] else ""
@@ -1840,6 +1932,14 @@ def _build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--collection", help="collection name (default: the work title)")
     ingest.add_argument("--creator", help="author of the work")
     ingest.add_argument("--language", help="BCP 47 language tag, e.g. en")
+    ingest.add_argument(
+        "--edition",
+        help=(
+            "edition of the work, for a collection holding several (6.4). Part of the "
+            "work's identity: two editions are two works, and neither is a revision of "
+            "the other."
+        ),
+    )
     ingest.add_argument("--label", help="human-facing name for this revision")
     ingest.add_argument(
         "--role",
@@ -2048,6 +2148,37 @@ def _build_parser() -> argparse.ArgumentParser:
     split.add_argument("--note", default=None, help="why, for whoever reads this later")
     split.add_argument("--json", dest="as_json", action="store_true", help="machine-readable")
     split.set_defaults(handler=_run_split)
+
+    correspond = subcommands.add_parser(
+        "correspond",
+        help="declare that two characters are one figure across editions",
+        description=(
+            "Record that a character in one edition and a character in another are the same "
+            "person. This is not a merge: both characters keep their identifiers and their "
+            "surface forms, so each edition's graph goes on naming the character that "
+            "edition names, and a diff across the two reads the pair as one figure renamed "
+            "rather than as one departure and one arrival. Two characters found in the same "
+            "edition are refused, because that is a merge. With no arguments, lists what has "
+            "been declared. Calls no model and reaches no network."
+        ),
+    )
+    correspond.add_argument("first", nargs="?", default=None, metavar="CHARACTER")
+    correspond.add_argument("second", nargs="?", default=None, metavar="CHARACTER")
+    correspond.add_argument("--store", default=None, help=STORE_HELP)
+    correspond.add_argument(
+        "--collection",
+        default=None,
+        metavar="ID",
+        help="which collection to work in. Needed only where the project holds several.",
+    )
+    correspond.add_argument("--note", default=None, help="why these two are one figure")
+    correspond.add_argument(
+        "--withdraw",
+        action="store_true",
+        help="remove a correspondence rather than declaring one",
+    )
+    correspond.add_argument("--json", dest="as_json", action="store_true", help="machine-readable")
+    correspond.set_defaults(handler=_run_correspond)
 
     continuity = subcommands.add_parser(
         "continuity",

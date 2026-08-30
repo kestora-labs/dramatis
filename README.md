@@ -38,6 +38,8 @@ dramatis export gexf -o my-novel               # also graphml, csv, jsonld
 dramatis export annotations -o my-novel        # the quotations, as W3C Web Annotation
 dramatis export snapshot -o my-novel           # the document itself, to send somewhere
 dramatis import my-novel.dramatis.json         # and to read one back
+dramatis ingest 1903.md --edition 1903-revised # a second edition, not a second draft
+dramatis correspond char:hesper char:perdita   # one figure, renamed between editions
 
 npm ci --prefix web && npm --prefix web run build
 dramatis serve                                 # http://127.0.0.1:7373

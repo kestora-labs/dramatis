@@ -32,15 +32,24 @@ is a claim, and an unevidenced one is worse than an unexplained pair.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from dramatis import ids
 from dramatis.snapshot import canonical_json
 
 ADDED = "added"
 REMOVED = "removed"
 MERGED = "merged"
 SPLIT = "split"
+RENAMED = "renamed"
+"""Present in both editions under different names, by a declared correspondence (**6.4**).
+
+The confidante called Hesper in 1889 and Perdita in 1903 is not a character who left and
+another who arrived. Without this she is reported as one removal and one addition, which is
+two false statements where the truth is that nothing about her changed but her name.
+"""
 
 STRENGTHENED = "strengthened"
 WEAKENED = "weakened"
@@ -50,6 +59,15 @@ TEXT = "text"
 ANALYSIS = "analysis"
 BOTH = "both"
 SAME = "same"
+
+EDITION = "edition"
+"""The attribution when two snapshots read two editions of one work (**6.4**).
+
+Not `text`, and the difference is the whole of fixture **D**'s complaint. `text` means the
+work was rewritten and the later state supersedes the earlier. Two editions are both
+authoritative, both citable and both current, and reporting the 1903 reading as a change to
+the 1889 one would tell a scholar the opposite of the truth about a published text.
+"""
 
 
 class DiffError(Exception):
@@ -91,9 +109,16 @@ class Diff:
     before: str
     after: str
     attribution: str
-    """``text``, ``analysis``, ``both`` or ``same`` — which axis the change can be laid at."""
+    """``text``, ``analysis``, ``both``, ``same``, or ``edition`` — which axis the change can
+    be laid at."""
     weights_comparable: bool
     weight_basis: str | None
+    editions: tuple[str, str] | None = None
+    """The two editions, when the snapshots read different editions of one work (**6.4**).
+
+    Carried even where the attribution is ``both``, because *which* editions were compared is
+    part of the citation and a reader cannot recover it from the attribution alone.
+    """
     characters: tuple[CharacterChange, ...] = ()
     relations: tuple[RelationChange, ...] = ()
     warnings: tuple[str, ...] = field(default_factory=tuple)
@@ -141,17 +166,54 @@ def _configuration(document: dict[str, Any]) -> Any:
     return wanted
 
 
+def editions_of(before: dict[str, Any], after: dict[str, Any]) -> tuple[str, str] | None:
+    """The two editions being compared, or None if these are readings of one edition.
+
+    Read from the work identifiers rather than from the ``edition`` field, because the
+    identifier is what `ids.work_id` derived the edition into and is therefore present even
+    on a document whose work entry omitted the free-text label. The label is preferred for
+    display where it is there.
+    """
+    first = (before.get("works") or [{}])[0]
+    second = (after.get("works") or [{}])[0]
+
+    left_base, left_edition = ids.work_edition(str(first.get("id", "")))
+    right_base, right_edition = ids.work_edition(str(second.get("id", "")))
+
+    if left_base != right_base or left_edition == right_edition:
+        return None
+    if left_edition is None or right_edition is None:
+        # One side is the unedition'd form of the same work. That is a project where an
+        # edition was named for one ingest and not the other, which is a real state and not
+        # a comparison of two editions.
+        return None
+
+    return (
+        str(first.get("edition") or left_edition),
+        str(second.get("edition") or right_edition),
+    )
+
+
 def attribution_of(before: dict[str, Any], after: dict[str, Any]) -> str:
     """Which axis separates two snapshots.
 
     The analysis axis is compared by configuration rather than by run identifier, for the
     reason `_configuration` gives.
+
+    **An edition difference is reported as one and never as a rewrite.** Two editions have
+    different text revisions by construction, so the plain revision comparison would call
+    every edition diff a change to the text — the one thing fixture **D** says must not
+    happen. Where the analysis also differs the answer is still ``both``, because nothing can
+    be credited to either; `Diff.editions` carries which editions those were.
     """
+    edition = editions_of(before, after) is not None
     text = before["snapshot"]["text_revision_id"] != after["snapshot"]["text_revision_id"]
     analysis = _configuration(before) != _configuration(after)
 
-    if text and analysis:
+    if analysis and (text or edition):
         return BOTH
+    if edition:
+        return EDITION
     if text:
         return TEXT
     if analysis:
@@ -160,21 +222,45 @@ def attribution_of(before: dict[str, Any], after: dict[str, Any]) -> str:
 
 
 def _character_changes(
-    before: list[dict[str, Any]], after: list[dict[str, Any]]
+    before: list[dict[str, Any]],
+    after: list[dict[str, Any]],
+    corresponding: Mapping[str, str] | None = None,
 ) -> tuple[list[CharacterChange], dict[str, str]]:
-    """Characters added, removed, merged or split, and where the merges went.
+    """Characters added, removed, merged, split or renamed, and where each went.
 
     The returned map sends an absorbed character's identifier to its survivor, so relations
-    can be compared through a merge instead of reporting every edge it touched twice.
+    can be compared through a merge instead of reporting every edge it touched twice. A
+    cross-edition correspondence (**6.4**) rides the same map for the same reason: without
+    it, every edge the renamed character touched is reported removed and an identical one
+    added.
+
+    ``corresponding`` maps identifiers to their counterpart in the other edition, both ways
+    round, as `identity.correspondents` returns it.
     """
+    corresponding = corresponding or {}
     was = {character["id"]: character for character in before}
     now = {character["id"]: character for character in after}
 
     changes: list[CharacterChange] = []
     merged_into: dict[str, str] = {}
 
+    renamed: set[str] = set()
     for identifier, character in was.items():
         if identifier in now:
+            continue
+        counterpart = corresponding.get(identifier)
+        if counterpart is not None and counterpart in now and counterpart not in was:
+            # One figure under two names, and a person said so. Reported once, from the side
+            # that was there first, and never as a removal plus an addition.
+            changes.append(
+                CharacterChange(identifier, character.get("name", ""), RENAMED, (counterpart,))
+            )
+            merged_into[identifier] = counterpart
+            renamed.add(identifier)
+            renamed.add(counterpart)
+
+    for identifier, character in was.items():
+        if identifier in now or identifier in renamed:
             continue
         # Gone. Either absorbed by somebody who now answers to its name, or simply absent.
         name = character.get("name", "").strip().casefold()
@@ -188,7 +274,7 @@ def _character_changes(
             changes.append(CharacterChange(identifier, character.get("name", ""), REMOVED))
 
     for identifier, character in now.items():
-        if identifier in was:
+        if identifier in was or identifier in renamed:
             continue
         name = character.get("name", "").strip().casefold()
         # A split is only a split if the character it came out of is still there; otherwise
@@ -297,17 +383,47 @@ def _basis_of(relations: list[dict[str, Any]]) -> str | None:
     return bases.pop() if len(bases) == 1 else None
 
 
-def diff_snapshots(before: dict[str, Any], after: dict[str, Any]) -> Diff:
+def _uncorresponded(
+    before: dict[str, Any], after: dict[str, Any], corresponding: Mapping[str, str] | None
+) -> int:
+    """How many characters sit on one side only with nothing declared about them.
+
+    A hint rather than a fault. Some of them genuinely are in one edition and not the other,
+    which is a real finding about the revision; the rest are renamings nobody has recorded
+    yet, and the two are indistinguishable from here. Counting them says *look at these*
+    without claiming to know which kind they are.
+    """
+    corresponding = corresponding or {}
+    was = {character["id"] for character in before.get("characters") or []}
+    now = {character["id"] for character in after.get("characters") or []}
+    lonely = (was - now) | (now - was)
+    return sum(1 for identifier in lonely if corresponding.get(identifier) not in (was | now))
+
+
+def diff_snapshots(
+    before: dict[str, Any],
+    after: dict[str, Any],
+    *,
+    corresponding: Mapping[str, str] | None = None,
+) -> Diff:
     """Compare two snapshot documents.
 
     Raises DiffError if they describe different works, which is not a comparison anybody
     means to make: two novels have no characters in common by construction, so every node
     and edge would be reported as added or removed and the result would be a list of
     everything rather than a diff.
+
+    **Two editions of one work are an exception, and the reason this bullet exists.** They
+    are different works by identifier (**6.4**) and they are the comparison fixture **D** is
+    for. The argument above does not apply to them: they share a collection, and therefore a
+    registry, so nearly every character is literally the same character. Only the ones a
+    person has declared corresponded differ in identifier, and ``corresponding`` is how those
+    are matched — `identity.correspondents` builds it.
     """
     first_work = (before.get("works") or [{}])[0].get("id")
     second_work = (after.get("works") or [{}])[0].get("id")
-    if first_work != second_work:
+    editions = editions_of(before, after)
+    if first_work != second_work and editions is None:
         raise DiffError(
             f"these snapshots are of different works ({first_work!r} and {second_work!r}); "
             "everything in them would be reported as added or removed"
@@ -334,9 +450,25 @@ def diff_snapshots(before: dict[str, Any], after: dict[str, Any]) -> Diff:
             "the text revision and the analysis run both differ, so no change below can be "
             "credited to either"
         )
+    if editions is not None:
+        # Said out loud, because the numbers below look exactly like a rewrite and are not
+        # one. Neither edition supersedes the other; this is a comparison of two texts that
+        # are both current.
+        warnings.append(
+            f"these are two editions of one work ({editions[0]} against {editions[1]}), "
+            "so nothing below is a change the work underwent"
+        )
+        uncorresponded = _uncorresponded(before, after, corresponding)
+        if uncorresponded:
+            warnings.append(
+                f"{uncorresponded} character(s) appear in one edition and not the other with "
+                "no declared correspondence; `dramatis correspond` records a renaming"
+            )
 
     characters, merged_into = _character_changes(
-        before.get("characters") or [], after.get("characters") or []
+        before.get("characters") or [],
+        after.get("characters") or [],
+        corresponding,
     )
     relations = _relation_changes(
         before_relations, after_relations, merged_into, weights_comparable=weights_comparable
@@ -348,6 +480,7 @@ def diff_snapshots(before: dict[str, Any], after: dict[str, Any]) -> Diff:
         attribution=attribution,
         weights_comparable=weights_comparable,
         weight_basis=before_basis if weights_comparable else None,
+        editions=editions,
         characters=tuple(characters),
         relations=tuple(relations),
         warnings=tuple(warnings),

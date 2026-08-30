@@ -44,8 +44,37 @@ def collection_id(name: str) -> str:
     return _identifier("col", name, "untitled")
 
 
-def work_id(title: str) -> str:
-    return _identifier("work", title, "untitled")
+def work_id(title: str, edition: str | None = None) -> str:
+    """Identify a work, and where there is one, the edition of it (**6.4**).
+
+    **An edition is part of a work's identity, and a revision is not.** Fixture **D** puts it
+    plainly: *"An edition must not be modelled as the newest text revision of a work. Both
+    must remain addressable."* Two drafts of a novel are one work moving forward and the
+    later supersedes the earlier; the 1889 and 1903 texts are both authoritative, both
+    citable, and both current, and a reader may legitimately want the graph of the 1889 text
+    specifically. Sharing one identifier would make the second ingest a revision of the
+    first, and the question *who is in the 1889 text?* would stop having an answer.
+
+    **A work with no edition keeps the bare form**, exactly as `relation_id` leaves
+    ``observed`` unsuffixed: every identifier already written down stays where it is, and a
+    project that never had an edition never grows one.
+    """
+    base = _identifier("work", title, "untitled")
+    if not edition:
+        return base
+    return f"{base}@{slugify(edition) or 'edition'}"
+
+
+def work_edition(identifier: str) -> tuple[str, str | None]:
+    """Read a work identifier back into the work and the edition it names.
+
+    The inverse of `work_id`, and it lives here for the reason `relation_endpoints` gives:
+    the ``@`` join is this module's convention, and a caller taking it apart itself would be
+    treating a convention as a rule. Returns ``(identifier, None)`` for a work with no
+    edition, so a caller can compare bases without checking first.
+    """
+    base, separator, edition = identifier.partition("@")
+    return (base, edition) if separator and edition else (identifier, None)
 
 
 DOCUMENT_HASH_LENGTH = 12

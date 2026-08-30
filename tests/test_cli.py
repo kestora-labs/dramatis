@@ -1494,3 +1494,178 @@ class TestImport:
         assert (tmp_path / "a.dramatis.json").read_bytes() == (
             tmp_path / "b.dramatis.json"
         ).read_bytes()
+
+
+class TestEditionsAndCorrespondence:
+    """`dramatis ingest --edition` and `dramatis correspond` (6.4).
+
+    Neither calls a model nor reaches a network.
+    """
+
+    def _two_editions(self, tmp_path: Path) -> Path:
+        store_path = tmp_path / "d.sqlite"
+        for edition, confidante in (("1889-first", "Hesper"), ("1903-revised", "Perdita")):
+            source = tmp_path / f"{edition}.md"
+            source.write_text(
+                f"Corin Ashe found {confidante} waiting.\n", encoding="utf-8", newline=""
+            )
+            assert (
+                main(
+                    [
+                        "ingest",
+                        str(source),
+                        "--store",
+                        str(store_path),
+                        "--work",
+                        "The Salt Road",
+                        "--collection",
+                        "Salt Road",
+                        "--edition",
+                        edition,
+                    ]
+                )
+                == 0
+            )
+        return store_path
+
+    def test_two_editions_become_two_works_in_one_collection(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path = self._two_editions(tmp_path)
+        capsys.readouterr()
+
+        assert main(["status", "--store", str(store_path), "--json"]) == 0
+        payload = json.loads(capsys.readouterr().out)
+
+        assert len(payload["collections"]) == 1
+        assert {work["edition"] for work in payload["works"]} == {"1889-first", "1903-revised"}
+        assert {work["id"] for work in payload["works"]} == {
+            "work:the-salt-road@1889-first",
+            "work:the-salt-road@1903-revised",
+        }
+
+    def test_status_names_the_edition_beside_the_title(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Two rows differing only in an identifier suffix is how somebody reads one
+        edition's numbers as the other's."""
+        store_path = self._two_editions(tmp_path)
+        capsys.readouterr()
+
+        assert main(["status", "--store", str(store_path)]) == 0
+
+        out = capsys.readouterr().out
+        assert "[1889-first]" in out
+        assert "[1903-revised]" in out
+
+    def _registered(self, tmp_path: Path) -> Path:
+        store_path = tmp_path / "reg.sqlite"
+        with Store(store_path) as store:
+            from dramatis.store import RegisteredCharacter
+
+            store.upsert_collection("col:salt-road", "Salt Road")
+            for identifier, name in (("char:hesper", "Hesper"), ("char:perdita", "Perdita")):
+                store.upsert_character(
+                    RegisteredCharacter(id=identifier, collection_id="col:salt-road", name=name)
+                )
+        return store_path
+
+    def test_it_records_a_correspondence_and_reads_it_back(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path = self._registered(tmp_path)
+
+        assert (
+            main(
+                [
+                    "correspond",
+                    "char:hesper",
+                    "char:perdita",
+                    "--store",
+                    str(store_path),
+                    "--note",
+                    "renamed in 1903",
+                ]
+            )
+            == 0
+        )
+        assert "one figure across editions" in capsys.readouterr().out
+
+        assert main(["correspond", "--store", str(store_path), "--json"]) == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload == [
+            {
+                "left": "char:hesper",
+                "right": "char:perdita",
+                "note": "renamed in 1903",
+                "decided_at": payload[0]["decided_at"],
+            }
+        ]
+
+    def test_it_says_neither_character_was_changed(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """The operation next to this one is destructive, and a reader should not have to
+        remember which this was."""
+        store_path = self._registered(tmp_path)
+
+        main(["correspond", "char:hesper", "char:perdita", "--store", str(store_path)])
+
+        assert "neither character was changed" in capsys.readouterr().err
+
+    def test_listing_an_empty_registry_says_so(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path = self._registered(tmp_path)
+
+        assert main(["correspond", "--store", str(store_path)]) == 0
+        assert "no cross-edition correspondences" in capsys.readouterr().out
+
+    def test_one_character_alone_is_an_error(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path = self._registered(tmp_path)
+
+        code = main(["correspond", "char:hesper", "--store", str(store_path)])
+
+        assert code == 1
+        assert "needs two characters" in capsys.readouterr().err
+
+    def test_it_can_be_withdrawn(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+        store_path = self._registered(tmp_path)
+        main(["correspond", "char:hesper", "char:perdita", "--store", str(store_path)])
+        capsys.readouterr()
+
+        assert (
+            main(
+                [
+                    "correspond",
+                    "char:hesper",
+                    "char:perdita",
+                    "--store",
+                    str(store_path),
+                    "--withdraw",
+                ]
+            )
+            == 0
+        )
+        assert "withdrew" in capsys.readouterr().out
+
+    def test_withdrawing_one_that_is_not_there_exits_one(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        store_path = self._registered(tmp_path)
+
+        code = main(
+            [
+                "correspond",
+                "char:hesper",
+                "char:perdita",
+                "--store",
+                str(store_path),
+                "--withdraw",
+            ]
+        )
+
+        assert code == 1
+        assert "no correspondence" in capsys.readouterr().err

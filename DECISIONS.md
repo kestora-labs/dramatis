@@ -3974,3 +3974,100 @@ message, which is where the rule actually lives.
 *Reversible.* One module, one command, one export format. Nothing in the store changed, and
 no migration was needed — which is itself the finding: the schema was already sufficient to
 reconstruct a project, and import needed no new column to prove it.
+
+---
+
+## D67 — An edition is part of a work's identity, and correspondence is not merging
+
+**Phase 6.4.** Fixture **D** has been sitting in the tree since Phase 0 stating what this
+bullet has to be true of, in two sentences that pull in opposite directions:
+
+> **Editions are not revisions.** [...] Both are authoritative, both citable, and both
+> current. A reader may legitimately want the graph of the 1889 text specifically.
+
+> Resolve within an edition, map across editions. Merging the two into one node that belongs
+> to neither loses the ability to answer *"who is in the 1889 text?"*.
+
+The first says keep them apart. The second says relate them. Four decisions come out of
+holding both.
+
+### The edition goes in the work identifier
+
+`ids.work_id` took a title and nothing else, so ingesting the 1903 text of a work already in
+the project landed on the same identifier and became its **second revision**. That is exactly
+the modelling error the fixture names: a revision supersedes, and neither of these editions
+supersedes the other.
+
+So an edition is part of the identity: `work:the-salt-road@1889-first`. A work with no edition
+keeps the bare `work:the-salt-road`, which is `relation_id`'s trick (**D19** left `observed`
+unsuffixed for the same reason) — every identifier already written down stays where it is, and
+no existing project grows a suffix it never asked for.
+
+The `@` separator and its inverse `ids.work_edition` live in `ids.py` beside
+`relation_endpoints`, for the reason that function already gives: the join is a convention of
+that module, and a caller taking it apart itself would be treating a convention as a rule.
+
+### Correspondence: the operation defined by what it refuses to do
+
+Two editions in one collection share one registry, which is the whole reason to put them
+there — a character whose name did not change is *literally the same character*, with nothing
+to declare. The exception is the confidante, Hesper in 1889 and Perdita in 1903.
+
+`dramatis merge` is the wrong tool and the fixture says why. Merging Perdita into Hesper moves
+the surface forms, so the next reading of the 1903 text resolves "Perdita" to `char:hesper`
+and the 1903 graph shows a node captioned with a name that appears nowhere in the 1903 text.
+That is not a tidier registry. It is a false statement about a published edition.
+
+So `dramatis correspond` records that two characters are one figure and **changes neither**.
+No surface form moves, nothing is retired, and every snapshot already written says exactly
+what it said. It refuses when both characters appear in the same edition — that case is two
+people in one text who are really one person, which *is* a merge — and the refusal names the
+command that does it.
+
+**Its own table, not a third action in `registry_decisions`.** That column carries
+`CHECK (action IN ('merge', 'split'))`, and the store's migration story is explicit that an
+older project gains *tables* and columns but never a widened constraint. A new table is what
+an old store can actually be given.
+
+### The diff had to learn two things, and one of them was a refusal it already had
+
+`diff_snapshots` **raises** when the two documents describe different works, on the argument
+that *"two novels have no characters in common by construction"*. Two editions are now two
+works, so the comparison shape **D** exists for was refused outright — and the argument is
+false of them: they share a registry, so nearly every character is the same character.
+
+The refusal stands for genuinely different works and is lifted for two editions of one.
+
+The second thing is the attribution. Two editions have different text revisions by
+construction, so the existing comparison called every edition diff a change to the **text** —
+telling a scholar that the 1903 reading is a change the work underwent, which is the opposite
+of the truth. `EDITION` is now its own attribution, and where the analysis differs too the
+answer is still `both` (nothing can be credited to either) with `Diff.editions` carrying which
+editions were compared, because that is part of the citation and cannot be recovered from the
+attribution alone.
+
+A correspondence rides the same map a merge already used to compare relations through an
+identity change. Without it the renamed character contributes one removal, one addition, and a
+duplicate of every edge she touches; with it, one `renamed` entry and no relation changes at
+all. Where no correspondence has been declared the diff **counts** the characters sitting on
+one side only and points at the command — a hint rather than a fault, because some of them
+genuinely are in one edition and not the other, and from inside the diff the two are
+indistinguishable.
+
+### What this does not do
+
+**Three editions.** `correspondents` keeps the first counterpart it finds for a character, so
+a figure renamed twice maps to one of the two. That is a limitation rather than a decision;
+the pair is what the fixture states and a chain is a different data structure.
+
+**The apparatus.** Fixture D's third document is third-party critical commentary, separately
+licensed, which *"must be attributable and separable on export"*. Ingesting it as a `reference`
+document already gives its claims `asserted` provenance (**4.3**), and the exports already
+carry provenance per claim (**D64**) — so it is attributable today. Whether a licence belongs
+in the schema, and what *separable on export* should mean beyond filtering by provenance, is
+not this bullet and is not decided here.
+
+*Reversible.* The identifier change is the part with reach: a work ingested under an edition
+has an identifier somebody may have cited, so withdrawing the suffix later would move it. The
+rest — the table, the command, the diff's edition-awareness — is additive, and a project that
+never names an edition behaves exactly as it did before.

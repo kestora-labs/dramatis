@@ -584,7 +584,13 @@ stale location. *Both met — see **D51** and **D53**.*
       carries hashes and never the text, so its sources arrive empty and rejoin the graph
       when the same files are ingested. `export snapshot` writes the other half of the
       round trip. *(See **D66**.)*
-- [ ] **6.4** — Multiple editions of one work in a single collection (shape **D**).
+- [x] **6.4** — Multiple editions of one work in a single collection (shape **D**). The
+      edition is part of the work's identity, so two editions are two works and neither is a
+      revision of the other; they share one collection and therefore one registry, so a
+      character whose name did not change is the same character with nothing to declare.
+      **A renamed character is corresponded, never merged** — merging would caption the
+      1903 graph with a name the 1903 text does not contain. A diff across editions is
+      attributed to the edition rather than reported as a rewrite. *(See **D67**.)*
 - [ ] **6.5** — `CITATION.cff`, Zenodo DOI on release, versioned schema documentation, and
       **the schema served as a static document at its own `$id`** —
       `https://kestoralabs.co.uk/dramatis/schema/<version>/dramatis.schema.json` — so the

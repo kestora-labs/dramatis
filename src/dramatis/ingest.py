@@ -225,6 +225,7 @@ def ingest_file(
     collection_name: str | None = None,
     creator: str | None = None,
     language: str | None = None,
+    edition: str | None = None,
     label: str | None = None,
     role: str = DEFAULT_ROLE,
     now: str | None = None,
@@ -268,7 +269,9 @@ def ingest_file(
 
     title = work_title or path.stem.replace("_", " ").replace("-", " ").strip() or path.name
 
-    work_id = ids.work_id(title)
+    # The edition is part of the identity (**6.4**): two editions of one work are two works
+    # in one collection, both addressable, neither a revision of the other.
+    work_id = ids.work_id(title, edition)
     collection_id = _resolve_collection(store, work_id, collection_name, title)
 
     document_sha = content_hash(text)
@@ -286,6 +289,7 @@ def ingest_file(
         title,
         creator=creator,
         language=language,
+        edition=edition,
         segment_types=[],
         source_root=source_root,
     )
@@ -424,6 +428,7 @@ def ingest_folder(
     collection_name: str | None = None,
     creator: str | None = None,
     language: str | None = None,
+    edition: str | None = None,
     label: str | None = None,
     role: str = DEFAULT_ROLE,
     now: str | None = None,
@@ -448,6 +453,7 @@ def ingest_folder(
         collection_name=collection_name,
         creator=creator,
         language=language,
+        edition=edition,
         label=label,
         role=role,
         now=now,
@@ -463,6 +469,7 @@ def ingest_source(
     collection_name: str | None = None,
     creator: str | None = None,
     language: str | None = None,
+    edition: str | None = None,
     label: str | None = None,
     role: str = DEFAULT_ROLE,
     now: str | None = None,
@@ -511,7 +518,7 @@ def ingest_source(
     named = reading.label or Path(source_root).name
     title = work_title or str((previous or {}).get("title") or "") or _titled(named)
     keep = previous is not None and not work_title
-    work_id = str(previous["id"]) if keep else ids.work_id(title)
+    work_id = str(previous["id"]) if keep else ids.work_id(title, edition)
     collection_id = _resolve_collection(store, work_id, collection_name, title)
 
     readable = list(reading.documents)
@@ -572,6 +579,7 @@ def ingest_source(
         title,
         creator=creator,
         language=language,
+        edition=edition,
         segment_types=[],
         source_root=source_root,
     )

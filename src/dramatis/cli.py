@@ -649,8 +649,11 @@ def _run_characters(args: argparse.Namespace) -> int:
     for entry in registry.entries:
         if args.spanning and not entry.spans:
             continue
+        # `named` rather than the bare title: in a collection holding two editions of one
+        # work, a character in both appears twice under the same title, and the counts beside
+        # them are then unreadable. `_run_status` names the edition for the same reason.
         where = ", ".join(
-            f"{appearance.work_title} ({appearance.relations} "
+            f"{appearance.named} ({appearance.relations} "
             f"{'relation' if appearance.relations == 1 else 'relations'})"
             for appearance in entry.appearances
         )
@@ -671,9 +674,10 @@ def _run_characters(args: argparse.Namespace) -> int:
         for line in describe_decisions(registry.decisions):
             print(f"  {line}")
 
-    for title in registry.unanalysed:
+    for title, edition in registry.unanalysed:
+        named = f"{title} [{edition}]" if edition else title
         print(
-            f"note: {title} has never been analysed, so nobody appears in it yet", file=sys.stderr
+            f"note: {named} has never been analysed, so nobody appears in it yet", file=sys.stderr
         )
 
     return 0

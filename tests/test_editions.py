@@ -46,6 +46,9 @@ from dramatis.identity import (
     withdraw,
 )
 from dramatis.ingest import ingest_file
+from dramatis.pipeline import analyse
+from dramatis.providers.scripted import ScriptedProvider
+from dramatis.registry import build_registry
 from dramatis.store import Store
 
 COLLECTION = "col:salt-road"
@@ -84,7 +87,9 @@ class TestAnEditionIsPartOfAWorksIdentity:
 # -- ingest ---------------------------------------------------------------------------
 
 
-def an_edition(tmp_path: Path, store_path: Path, edition: str, confidante: str) -> str:
+def an_edition(tmp_path: Path, store_path: Path, edition: str, confidante: str) -> Any:
+    """One edition of the work, ingested. The whole result, because half these callers want
+    the work identifier and the other half want the revision to analyse."""
     source = tmp_path / f"{edition}.md"
     source.write_text(
         f"Corin Ashe found {confidante} waiting.\n\n"
@@ -100,7 +105,7 @@ def an_edition(tmp_path: Path, store_path: Path, edition: str, confidante: str) 
             work_title="The Salt Road",
             collection_name="Salt Road",
             edition=edition,
-        ).work_id
+        )
 
 
 class TestTwoEditionsInOneCollection:
@@ -108,8 +113,8 @@ class TestTwoEditionsInOneCollection:
         """The whole bullet. Without the edition in the identity, the second ingest is a new
         revision of the first and the 1889 graph stops being addressable."""
         store_path = tmp_path / "d.sqlite"
-        first = an_edition(tmp_path, store_path, "1889-first", "Hesper")
-        second = an_edition(tmp_path, store_path, "1903-revised", "Perdita")
+        first = an_edition(tmp_path, store_path, "1889-first", "Hesper").work_id
+        second = an_edition(tmp_path, store_path, "1903-revised", "Perdita").work_id
 
         assert first != second
         with Store(store_path) as store:
@@ -438,3 +443,164 @@ class TestARenamedCharacterAcrossEditions:
         result = diff_snapshots(before, after, corresponding={"char:hesper": "char:nobody"})
 
         assert {c.kind for c in result.characters} == {REMOVED, ADDED}
+
+
+# -- the cast listing -------------------------------------------------------------------
+
+
+def a_reading(names: list[str], pairs: list[tuple[str, str, str]]) -> str:
+    return json.dumps(
+        {
+            "characters": [{"name": name, "aliases": [], "kind": "person"} for name in names],
+            "interactions": [
+                {"participants": [a, b], "quotation": quotation, "note": ""}
+                for a, b, quotation in pairs
+            ],
+        }
+    )
+
+
+def a_grouping(names: list[str]) -> str:
+    return json.dumps(
+        {
+            "groups": [
+                {
+                    "canonical_name": name,
+                    "forms": [name],
+                    "kind": "person",
+                    "same_as_registered": "",
+                }
+                for name in names
+            ]
+        }
+    )
+
+
+def a_read_collection(tmp_path: Path) -> Path:
+    """Both editions ingested and analysed into one collection.
+
+    Read by the scripted provider rather than a model, for the reason the rest of the suite
+    uses it: what is under test is arithmetic over stored snapshots, and a real reading would
+    make the assertion depend on what a model happened to say that day.
+    """
+    store_path = tmp_path / "d.sqlite"
+    for edition, confidante in (("1889-first", "Hesper"), ("1903-revised", "Perdita")):
+        ingested = an_edition(tmp_path, store_path, edition, confidante)
+        with Store(store_path) as store:
+            analyse(
+                store,
+                ingested.revision_id,
+                ScriptedProvider(
+                    [
+                        a_reading(
+                            ["Corin Ashe", confidante, "Marlow"],
+                            [
+                                (
+                                    "Corin Ashe",
+                                    confidante,
+                                    f"Corin Ashe found {confidante} waiting.",
+                                )
+                            ],
+                        ),
+                        a_grouping(["Corin Ashe", confidante, "Marlow"]),
+                    ]
+                ),
+            )
+    return store_path
+
+
+class TestTheCastListingNamesTheEdition:
+    """`dramatis characters` is the command opened specifically to ask about a shared
+    registry, and two editions in one collection is the case where its titles collide.
+
+    `_run_status` states the rule: two rows differing only in an identifier suffix is how
+    somebody reads one edition's numbers as the other's. It binds harder here, because every
+    title in this listing has a relation count beside it.
+    """
+
+    def test_an_appearance_carries_the_edition_it_is_in(self, tmp_path: Path) -> None:
+        store_path = a_read_collection(tmp_path)
+
+        with Store(store_path) as store:
+            registry = build_registry(store, COLLECTION)
+        corin = next(entry for entry in registry.entries if entry.name == "Corin Ashe")
+
+        assert {appearance.edition for appearance in corin.appearances} == {
+            "1889-first",
+            "1903-revised",
+        }
+
+    def test_the_two_appearances_are_told_apart_when_named(self, tmp_path: Path) -> None:
+        """Without this the same string is printed twice with different numbers after it."""
+        store_path = a_read_collection(tmp_path)
+
+        with Store(store_path) as store:
+            registry = build_registry(store, COLLECTION)
+        corin = next(entry for entry in registry.entries if entry.name == "Corin Ashe")
+
+        named = [appearance.named for appearance in corin.appearances]
+        assert named == ["The Salt Road [1889-first]", "The Salt Road [1903-revised]"]
+
+    def test_a_work_with_no_edition_is_named_exactly_as_before(self, tmp_path: Path) -> None:
+        """The other half of the bullet's promise: a project that never names an edition
+        behaves as it always did. A title that grew a suffix it never asked for would be the
+        same fault in the other direction."""
+        source = tmp_path / "plain.md"
+        source.write_text("Ada met Bram.\n", encoding="utf-8", newline="")
+        store_path = tmp_path / "plain.sqlite"
+        with Store(store_path) as store:
+            ingested = ingest_file(store, source, work_title="A Work", collection_name="Plain")
+            analyse(
+                store,
+                ingested.revision_id,
+                ScriptedProvider(
+                    [
+                        a_reading(["Ada", "Bram"], [("Ada", "Bram", "Ada met Bram.")]),
+                        a_grouping(["Ada", "Bram"]),
+                    ]
+                ),
+            )
+            registry = build_registry(store, str(store.list_collections()[0]["id"]))
+
+        appearance = registry.entries[0].appearances[0]
+        assert appearance.edition is None
+        assert appearance.named == "A Work"
+
+    def test_the_command_prints_both_editions(self, tmp_path: Path, capsys: Any) -> None:
+        from dramatis.cli import main
+
+        store_path = a_read_collection(tmp_path)
+
+        assert main(["characters", "--store", str(store_path)]) == 0
+
+        out = capsys.readouterr().out
+        assert "The Salt Road [1889-first]" in out
+        assert "The Salt Road [1903-revised]" in out
+
+    def test_the_json_carries_the_edition_too(self, tmp_path: Path, capsys: Any) -> None:
+        """A consumer reading two appearance objects with one title and two relation counts
+        has the printed listing's problem and no way at all to resolve it."""
+        from dramatis.cli import main
+
+        store_path = a_read_collection(tmp_path)
+
+        assert main(["characters", "--store", str(store_path), "--json"]) == 0
+
+        payload = json.loads(capsys.readouterr().out)
+        corin = next(e for e in payload["characters"] if e["name"] == "Corin Ashe")
+        assert [appearance["edition"] for appearance in corin["appearances"]] == [
+            "1889-first",
+            "1903-revised",
+        ]
+        assert [work["edition"] for work in payload["works"]] == ["1889-first", "1903-revised"]
+
+    def test_an_unanalysed_edition_is_named_by_its_edition(self, tmp_path: Path) -> None:
+        """The same sentence printed twice is the same defect as the same title printed
+        twice, and this note is the only place a work with no snapshot is mentioned."""
+        store_path = a_read_collection(tmp_path)
+        an_edition(tmp_path, store_path, "1912-illustrated", "Perdita")
+
+        with Store(store_path) as store:
+            registry = build_registry(store, COLLECTION)
+
+        assert registry.unanalysed == (("The Salt Road", "1912-illustrated"),)

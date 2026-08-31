@@ -1,7 +1,7 @@
 # Dramatis documentation
 
-> **Pre-alpha.** Phase 0 of the build. There is no application yet — only the schema and
-> its validator. This directory will fill out through Phase 6.
+> **Pre-alpha.** Built through Phase 6.4. The application analyses, compares, curates,
+> exports and imports; this directory fills out with the rest through Phase 6.6.
 
 Dramatis analyses a narrative body of work and produces a graph of its characters and
 their relationships, saved as immutable snapshots so the graph can be compared across
@@ -16,7 +16,7 @@ drafts.
 | Your first analysis | Phase 6.6 |
 | [Schema reference](schema.md) | Phase 0.4 |
 | Prompt customisation | Phase 6.6 |
-| Exporting to Gephi and other tools | Phase 6.1 |
+| Exporting to Gephi and other tools | In the manual, Part V |
 
 ## Design documents
 

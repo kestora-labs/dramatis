@@ -26,6 +26,7 @@ store already holds.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from dramatis.store import RegisteredCharacter, RegistryDecision, Store
 
@@ -46,6 +47,24 @@ class Appearance:
     relations: int
     """How many relations the character has in that work — a cheap sense of how large a
     part they play there, on that work's own scale and never compared across works."""
+
+    edition: str | None = None
+    """Which edition of the work this is, where the work names one (**6.4**).
+
+    Two editions are two works sharing this registry, so a character in both produces two
+    appearances whose titles are identical. The edition is what tells them apart.
+    """
+
+    @property
+    def named(self) -> str:
+        """The work as it must be written wherever a number is written beside it.
+
+        `_run_status` gives the reason and it applies with more force here, because these
+        titles carry a relation count: two rows differing only in an identifier suffix is how
+        somebody reads one edition's numbers as the other's. A work with no edition is named
+        exactly as it always was.
+        """
+        return f"{self.work_title} [{self.edition}]" if self.edition else self.work_title
 
 
 @dataclass(frozen=True)
@@ -78,8 +97,9 @@ class Registry:
     collection_id: str
     collection_name: str
     entries: tuple[RegistryEntry, ...] = ()
-    works: tuple[tuple[str, str], ...] = ()
-    """(id, title) for every work in the collection, including any with no snapshot yet."""
+    works: tuple[tuple[str, str, str | None], ...] = ()
+    """(id, title, edition) for every work in the collection, including any with no snapshot
+    yet. The edition is None for a work that does not name one, which is most of them."""
 
     decisions: tuple[RegistryDecision, ...] = field(default_factory=tuple)
     """Every merge and split somebody has made here (**5.3**).
@@ -92,12 +112,13 @@ class Registry:
     retired: tuple[RegisteredCharacter, ...] = field(default_factory=tuple)
     """Characters merged away, kept so an identifier in an older snapshot can be traced."""
 
-    unanalysed: tuple[str, ...] = field(default_factory=tuple)
-    """Titles of works holding no snapshot.
+    unanalysed: tuple[tuple[str, str | None], ...] = field(default_factory=tuple)
+    """(title, edition) for every work holding no snapshot.
 
     Named rather than left out. A character absent from the registry because a work has never
     been analysed looks exactly like a character who is not in it, and only this tells the
-    two apart.
+    two apart. The edition is carried for the reason `Appearance.named` gives: two editions of
+    one work reported by title alone are one sentence printed twice.
     """
 
     def __len__(self) -> int:
@@ -125,12 +146,18 @@ def build_registry(store: Store, collection_id: str) -> Registry:
 
     works = store.list_works(collection_id)
     found: dict[str, list[Appearance]] = {}
-    unanalysed: list[str] = []
+    unanalysed: list[tuple[str, str | None]] = []
+
+    # `.get`, not `[]`: a store made before **6.4** has no such column, and the migration
+    # story is that an older project gains columns rather than being rewritten.
+    def edition_of(work: dict[str, Any]) -> str | None:
+        found_edition = work.get("edition")
+        return str(found_edition) if found_edition else None
 
     for work in works:
         snapshots = store.list_snapshots(str(work["id"]))
         if not snapshots:
-            unanalysed.append(str(work["title"]))
+            unanalysed.append((str(work["title"]), edition_of(work)))
             continue
 
         # The newest reading of this work, and only that one. An earlier snapshot describes a
@@ -152,6 +179,7 @@ def build_registry(store: Store, collection_id: str) -> Registry:
                     work_title=str(work["title"]),
                     snapshot_id=latest.id,
                     relations=degrees.get(identifier, 0),
+                    edition=edition_of(work),
                 )
             )
 
@@ -169,7 +197,7 @@ def build_registry(store: Store, collection_id: str) -> Registry:
         collection_id=collection_id,
         collection_name=str(collection["name"]),
         entries=tuple(entries),
-        works=tuple((str(work["id"]), str(work["title"])) for work in works),
+        works=tuple((str(work["id"]), str(work["title"]), edition_of(work)) for work in works),
         decisions=tuple(store.list_registry_decisions(collection_id)),
         retired=tuple(
             character
@@ -184,8 +212,13 @@ def as_json(registry: Registry) -> dict[str, object]:
     """The registry as a document, for the API and for anything storing or showing it."""
     return {
         "collection": {"id": registry.collection_id, "name": registry.collection_name},
-        "works": [{"id": work_id, "title": title} for work_id, title in registry.works],
-        "unanalysed": list(registry.unanalysed),
+        "works": [
+            {"id": work_id, "title": title, "edition": edition}
+            for work_id, title, edition in registry.works
+        ],
+        "unanalysed": [
+            {"title": title, "edition": edition} for title, edition in registry.unanalysed
+        ],
         "decisions": [
             {
                 "action": decision.action,
@@ -213,6 +246,7 @@ def as_json(registry: Registry) -> dict[str, object]:
                     {
                         "work_id": appearance.work_id,
                         "work_title": appearance.work_title,
+                        "edition": appearance.edition,
                         "snapshot_id": appearance.snapshot_id,
                         "relations": appearance.relations,
                     }

@@ -174,7 +174,7 @@ class TestWhatEachClaimRestsOn:
             registry = build_registry(store, only_collection(store))
             known = {
                 snapshot.id
-                for work_id, _ in registry.works
+                for work_id, _, _ in registry.works
                 for snapshot in store.list_snapshots(work_id)
             }
 
@@ -251,8 +251,8 @@ class TestAWorkNobodyHasAnalysed:
             ingest_file(store, tmp_path / "three.txt", work_title="Book Three")
             registry = build_registry(store, only_collection(store))
 
-        assert registry.unanalysed == ("Book Three",)
-        assert ("work:book-three", "Book Three") in registry.works
+        assert registry.unanalysed == (("Book Three", None),)
+        assert ("work:book-three", "Book Three", None) in registry.works
 
     def test_it_adds_no_appearances(self, tmp_path: Path) -> None:
         with Store(tmp_path / "p.sqlite") as store:

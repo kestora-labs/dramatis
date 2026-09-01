@@ -10,7 +10,7 @@
     <section class="cover">
       <h1>Dramatis</h1>
       <p class="epigraph">“the persons of the drama”</p>
-      <p class="edition">Second edition</p>
+      <p class="edition">Third edition</p>
       <p class="subtitle">
         A manual for reading a story by the company it keeps — installing it, using it,
         correcting it, living with it, and removing it.
@@ -25,9 +25,10 @@
           · This manual is CC BY 4.0
         </p>
         <p>
-          Describes the application as built through Phase 5, with the Google Drive corpus
-          source added late in Phase 4. Features marked <em>“not yet”</em> are planned and
-          named so you know they are coming, not missing by accident.
+          Describes the application as built through Phase 6.4, at which point a reading
+          can leave Dramatis for other tools and another tool's reading can come in. Features
+          marked <em>“not yet”</em> are planned and named so you know they are coming, not
+          missing by accident.
         </p>
       </div>
     </section>
@@ -41,7 +42,7 @@
           <ol>
             <li>What Dramatis is, and is not</li>
             <li>The three promises</li>
-            <li>Sixteen words you will need</li>
+            <li>Seventeen words you will need</li>
             <li>The two time axes</li>
           </ol>
         </div>
@@ -61,7 +62,7 @@
             <li>Making a project in the browser</li>
             <li>Making a project from the command line</li>
             <li>Saying what each file is</li>
-            <li class="fresh">When the corpus lives in Google Drive</li>
+            <li>When the corpus lives in Google Drive</li>
             <li>Running an analysis</li>
             <li>The window, part by part</li>
             <li>Reading the graph</li>
@@ -75,22 +76,31 @@
         <div class="toc-part">
           <span>Part IV · Curating a reading</span>
           <ol>
-            <li class="fresh">Review: what you make of a claim</li>
-            <li class="fresh">Correcting what a reading got wrong</li>
-            <li class="fresh">One person, two names: merge and split</li>
-            <li class="fresh">The continuity report</li>
+            <li>Review: what you make of a claim</li>
+            <li>Correcting what a reading got wrong</li>
+            <li>One person, two names: merge and split</li>
+            <li>The continuity report</li>
             <li>A cast that spans several works</li>
+            <li class="fresh">Several editions of one work</li>
             <li>Every command, at a glance</li>
           </ol>
         </div>
         <div class="toc-part">
-          <span>Part V · A project over time</span>
+          <span>Part V · Taking it elsewhere</span>
           <ol>
-            <li>Eleven milestones with one short novel</li>
+            <li class="fresh">Exporting a reading</li>
+            <li class="fresh">Exporting the evidence</li>
+            <li class="fresh">Reading in someone else's document</li>
           </ol>
         </div>
         <div class="toc-part">
-          <span>Part VI · Living with it</span>
+          <span>Part VI · A project over time</span>
+          <ol>
+            <li>Twelve milestones with one short novel</li>
+          </ol>
+        </div>
+        <div class="toc-part">
+          <span>Part VII · Living with it</span>
           <ol>
             <li>Where everything lives</li>
             <li>Backing up, sharing, archiving, citing</li>
@@ -115,9 +125,12 @@
     <section class="whatsnew">
       <h1>What is new in this edition</h1>
       <p class="since">
-        The first edition described the application through Phase 4. Since then Phase 5 has
-        landed whole, and Phase 4 was reopened to add a second place a corpus can live. If you
-        read the first edition, these are the parts to read again.
+        The second edition described the application through Phase 5, which is where it became
+        correctable. Phase 6 is where it stops being a closed room: a reading can now be
+        written out in formats other tools read, the evidence behind it can be published as
+        standard annotation, a document another tool produced can be read in, and one work can
+        be held in several editions at once. All of it is command-line work — none of the four
+        has a control in the browser window yet, and this edition says so where it matters.
       </p>
 
       <table class="long">
@@ -127,72 +140,65 @@
         </tr>
         <tr>
           <td>
-            <b>You can now say what you make of a claim.</b> Every character and relationship
-            can be marked accepted, corrected or rejected, and the decision is kept beside the
-            snapshot rather than in it.
+            <b>A reading can be exported.</b> GraphML and GEXF for Gephi and its relatives, CSV
+            node and edge lists for a spreadsheet, JSON-LD for a triple store. Each carries the
+            weight basis, the provenance of every claim, and — in whatever room the format has
+            — what the reading is a reading of. Your standing review decisions are applied on
+            the way out, because the export is the copy that gets cited.
           </td>
-          <td>Part IV, <em>Review</em></td>
+          <td>Part V, <em>Exporting a reading</em></td>
         </tr>
         <tr>
           <td>
-            <b>You can put a reading right, and the correction survives re-analysis.</b> Where
-            a later reading disagrees, your correction stands and the disagreement is reported
-            rather than swallowed.
+            <b>The evidence is its own export, as W3C Web Annotation.</b> One annotation per
+            quotation, with a <code>TextQuoteSelector</code> a tool that has never heard of
+            Dramatis can resolve — and every target says how the quotation is meant to be
+            matched, which is the part a naive consumer would otherwise get wrong.
           </td>
-          <td>Part IV, <em>Correcting what a reading got wrong</em></td>
+          <td>Part V, <em>Exporting the evidence</em></td>
         </tr>
         <tr>
           <td>
-            <b>Two names that are one person can be merged, and one that is two can be
-            split.</b> The first edition listed this as not built; it is the fix for the alias
-            mistake that edition's own worked example ran into.
+            <b>Someone else's Dramatis document can be read in.</b> A file that validates
+            against the published schema is imported into your project and behaves there like
+            one Dramatis produced. It refuses before it writes anything: every collision is
+            found first, because half an imported reading looks exactly like a reading somebody
+            meant to have.
           </td>
-          <td>Part IV, <em>Merge and split</em></td>
+          <td>Part V, <em>Reading in someone else's document</em></td>
         </tr>
         <tr>
           <td>
-            <b>A continuity report</b> tells you what the corpus no longer agrees with itself
-            about: a name you renamed in one chapter and not the others, a citation pointing at
-            a section you deleted, a draft you replaced and kept.
+            <b>One work can be held in several editions.</b> The edition is part of the work's
+            identity, so two editions are two works and neither is a revision of the other.
+            They share one collection and one cast, and a character renamed between editions is
+            <em>corresponded</em> rather than merged — merging would caption the 1903 graph with
+            a name the 1903 text does not contain.
           </td>
-          <td>Part IV, <em>The continuity report</em></td>
+          <td>Part IV, <em>Several editions of one work</em></td>
         </tr>
         <tr>
           <td>
-            <b>A corpus can live in a Google Drive folder</b> rather than on your disk. You
-            consent once, in a browser, to read-only access, and then ingest and re-ingest a
-            folder as though it were local.
+            <b>A comparison across two editions is attributed to the edition</b> rather than
+            reported as a rewrite, and a renamed character reads as one rename instead of a
+            departure and an arrival. This one is only reachable through the interface the
+            browser talks to; the window still compares within a single work.
           </td>
-          <td>Part III, <em>When the corpus lives in Google Drive</em></td>
+          <td>Part IV, <em>Several editions of one work</em></td>
         </tr>
         <tr>
           <td>
-            <b>A document can be marked as no part of the work at all</b> — a production
-            schedule, a to-do list — instead of being forced into “narrative” or “reference”.
+            <b>Three new commands</b> — <code>export</code>, <code>import</code> and
+            <code>correspond</code> — and one new option, <code>ingest --edition</code>.
           </td>
-          <td>Part III, <em>Saying what each file is</em></td>
+          <td>Part IV, <em>Every command, at a glance</em></td>
         </tr>
         <tr>
           <td>
-            <b>Confidence is drawn where a reading recorded it.</b> Nothing Dramatis currently
-            produces records it, and the manual says so rather than implying otherwise.
+            <b>A twelfth milestone</b> closes the worked example by publishing the study, which
+            is the step the second edition stopped one short of.
           </td>
-          <td>Part III, <em>Reading the graph</em></td>
-        </tr>
-        <tr>
-          <td>
-            <b>Local analysis no longer silently reads a fraction of what it was sent.</b> A
-            real measurement found a local model discarding 83% of a prompt and answering
-            anyway. Fixed, and worth knowing about.
-          </td>
-          <td>Part II, <em>Choosing where the thinking happens</em></td>
-        </tr>
-        <tr>
-          <td>
-            <b>The published package is named <code>dramatis-personae</code>.</b> An unrelated
-            library has held <code>dramatis</code> on the Python index since 2008.
-          </td>
-          <td>Part II, <em>Installing, step by step</em></td>
+          <td>Part VI, <em>Milestone 12</em></td>
         </tr>
       </table>
     </section>
@@ -303,9 +309,9 @@
       <!--LIFECYCLE-->
       <figcaption>
         <b>Seven stages, and where they are covered.</b> Installing is Part II; creating,
-        analysing and reading are Part III; arguing with the result is Part IV; the loop of
-        revising and comparing is worked through end to end in Part V; keeping and removing
-        are Part VI.
+        analysing and reading are Part III; arguing with the result is Part IV; publishing it,
+        or taking somebody else's in, is Part V; the loop of revising and comparing is worked
+        through end to end in Part VI; keeping and removing are Part VII.
       </figcaption>
     </figure>
 
@@ -377,7 +383,7 @@
       every snapshot built afterwards. Two different facts, kept apart, both visible.
     </p>
 
-    <h2>Sixteen words you will need</h2>
+    <h2>Seventeen words you will need</h2>
 
     <p>
       Dramatis uses a small number of ordinary words in a precise way. Learn these and the
@@ -406,6 +412,14 @@
       <tr>
         <td>Work</td>
         <td>A novel, a play, a season — one thing that gets revised over time.</td>
+      </tr>
+      <tr>
+        <td>Edition</td>
+        <td>
+          A published state of a work that supersedes nothing: a first and a revised edition, a
+          translation. Part of the work's identity rather than a point in its history, so two
+          editions are two works, both current and both citable. Most projects never name one.
+        </td>
       </tr>
       <tr>
         <td>Source</td>
@@ -1662,7 +1676,7 @@ work        The Lamplighter's Daughter  (work:the-lamplighter-s-daughter)
     <h3>Attribution: the first line of the panel</h3>
     <p>
       Before it lists anything, the comparison says what the difference can be blamed on.
-      There are three possible answers and you should read the sentence every time:
+      There are four possible answers and you should read the sentence every time:
     </p>
     <ul>
       <li>
@@ -1676,6 +1690,12 @@ work        The Lamplighter's Daughter  (work:the-lamplighter-s-daughter)
       <li>
         <b>Both changed.</b> Nothing below can be credited to either, and the panel says so
         in a warning colour rather than quietly picking whichever moved more.
+      </li>
+      <li>
+        <b>The edition changed.</b> Two editions of one work, neither superseding the other, so
+        the difference is not something the work underwent. See <em>Several editions of one
+        work</em> in Part IV — and note that this answer is reachable only through the interface
+        behind the window, since the screen that picks the pair offers one work's snapshots.
       </li>
     </ul>
     <p>
@@ -1737,8 +1757,8 @@ work        The Lamplighter's Daughter  (work:the-lamplighter-s-daughter)
       <p>
         Everything a model returns is a proposal, however well evidenced. This part is about
         disagreeing with one and making the disagreement stick: recording what you make of a
-        claim, putting right what a reading got wrong, settling who is who, and finding out
-        what your corpus no longer agrees with itself about.
+        claim, putting right what a reading got wrong, settling who is who across a cast and
+        across editions, and finding out what your corpus no longer agrees with itself about.
       </p>
     </section>
 
@@ -2092,6 +2112,150 @@ names the work has moved on from
       and a blank line reads as a bug. This command calls no model and reaches no network.
     </p>
 
+    <h2>Several editions of one work</h2>
+
+    <p>
+      A draft supersedes the draft before it. An <em>edition</em> supersedes nothing. A first
+      edition and the author's revised edition are both authoritative, both citable and both
+      current, and a scholar may legitimately want the graph of the earlier text specifically.
+      Treating the later one as simply the newest revision would answer a question nobody
+      asked and destroy the one they did.
+    </p>
+    <p>
+      So Dramatis makes the edition part of the work's identity. Name one when you ingest:
+    </p>
+    <pre><code>dramatis ingest editions/1889-first/text.md \
+    --work "The Salt Road" --edition 1889-first --label "first edition"
+
+dramatis ingest editions/1903-revised/text.md \
+    --work "The Salt Road" --edition 1903-revised --label "revised edition"</code></pre>
+    <pre class="out"><code>ingested: rev:f0ffdac2ff9e (1,207 characters, sha256 f0ffdac2ff9e...)
+  store       salt-road.sqlite  (new project)
+  collection  col:the-salt-road
+  work        work:the-salt-road@1889-first
+  document    doc:text-md-f99c3a1abac6
+  revision    rev:f0ffdac2ff9e</code></pre>
+    <p>
+      The edition rides in the work identifier after an <code>@</code>, so the two ingests
+      land on two works rather than on one work with two revisions:
+    </p>
+    <pre><code>dramatis status</code></pre>
+    <pre class="out"><code>collection  The Salt Road  (col:the-salt-road)
+registry    4 character(s)
+
+work        The Salt Road  [1889-first]  (work:the-salt-road@1889-first)
+            1 revision(s), 1 snapshot(s)
+
+work        The Salt Road  [1903-revised]  (work:the-salt-road@1903-revised)
+            1 revision(s), 1 snapshot(s)</code></pre>
+    <p>
+      Each is analysed on its own, compared on its own, and cited on its own. Nothing about a
+      project that never names an edition changes: a work ingested without
+      <code>--edition</code> keeps the plain <code>work:the-salt-road</code> it has always had.
+    </p>
+
+    <h3>One cast, two texts</h3>
+    <p>
+      Both editions sit in one collection, which is the whole reason to put them there: they
+      share one registry, so a character whose name did not change between editions is
+      <em>literally the same character</em>, with nothing for you to declare. Corin Ashe is
+      Corin Ashe in both.
+    </p>
+    <p>
+      The exception is the character who was renamed. In <em>The Salt Road</em> the confidante
+      is Hesper in 1889 and Perdita in 1903 — one person, two surface forms, and no text in
+      which both occur.
+    </p>
+    <pre><code>dramatis characters</code></pre>
+    <pre class="out"><code>The Salt Road - 4 characters across 2 works
+
+  Corin Ashe  [person]
+    also        Corin
+    appears in  The Salt Road [1889-first] (2 relations), The Salt Road [1903-revised] (2 relations)
+
+  Marlow  [person]
+    appears in  The Salt Road [1889-first] (2 relations), The Salt Road [1903-revised] (2 relations)
+
+  Hesper  [person]
+    appears in  The Salt Road [1889-first] (2 relations)
+
+  Perdita  [person]
+    appears in  The Salt Road [1903-revised] (2 relations)</code></pre>
+    <p>
+      Each appearance is named with its edition, here and in <code>status</code> and in the
+      <code>--json</code> output, for one reason: every title in this listing has a number
+      beside it, and two lines differing only in an identifier suffix are how somebody reads
+      one edition's relation count as the other's.
+    </p>
+
+    <h3>Correspondence, which is not a merge</h3>
+    <p>
+      Hesper and Perdita are one figure. The obvious move is <code>dramatis merge</code>, and it
+      is the wrong one — decisively so. A merge moves the surface forms, so the next reading of
+      the 1903 text would resolve “Perdita” to Hesper and the 1903 graph would show a node
+      captioned with a name that occurs nowhere in the 1903 text. That is not a tidier registry.
+      It is a false statement about a published edition.
+    </p>
+    <p>What you want instead is a correspondence:</p>
+    <pre><code>dramatis correspond char:hesper char:perdita --note "renamed in the revised edition"</code></pre>
+    <pre class="out"><code>note: neither character was changed. Each edition's graph still names the character that edition names.
+Hesper and Perdita are one figure across editions</code></pre>
+    <p>
+      That first line is the entire design. Nothing moved, nothing was retired, and every
+      snapshot already written says exactly what it said before. What the record does is give
+      the comparison a way to see the two as one person. With no arguments the command lists
+      what has been declared; <code>--withdraw</code> takes one back.
+    </p>
+    <pre><code>dramatis correspond</code></pre>
+    <pre class="out"><code>1 correspondence(s)
+  Hesper = Perdita across editions (renamed in the revised edition)</code></pre>
+    <p>
+      Two characters who appear in the same text are refused, and the refusal names the
+      command that is wanted instead:
+    </p>
+    <pre class="out"><code>error: Corin Ashe and Marlow both appear in work:the-salt-road@1889-first,
+work:the-salt-road@1903-revised, so this is not a cross-edition correspondence. Two
+characters in one text who are the same person is a merge: `dramatis merge` moves the
+surface forms and retires one.</code></pre>
+
+    <h3>Comparing two editions</h3>
+    <p>
+      A comparison across editions reports its attribution as <b>edition</b> — its own answer,
+      neither “the text changed” nor “the reading changed”. The distinction is the point:
+      <em>text</em> would tell you the 1903 reading is a change the work underwent and that the
+      earlier state has been left behind, which is the opposite of the truth about two editions.
+      The pair of editions compared is carried alongside, because which two they were is part
+      of the citation.
+    </p>
+    <p>
+      Where you have declared a correspondence, the renamed character contributes a single
+      <em>renamed</em> entry and none of her relationships move. Where you have not, the
+      comparison counts the characters sitting on one side only and points at
+      <code>correspond</code> — a hint rather than a fault, because some of them genuinely are
+      in one edition and not in the other, and from inside a comparison the two cases look
+      identical.
+    </p>
+    <div class="caution">
+      <span class="label">Not reachable from the window yet</span>
+      <p>
+        The comparison screen offers the snapshots of <em>one</em> work, because that is what
+        the lineage grid is — a work's two time axes. Two editions are two works, so there is
+        no way to pick the pair in the browser. The interface behind the window will compare
+        them, and a command-line <code>diff</code> is on the list of small things not yet
+        built. Until one of the two arrives, edition comparison is something Dramatis can do
+        and cannot yet be asked to do conveniently.
+      </p>
+    </div>
+
+    <div class="aside">
+      <span class="label">Three editions</span>
+      <p>
+        A correspondence is a pair. A figure renamed twice, across three editions, maps to one
+        of the two counterparts rather than to a chain. Two is what the design handles today,
+        and this is a limitation rather than a decision.
+      </p>
+    </div>
+
     <h2>Every command, at a glance</h2>
 
     <table class="commands long">
@@ -2179,6 +2343,15 @@ names the work has moved on from
         <td>No</td>
       </tr>
       <tr>
+        <td><code>dramatis correspond</code></td>
+        <td>
+          Declare that two characters in two editions are one figure. Changes neither of them.
+          With no arguments, lists what has been declared; <code>--withdraw</code> takes one
+          back.
+        </td>
+        <td>No</td>
+      </tr>
+      <tr>
         <td><code>dramatis continuity</code></td>
         <td>What the corpus no longer agrees with itself about. Reports; never repairs.</td>
         <td>No</td>
@@ -2188,6 +2361,24 @@ names the work has moved on from
         <td>
           The collection's cast, which works each character appears in, and the identity
           decisions you have taken.
+        </td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td><code>dramatis export</code></td>
+        <td>
+          Write a reading out for another tool: <code>graphml</code>, <code>gexf</code>,
+          <code>csv</code>, <code>jsonld</code>, <code>annotations</code> for the evidence, or
+          <code>snapshot</code> for the stored document itself. <code>-o</code> names the file;
+          without it, most formats go to the screen.
+        </td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td><code>dramatis import</code></td>
+        <td>
+          Read a Dramatis document — yours or another tool's — into this project. Refuses
+          before it writes if anything in it collides.
         </td>
         <td>No</td>
       </tr>
@@ -2220,8 +2411,16 @@ names the work has moved on from
       <tr>
         <td><code>--note</code></td>
         <td>
-          On <code>review</code>, <code>correct</code>, <code>merge</code> and
-          <code>split</code>: why, for whoever reads this later. Required when correcting.
+          On <code>review</code>, <code>correct</code>, <code>merge</code>, <code>split</code>
+          and <code>correspond</code>: why, for whoever reads this later. Required when
+          correcting.
+        </td>
+      </tr>
+      <tr>
+        <td><code>--snapshot ID</code></td>
+        <td>
+          On <code>export</code>: which reading to write out. Without it, the newest in the
+          project, and the command says which one it chose.
         </td>
       </tr>
       <tr>
@@ -2236,16 +2435,297 @@ names the work has moved on from
     <!-- ================================================================== PART V ==== -->
     <section class="part">
       <p class="kicker">Part V</p>
+      <h1>Taking it elsewhere</h1>
+      <p>
+        A reading that can only be seen inside Dramatis is not much use to a discipline that
+        argues in journals and lays its networks out in Gephi. Three chapters: writing a
+        reading out, publishing the evidence under it, and reading in a document somebody else
+        produced. All three are command-line work, all three call no model, and none of them
+        touches the network.
+      </p>
+    </section>
+
+    <h2>Exporting a reading</h2>
+
+    <p>One command, one format name, one file:</p>
+    <pre><code>dramatis export gexf -o pride-and-prejudice</code></pre>
+    <pre class="out"><code>note: exporting snap:9204c78ca953, the newest reading here
+wrote pride-and-prejudice.gexf</code></pre>
+    <p>
+      Without <code>--snapshot</code> it takes the newest reading in the project and tells you
+      which one that was, so a file you come across on your disk a month later is traceable.
+      The extension is added for you. Without <code>-o</code> the export goes to the screen,
+      which is convenient for a quick look and impossible for CSV — CSV is two files, so
+      it insists on a name.
+    </p>
+
+    <table class="long">
+      <tr>
+        <th>Format</th>
+        <th>What it is for</th>
+        <th>Writes</th>
+      </tr>
+      <tr>
+        <td><code>graphml</code></td>
+        <td>
+          The richest of the four. Gephi, Cytoscape, yEd, NetworkX. Carries every scrap of
+          provenance the reading has, on the graph itself.
+        </td>
+        <td><code>NAME.graphml</code></td>
+      </tr>
+      <tr>
+        <td><code>gexf</code></td>
+        <td>Gephi's own format, in the 1.2draft version every Gephi in use actually reads.</td>
+        <td><code>NAME.gexf</code></td>
+      </tr>
+      <tr>
+        <td><code>csv</code></td>
+        <td>A node list and an edge list, for a spreadsheet or anything that eats tables.</td>
+        <td><code>NAME.nodes.csv</code>, <code>NAME.edges.csv</code></td>
+      </tr>
+      <tr>
+        <td><code>jsonld</code></td>
+        <td>Linked data, for a triple store or anything that speaks JSON-LD.</td>
+        <td><code>NAME.jsonld</code></td>
+      </tr>
+      <tr>
+        <td><code>annotations</code></td>
+        <td>The evidence, as W3C Web Annotation. The next chapter.</td>
+        <td><code>NAME.annotations.jsonld</code></td>
+      </tr>
+      <tr>
+        <td><code>snapshot</code></td>
+        <td>
+          The stored document itself, unchanged. What <code>import</code> reads, and the other
+          half of a round trip.
+        </td>
+        <td><code>NAME.dramatis.json</code></td>
+      </tr>
+    </table>
+
+    <h3>What travels with the graph</h3>
+    <p>
+      Every node carries its label, kind, aliases, salience, provenance, review status, and a
+      count of the evidence behind it. Every edge carries its weight and — always, in
+      every format — the <b>basis</b> of that weight. Each of these formats has a native
+      notion of an edge weight and none has a native notion of what the number counts, so a
+      weight travelling without its basis is a number waiting to be compared with something it
+      is not comparable to.
+    </p>
+    <p>
+      What differs between the four is how much room each has for the reading <em>as a
+      whole</em>. Rather than level down to the poorest, each carries what it can:
+    </p>
+    <ul>
+      <li>
+        <b>GraphML</b> takes the lot, on the graph element: work, edition, collection, text
+        revision and its fingerprint, analysis run, model, provider, prompt version and hash,
+        schema version.
+      </li>
+      <li>
+        <b>GEXF</b> has only a fixed <code>&lt;meta&gt;</code> block, so it carries one citation
+        line naming both time axes. Gephi shows it on import.
+      </li>
+      <li>
+        <b>CSV</b> has nowhere at all — which is exactly why a pair of lists in somebody's
+        spreadsheet is the artefact that gets separated from its context. So the snapshot
+        identifier is repeated on <em>every row</em>: redundant, and the only field that
+        survives a sheet being loaded, edited and saved again.
+      </li>
+      <li><b>JSON-LD</b> carries everything, as linked data.</li>
+    </ul>
+    <pre class="out"><code>snapshot_id,id,source,target,weight,weight_basis,directed,types,...
+snap:9204c78ca953,rel:elizabeth-bennet--mr-fitzwilliam-darcy,char:elizabeth-bennet,
+char:mr-fitzwilliam-darcy,46,interaction_passages,false,,...</code></pre>
+
+    <div class="note">
+      <span class="label">Your review decisions are applied on the way out</span>
+      <p>
+        An export is the copy that gets cited, so it should say what you now think rather than
+        what the model first proposed. Every claim you accepted, corrected or rejected leaves
+        with the status you gave it, read over the stored document. The exception is
+        <code>snapshot</code>, which writes the stored document exactly as it stands —
+        that one is not a copy to be cited but the artefact itself, and a round trip that
+        rewrote a field on the way out would have stopped meaning anything.
+      </p>
+    </div>
+
+    <h3>Where the identifiers point</h3>
+    <p>
+      In the JSON-LD export every identifier is already a compact IRI, because Dramatis has
+      always namespaced them by kind — <code>char:</code>, <code>rel:</code>,
+      <code>work:</code>, <code>rev:</code>, <code>run:</code>, <code>snap:</code>,
+      <code>doc:</code>, <code>col:</code>. The context has only to say what each prefix expands
+      to; nothing is rewritten.
+    </p>
+    <p>
+      One distinction there is worth understanding if you deposit the file anywhere two exports
+      might meet. A <em>content-derived</em> identifier means the same thing everywhere:
+      <code>rev:e3bb81d19b34</code> is that exact text in your store and in anybody's. A
+      <em>name-derived</em> one means something only inside the registry that minted it: your
+      <code>char:mary</code> is one person and somebody else's is another. So revisions, runs,
+      snapshots and documents expand globally, and works, characters and relations expand
+      underneath their collection — otherwise every Mary in the world would become one
+      node the moment two exports met in a triple store.
+    </p>
+    <p>
+      The context is written into the file rather than fetched from a web address, deliberately:
+      an export is the thing that must still make sense when nothing is reachable.
+    </p>
+
+    <div class="caution">
+      <span class="label">No download button</span>
+      <p>
+        <code>dramatis export</code> is a command. The browser window has no export control
+        yet, so exporting is something you do in the terminal beside it.
+      </p>
+    </div>
+
+    <h2>Exporting the evidence</h2>
+
+    <p>
+      The four graph formats carry a <em>count</em> of the evidence behind each claim rather
+      than the evidence itself, and that is deliberate. A piece of Dramatis evidence is a
+      locator — an ordered path of typed segments — plus a quotation with the text
+      either side of it, and there is no honest way to put that in a spreadsheet cell.
+      Flattening it would have meant shipping a lossy encoding that people would find first.
+    </p>
+    <p>So the evidence has its own export, in a format built for exactly this shape:</p>
+    <pre><code>dramatis export annotations -o pride-and-prejudice</code></pre>
+    <pre class="out"><code>wrote pride-and-prejudice.annotations.jsonld</code></pre>
+    <p>
+      The result is a W3C Web Annotation <code>AnnotationCollection</code>, labelled with which
+      reading it came from, holding one annotation per quotation. This is the only export that
+      contains a word of your text, and the only one another scholar's tooling can consume
+      without knowing what Dramatis is.
+    </p>
+    <pre class="out"><code>{
+  "id": ".../annotation/dacb5d7a13b1dca2",
+  "type": "Annotation",
+  "motivation": "describing",
+  "body": [
+    { "id": ".../rel/elizabeth-bennet--mr-fitzwilliam-darcy",
+      "type": "dramatis:Relation",
+      "label": "Elizabeth Bennet -- Mr. Fitzwilliam Darcy" },
+    { "type": "TextualBody", "purpose": "commenting",
+      "value": "refusal transforms Darcy" }
+  ],
+  "target": {
+    "type": "SpecificResource",
+    "source": { "id": ".../doc/pride-and-prejudice", "type": "Text",
+                "dramatis:sha256": "e3bb81d19b34..." },
+    "selector": {
+      "type": "TextQuoteSelector",
+      "exact": "the shock of Elizabeth’s scornful refusal",
+      "prefix": "restoration to healthy conditions than",
+      "suffix": "acting on a nature_ ex hypothesi _gener"
+    },
+    "dramatis:locator": [ { "type": "section", "index": 30 } ],
+    "dramatis:matching": "whitespace-collapsed"
+  },
+  "dramatis:provenance": "observed",
+  "dramatis:reviewStatus": "proposed"
+}</code></pre>
+    <p>
+      The <code>prefix</code> and <code>suffix</code> are what let a consumer find the passage
+      again in a text that has been reformatted since — the same mechanism Dramatis uses
+      to re-anchor a quotation after you have edited around it.
+    </p>
+
+    <div class="note">
+      <span class="label">The line that keeps the evidence from looking invented</span>
+      <p>
+        Every target says <code>"dramatis:matching": "whitespace-collapsed"</code>. Dramatis
+        defines <em>verbatim</em> against text whose runs of whitespace have been collapsed,
+        because a quotation in a hard-wrapped novel almost always crosses a line break. A
+        consumer searching for a byte-exact match would fail on most of a novel and conclude the
+        evidence had been fabricated. The Web Annotation vocabulary has no term for this, so
+        Dramatis states it in its own — on every target rather than once at the top,
+        because an annotation that gets separated from its collection has to carry the
+        instruction with it.
+      </p>
+    </div>
+
+    <h2>Reading in someone else's document</h2>
+
+    <p>
+      A Dramatis snapshot is a document conforming to a published schema, which is a claim worth
+      nothing until something reads one back. <code>dramatis import</code> is that something,
+      and it does not care which tool wrote the file:
+    </p>
+    <pre><code>dramatis import their-reading.dramatis.json</code></pre>
+    <pre class="out"><code>note: 1 document(s) recorded without their text. A Dramatis document carries
+hashes, not the work. Quotations are readable; the passages around them need
+`dramatis ingest` of the same files.
+imported snap:9204c78ca953: 102 character(s), 241 relation(s), 1022 piece(s) of evidence</code></pre>
+    <p>
+      What arrives behaves like a reading of your own: it opens, it compares, it exports, its
+      cast is registered in your collection and its surface forms are claimed. Importing the
+      same file twice changes nothing, and says so.
+    </p>
+
+    <h3>A document brings a graph, not the work</h3>
+    <p>
+      That first note is the one thing to understand about the format, and it is a feature
+      rather than a shortfall. A Dramatis document carries a fingerprint for each source
+      document and never a word of the text. That is what makes one safe to send: it says what
+      was read without shipping somebody's unpublished manuscript.
+    </p>
+    <p>
+      The consequence is that an imported reading has quotations you can read — they are
+      inside the document — but no passage around them to open, because that needs the
+      source. It is not permanent. A document's identifier is derived from its path and its
+      content, so if you ingest the same files the text lands on the same identifier and joins
+      the imported graph with nothing to reconcile. The empty document is a row waiting for its
+      text, not a wrong answer.
+    </p>
+
+    <h3>It refuses before it writes</h3>
+    <p>
+      Everything is checked first — a snapshot identifier already used for different
+      content, a character identifier already meaning somebody else, a surface form already
+      claimed — and if anything collides, nothing at all is written:
+    </p>
+    <pre class="out"><code>error: char:elizabeth-bennet is already in this project as 'Elizabeth Bennet',
+and the document calls it 'Eliza Bennet-Smith'. Two different people cannot share
+an identifier; if they are the same person, say so with `dramatis merge`.</code></pre>
+    <p>
+      Half an imported reading would be worse than none, because the half that landed looks
+      exactly like a reading somebody meant to have. And identity is refused rather than
+      guessed: deciding that two records are the same person is a judgement you record with
+      <code>merge</code>, not one an importer should take on your behalf by reading a file.
+    </p>
+    <p>
+      To check a document before importing it — or check one you are about to send
+      — <code>dramatis validate</code> reads it against the schema and its internal
+      references without touching your project.
+    </p>
+
+    <h3>The round trip</h3>
+    <p>
+      The <code>snapshot</code> export writes the stored document as it stands, so a reading can
+      leave and come back unchanged:
+    </p>
+    <pre><code>dramatis export snapshot -o my-reading
+dramatis import my-reading.dramatis.json --store elsewhere.sqlite</code></pre>
+    <p>
+      This is also how you hand a colleague your graph <em>without</em> handing them your
+      manuscript. <em>Sharing</em>, in Part VII, is where that difference matters.
+    </p>
+
+    <!-- ================================================================= PART VI ==== -->
+    <section class="part">
+      <p class="kicker">Part VI</p>
       <h1>A project over time</h1>
       <p>
-        One short novel, followed from an empty folder to a curated study, in eleven
+        One short novel, followed from an empty folder to a published study, in twelve
         milestones. Each gives the reason for the step, the exact commands, and what you
         should look at afterwards. Follow it with your own work substituted and you will
         have used every feature Dramatis currently has.
       </p>
     </section>
 
-    <h2>Eleven milestones with one short novel</h2>
+    <h2>Twelve milestones with one short novel</h2>
 
     <p class="lede">
       <em>The Lamplighter's Daughter.</em> Auber Vance has lit the same round for forty
@@ -2523,6 +3003,31 @@ dramatis analyse rev:ba710042c22a --provider ollama --like snap:243d20a2f047 --l
     </div>
 
     <h3 class="milestone-head">
+      <span class="tag">Milestone 12</span> Out of Dramatis, into everything else
+    </h3>
+    <p>
+      <b>Why.</b> The study is finished and the argument goes in an article. The figure wants
+      laying out in Gephi, the reviewers want the evidence checkable, and neither of them is
+      going to install this.
+    </p>
+    <pre><code>dramatis export gexf -o lamplighter
+dramatis export annotations -o lamplighter
+dramatis export snapshot -o lamplighter</code></pre>
+    <div class="outcome">
+      <b>What to look at</b>
+      Open <code>lamplighter.gexf</code> in Gephi: the graph arrives with its weights, and the
+      import panel shows the citation line naming the text revision and the run that read it.
+      Then look at what your curation did to the file — the character you rejected at
+      milestone 9 leaves as <code>rejected</code>, not as the <code>proposed</code> the model
+      first wrote, because the export is the copy that gets cited.
+      <code>lamplighter.annotations.jsonld</code> is the evidence on its own, one annotation
+      per quotation, resolvable by anything that speaks Web Annotation. And
+      <code>lamplighter.dramatis.json</code> is the reading itself, which a colleague can
+      <code>import</code> into their own project — carrying every claim and every
+      quotation, and not one word of the manuscript.
+    </div>
+
+    <h3 class="milestone-head">
       <span class="tag">And then</span> Keeping it
     </h3>
     <pre><code>cp dramatis.sqlite ~/backups/lamplighter-2026-08-20.sqlite</code></pre>
@@ -2530,7 +3035,8 @@ dramatis analyse rev:ba710042c22a --provider ollama --like snap:243d20a2f047 --l
       That is the entire backup procedure. To hand the study to a colleague, send them that
       file: they can open every snapshot, follow every quotation into the text, read every
       decision you took and why, and compare every draft — with no key, no network and no
-      account.
+      account. To hand it to a colleague who should <em>not</em> have the manuscript, send them
+      the exported document instead.
     </p>
 
     <hr />
@@ -2589,9 +3095,9 @@ dramatis analyse rev:ba710042c22a --provider ollama --like snap:243d20a2f047 --l
       </tr>
     </table>
 
-    <!-- ================================================================= PART VI ==== -->
+    <!-- ================================================================ PART VII ==== -->
     <section class="part">
-      <p class="kicker">Part VI</p>
+      <p class="kicker">Part VII</p>
       <h1>Living with it</h1>
       <p>
         Where the files are, how to keep them safe, what it costs, what it promises about
@@ -2688,6 +3194,17 @@ dramatis ingest draft.txt --store postgresql://user:pass@localhost/dramatis --wo
       and no network to read everything in it: the graphs, the evidence, the source text,
       the comparisons, and every judgement you recorded.
     </p>
+    <p>
+      Where the manuscript is the part you cannot send, send a document instead:
+    </p>
+    <pre><code>dramatis export snapshot -o my-reading</code></pre>
+    <p>
+      That is one reading — every character, every relationship, every quotation and every
+      review decision — with a fingerprint for each source document and not a word of the text.
+      Your recipient imports it and works with it; what they cannot do is open the passage
+      around a quotation, because that needs the manuscript you deliberately kept. Part V has
+      the detail.
+    </p>
     <div class="caution">
       <span class="label">The file contains your manuscript</span>
       <p>
@@ -2716,6 +3233,14 @@ dramatis ingest draft.txt --store postgresql://user:pass@localhost/dramatis --wo
       All three are in the sidebar under any open snapshot. Given them and the project file,
       another scholar can reproduce exactly what you saw — and can see which of it was the
       model's proposal and which was your judgement, because those are recorded apart.
+    </p>
+    <p>
+      For a deposit rather than a handover, export instead of sending the project.
+      <code>dramatis export snapshot</code> writes the reading as a document against the
+      published schema; <code>jsonld</code> writes it as linked data; <code>annotations</code>
+      writes the evidence as W3C Web Annotation, which is the form a reviewer can check without
+      installing anything. All three carry the three identifiers above, so a deposited file
+      says what it is a reading of without needing this paragraph beside it.
     </p>
 
     <h2>What it costs and how long it takes</h2>
@@ -2782,7 +3307,9 @@ dramatis ingest draft.txt --store postgresql://user:pass@localhost/dramatis --wo
         <td>
           <code>ingest</code> from disk, <code>status</code>, <code>validate</code>,
           <code>characters</code>, <code>review</code>, <code>correct</code>,
-          <code>merge</code>, <code>split</code>, <code>continuity</code>, <code>serve</code>
+          <code>merge</code>, <code>split</code>, <code>correspond</code>,
+          <code>continuity</code>, <code>export</code>, <code>import</code>,
+          <code>serve</code>
         </td>
         <td><b>Nothing.</b> Ever. These work offline and always will.</td>
       </tr>
@@ -2846,6 +3373,19 @@ dramatis ingest draft.txt --store postgresql://user:pass@localhost/dramatis --wo
         the source, which is why it is stated this way rather than promised.
       </li>
     </ul>
+
+    <div class="caution">
+      <span class="label">An export is a file you can then send anywhere</span>
+      <p>
+        Exporting reaches no network, but it does write your reading to disk, and what happens
+        to that file afterwards is on you. The four graph formats carry names, notes and
+        counts, and not one quotation. The <code>snapshot</code> document carries the
+        quotations and a fingerprint per file, but no source text.
+        <code>annotations</code> carries every quotation the reading rests on, which is the
+        point of it and also the most of your manuscript any export contains. If a corpus is
+        confidential, that is the export to think about before attaching.
+      </p>
+    </div>
 
     <h2>When something goes wrong</h2>
 
@@ -2975,38 +3515,14 @@ dramatis ingest draft.txt --store postgresql://user:pass@localhost/dramatis --wo
 
     <p>
       Named honestly, so you can plan around them, and listed in roughly the order they are
-      expected to arrive. Everything the first edition of this manual listed here has since
-      been built.
+      expected to arrive. The four the second edition listed first — exports, evidence as
+      standard annotation, importing another tool's graph, and several editions of one work —
+      have all since been built, and Part V is where they are.
     </p>
     <table class="long">
       <tr>
         <th>Not yet</th>
         <th>What it will be</th>
-      </tr>
-      <tr>
-        <td>Exports</td>
-        <td>
-          GraphML, GEXF and CSV node and edge lists for Gephi and similar tools, and JSON-LD.
-          Today the project file and its JSON are the export.
-        </td>
-      </tr>
-      <tr>
-        <td>Evidence as standard annotation</td>
-        <td>
-          W3C Web Annotation with a <code>TextQuoteSelector</code>, so a citation can be
-          consumed by tools that have never heard of Dramatis.
-        </td>
-      </tr>
-      <tr>
-        <td>Importing someone else's graph</td>
-        <td>
-          Reading Dramatis JSON produced by another tool — which is what makes the published
-          schema worth having.
-        </td>
-      </tr>
-      <tr>
-        <td>Multiple editions of one work</td>
-        <td>Comparing translations or editions inside a single collection.</td>
       </tr>
       <tr>
         <td>A formal citation record</td>
@@ -3033,10 +3549,32 @@ dramatis ingest draft.txt --store postgresql://user:pass@localhost/dramatis --wo
         </td>
       </tr>
       <tr>
-        <td>Merge and split in the browser</td>
+        <td>Merge, split and correspondence in the browser</td>
         <td>
           The server already accepts them; the client has no control for them yet, so they are
           command-line work for now. Review and correction are in both.
+        </td>
+      </tr>
+      <tr>
+        <td>Exporting from the browser</td>
+        <td>
+          <code>dramatis export</code> writes every format there is, and the window has no
+          button for any of them. One endpoint and one control away.
+        </td>
+      </tr>
+      <tr>
+        <td>Comparing two editions in the window</td>
+        <td>
+          The comparison itself is built and the interface behind the window performs it; what
+          is missing is a way to choose two snapshots from two editions, because the screen that
+          picks the pair is a single work's grid.
+        </td>
+      </tr>
+      <tr>
+        <td>A figure renamed twice</td>
+        <td>
+          A correspondence relates a pair of characters. Three editions with two renames need a
+          chain, which is a different structure and is not built.
         </td>
       </tr>
       <tr>
@@ -3143,6 +3681,14 @@ Get-ChildItem -Path $HOME -Filter dramatis.sqlite -Recurse -ErrorAction Silently
         <td>One reading: a model, a version of the instructions, and the settings used.</td>
       </tr>
       <tr>
+        <td>Annotation</td>
+        <td>
+          One piece of evidence in W3C Web Annotation form: a quotation, the text either side
+          of it, where in the document it sits, and which claim it supports. What
+          <code>export annotations</code> writes, one per quotation.
+        </td>
+      </tr>
+      <tr>
         <td>Asserted</td>
         <td>A claim your reference material states, as opposed to one the narrative enacts.</td>
       </tr>
@@ -3150,7 +3696,7 @@ Get-ChildItem -Path $HOME -Filter dramatis.sqlite -Recurse -ErrorAction Silently
         <td>Attribution</td>
         <td>
           A comparison's verdict on <em>what</em> a difference can be blamed on: the work,
-          the reading, or neither.
+          the reading, the edition, or neither.
         </td>
       </tr>
       <tr>
@@ -3194,8 +3740,23 @@ Get-ChildItem -Path $HOME -Filter dramatis.sqlite -Recurse -ErrorAction Silently
         </td>
       </tr>
       <tr>
+        <td>Correspondence</td>
+        <td>
+          A declaration that a character in one edition and a character in another are one
+          figure. Changes neither of them, which is what distinguishes it from a merge.
+        </td>
+      </tr>
+      <tr>
         <td>Document</td>
         <td>One file in a corpus, with a role: narrative, reference, or excluded.</td>
+      </tr>
+      <tr>
+        <td>Edition</td>
+        <td>
+          A published state of a work that supersedes nothing. Part of the work's identity, so
+          two editions are two works sharing one collection and one cast, both current and both
+          citable.
+        </td>
       </tr>
       <tr>
         <td>Evidence</td>
@@ -3209,6 +3770,21 @@ Get-ChildItem -Path $HOME -Filter dramatis.sqlite -Recurse -ErrorAction Silently
         <td>
           A document that is in the folder and is no part of the work. Left out of the revision
           entirely rather than stored as reference material nobody wanted read.
+        </td>
+      </tr>
+      <tr>
+        <td>Export</td>
+        <td>
+          A reading written out for something else to read: GraphML, GEXF, CSV, JSON-LD, the
+          evidence as annotation, or the stored document itself. Standing review decisions are
+          applied on the way out of all but the last.
+        </td>
+      </tr>
+      <tr>
+        <td>Import</td>
+        <td>
+          Reading a Dramatis document into a project. Refuses before it writes if anything in it
+          collides with what is already there.
         </td>
       </tr>
       <tr>
@@ -3343,10 +3919,11 @@ Get-ChildItem -Path $HOME -Filter dramatis.sqlite -Recurse -ErrorAction Silently
 
     <div class="colophon">
       <p>
-        <strong>Dramatis — The Manual, second edition.</strong> Describes version
-        0.1.0.dev0, built through Phase 5 with the Drive corpus source of Phase 4.15.
-        Everything stated here was checked against the running application; every screenshot
-        is of a real analysis of a real text, and every quoted output is a real transcript.
+        <strong>Dramatis — The Manual, third edition.</strong> Describes version
+        0.1.0.dev0, built through Phase 6.4. Everything stated here was checked against the
+        running application; every screenshot is of a real analysis of a real text, and every
+        quoted output is a real transcript. The Salt Road transcripts in Part IV are of fixture
+        <b>D</b>, which is synthetic and written for this repository.
       </p>
       <p>
         Further reading in the repository: <code>docs/schema.md</code> for the document
